@@ -31,10 +31,11 @@ mod relocated_reusable_guard_source;
 
 use malbolge::{ProfileDescriptor, encrypt_profile_cell};
 pub use relocated_recurrent_capture_source::{
-    RelocatedRecurrentCaptureSource, RelocatedRecurrentIndexedSource,
-    RelocatedRecurrentMod4Source, RelocatedRecurrentParitySource,
-    RelocatedRecurrentProjectionSource, RelocatedRecurrentReloadSource,
-    build_relocated_recurrent_capture_source,
+    RelocatedRecurrentCaptureSource, RelocatedRecurrentChecksumSource,
+    RelocatedRecurrentIndexedSource, RelocatedRecurrentMod4Source,
+    RelocatedRecurrentParitySource, RelocatedRecurrentProjectionSource,
+    RelocatedRecurrentReloadSource, build_relocated_recurrent_capture_source,
+    build_relocated_recurrent_checksum_source,
     build_relocated_recurrent_indexed_source,
     build_relocated_recurrent_mod4_source,
     build_relocated_recurrent_mod32_source,
@@ -97,7 +98,7 @@ type PlannedAnchor = (u32, u32, Vec<u32>, u32);
 type PlannedWords = Vec<PlannedWord>;
 type PlannedAnchors = Vec<PlannedAnchor>;
 type TapeAnchorSet = Vec<(u32, u32)>;
-type BaselineAnchors<'anchors> = (u32, &'anchors [(u32, u32)]);
+type BaselineAnchors<'anchors> = (u32, &'anchors [(u32, u32)], bool);
 
 fn after_store(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
     // Targets are initialized in ascending order. The next even loader
@@ -303,8 +304,7 @@ fn materialize_tape_anchors(
             emitter,
             address,
             &tape,
-            (baseline, &anchors),
-            compact,
+            (baseline, &anchors, compact),
         )?;
         anchors.push((address, base));
         if compact {
@@ -320,6 +320,15 @@ fn initialize_words_compact(
     words: &[(u32, u32)],
     compact: bool,
 ) -> Result<(), BuildError> {
+    initialize_words_compact_extent(emitter, near, words, compact).map(|_| ())
+}
+
+fn initialize_words_compact_extent(
+    emitter: &mut Emitter<'_>,
+    near: &[(u32, u32)],
+    words: &[(u32, u32)],
+    compact: bool,
+) -> Result<u32, BuildError> {
     if compact
         && near.iter().chain(words).any(|&(address, _)| {
             TAPE_ANCHORS.contains(&address)
@@ -346,19 +355,17 @@ fn initialize_words_compact(
             emitter,
             address,
             &tape,
-            (baseline, &anchors),
-            compact,
+            (baseline, &anchors, compact),
         )?;
     }
-    Ok(())
+    Ok(plan.next_slot)
 }
 
 fn store_planned_word(
     emitter: &mut Emitter<'_>,
     address: u32,
     tape: &[u32],
-    (baseline, anchors): BaselineAnchors<'_>,
-    virgin: bool,
+    (baseline, anchors, virgin): BaselineAnchors<'_>,
 ) -> Result<(), BuildError> {
     if virgin {
         // Both periodic loader classes contain only zero and one trits.

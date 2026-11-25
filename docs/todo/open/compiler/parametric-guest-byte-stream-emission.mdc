@@ -156,9 +156,18 @@ five-bit witness with 32 states, 1,024 joint transition pointers and
 a four-rotation EOF decoder. Independent replay covers all 8,192
 state/raw-byte pairs, all 64 state/EOF combinations and the same
 eight omitted effects; the bootstrap bound is 5,500,000 instructions.
-Full-byte recurrent
-checksum arithmetic, carry propagation, compact execution and complete
-source-frame routing remain open. Evidence:
+A separate 6,550,170-cell split-state recurrent witness now computes
+the full byte. Its low record supplies both carry (zero, one or two)
+and the next nibble; its high transition consumes the actual raw
+parity and carry. Two rotated scratch reloads commit the state, and
+the terminal reconstructs the byte from disjoint ternary digit
+sets. A reusable three-trit mask bank, eighty immutable seed pairs,
+and a shorter frame reset bound bootstrap by 6,540,044 steps.
+Independent VM replay covers all 256 low and 1,280 reachable high
+factored edges, all 512 state/EOF combinations, and empty input.
+Compact execution and complete source-frame routing remain open;
+the 100,000-step publication bound remains unmet. Evidence:
+`tests/compiler/relocated_recurrent_checksum.rs`,
 `tests/compiler/relocated_recurrent_nibble.rs`,
 `tests/compiler/relocated_recurrent_mod4.rs`,
 `tests/compiler/relocated_recurrent_indexed.rs`,

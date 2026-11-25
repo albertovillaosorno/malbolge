@@ -88,6 +88,34 @@ impl AccessBlock {
         Ok(())
     }
 
+    fn best_phase(
+        profile: &ProfileDescriptor,
+        base: u32,
+        operations: &[LinearOpcode],
+    ) -> Result<Self, BuildError> {
+        let mut best = None;
+        let aligned = base.checked_sub(base.rem_euclid(94)).ok_or(LAYOUT)?;
+        // The operations and final indirect transfer must fit in 94 cells.
+        let extent =
+            u32::try_from(operations.len()).map_err(|_error| LAYOUT)?;
+        let last = 93u32.checked_sub(extent).ok_or(LAYOUT)?;
+        for phase in 0..=last {
+            let start = aligned.checked_add(phase).ok_or(LAYOUT)?;
+            let candidate =
+                Self::from_operations(profile, start, (0, 0), operations)?;
+            let Ok(preparation) = candidate.preparation(false) else {
+                continue;
+            };
+            let cost = preparation.iter().try_fold(0u32, |sum, jump| {
+                sum.checked_add(jump.words).ok_or(LAYOUT)
+            })?;
+            if best.as_ref().is_none_or(|(old, _)| cost < *old) {
+                best = Some((cost, candidate));
+            }
+        }
+        best.map(|(_, block)| block).ok_or(LAYOUT)
+    }
+
     pub(super) fn emit(
         &self,
         emitter: &mut Emitter<'_>,
@@ -131,6 +159,76 @@ impl AccessBlock {
             cells,
             start,
         })
+    }
+
+    // The selected record has a pointer to a second immutable pair,
+    // followed by the first pair and its continuation. The second
+    // envelope follows that pointer instead of skipping it.
+    pub(super) fn indexed_immutable_field(
+        profile: &ProfileDescriptor,
+        base: u32,
+        second: bool,
+    ) -> Result<Self, BuildError> {
+        use LinearOpcode::{CrazyData, NoOperation, RelocateDataPointer};
+        Self::best_phase(profile, base, &[
+            RelocateDataPointer,
+            RelocateDataPointer,
+            RelocateDataPointer,
+            if second {
+                RelocateDataPointer
+            } else {
+                NoOperation
+            },
+            CrazyData,
+            CrazyData,
+            RelocateDataPointer,
+        ])
+    }
+
+    // Read two adjacent words in place. A starts at all ones; the
+    // prefix and value are fixed points of their respective crazy folds.
+    pub(super) fn indexed_immutable_load(
+        profile: &ProfileDescriptor,
+        base: u32,
+    ) -> Result<Self, BuildError> {
+        use LinearOpcode::{CrazyData, RelocateDataPointer};
+        Self::best_phase(profile, base, &[
+            RelocateDataPointer,
+            RelocateDataPointer,
+            RelocateDataPointer,
+            CrazyData,
+            CrazyData,
+            RelocateDataPointer,
+        ])
+    }
+
+    // The two halves exchange a seed-specific route without ever
+    // exposing a dirty seed to another input. Choose bounded, inexpensive
+    // encryption preparation phases for the exact instruction envelopes.
+    pub(super) fn indexed_load(
+        profile: &ProfileDescriptor,
+        bases: [u32; 2],
+    ) -> Result<[Self; 2], BuildError> {
+        use LinearOpcode::{
+            CrazyData, NoOperation, RelocateDataPointer, RotateData,
+        };
+        let [first, second] = bases;
+        Ok([
+            Self::best_phase(profile, first, &[
+                RelocateDataPointer,
+                RelocateDataPointer,
+                RelocateDataPointer,
+                CrazyData,
+                RelocateDataPointer,
+            ])?,
+            Self::best_phase(profile, second, &[
+                RotateData,
+                RelocateDataPointer,
+                CrazyData,
+                NoOperation,
+                RelocateDataPointer,
+            ])?,
+        ])
     }
 
     pub(super) fn new(
@@ -231,78 +329,23 @@ impl AccessBlock {
         Err(LAYOUT)
     }
 
-    // The two halves exchange a seed-specific route without ever
-    // exposing a dirty seed to another input. Choose bounded, inexpensive
-    // encryption preparation phases for the exact instruction envelopes.
-    pub(super) fn indexed_load(
-        profile: &ProfileDescriptor,
-        bases: [u32; 2],
-    ) -> Result<[Self; 2], BuildError> {
-        use LinearOpcode::{
-            CrazyData, NoOperation, RelocateDataPointer, RotateData,
-        };
-        let [first, second] = bases;
-        Ok([
-            Self::best_phase(profile, first, &[
-                RelocateDataPointer,
-                RelocateDataPointer,
-                RelocateDataPointer,
-                CrazyData,
-                RelocateDataPointer,
-            ])?,
-            Self::best_phase(profile, second, &[
-                RotateData,
-                RelocateDataPointer,
-                CrazyData,
-                NoOperation,
-                RelocateDataPointer,
-            ])?,
-        ])
-    }
-
-    // Read two adjacent words in place. A starts at all ones; the
-    // prefix and value are fixed points of their respective crazy folds.
-    pub(super) fn indexed_immutable_load(
+    pub(super) fn rotated_scratch(
         profile: &ProfileDescriptor,
         base: u32,
     ) -> Result<Self, BuildError> {
-        use LinearOpcode::{CrazyData, RelocateDataPointer};
+        use LinearOpcode::{NoOperation, RelocateDataPointer, RotateData};
         Self::best_phase(profile, base, &[
             RelocateDataPointer,
-            RelocateDataPointer,
-            RelocateDataPointer,
-            CrazyData,
-            CrazyData,
+            RotateData,
+            NoOperation,
+            NoOperation,
+            NoOperation,
             RelocateDataPointer,
         ])
-    }
-
-    fn best_phase(
-        profile: &ProfileDescriptor,
-        base: u32,
-        operations: &[LinearOpcode],
-    ) -> Result<Self, BuildError> {
-        let mut best = None;
-        let aligned = base.checked_sub(base.rem_euclid(94)).ok_or(LAYOUT)?;
-        // The operations and final indirect transfer must fit in 94 cells.
-        let extent =
-            u32::try_from(operations.len()).map_err(|_error| LAYOUT)?;
-        let last = 93u32.checked_sub(extent).ok_or(LAYOUT)?;
-        for phase in 0..=last {
-            let start = aligned.checked_add(phase).ok_or(LAYOUT)?;
-            let candidate =
-                Self::from_operations(profile, start, (0, 0), operations)?;
-            let Ok(preparation) = candidate.preparation(false) else {
-                continue;
-            };
-            let cost = preparation.iter().try_fold(0u32, |sum, jump| {
-                sum.checked_add(jump.words).ok_or(LAYOUT)
-            })?;
-            if best.as_ref().is_none_or(|(old, _)| cost < *old) {
-                best = Some((cost, candidate));
-            }
-        }
-        best.map(|(_, block)| block).ok_or(LAYOUT)
+        .map(|mut block| {
+            block.after = 3;
+            block
+        })
     }
 
     pub(super) fn selector(

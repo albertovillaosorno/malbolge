@@ -22,6 +22,10 @@
 // - Summary:
 //   - Capture the raw word before dirty classification and reset its slot.
 
+#[path = "relocated_recurrent_checksum_source.rs"]
+mod relocated_recurrent_checksum_source;
+#[path = "relocated_recurrent_chunk_bootstrap.rs"]
+mod relocated_recurrent_chunk_bootstrap;
 #[path = "relocated_recurrent_indexed_source.rs"]
 mod relocated_recurrent_indexed_source;
 #[path = "relocated_recurrent_mod4_source.rs"]
@@ -37,6 +41,9 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use malbolge::{ProfileDescriptor, profile_crazy};
+pub use relocated_recurrent_checksum_source::{
+    RelocatedRecurrentChecksumSource, build_relocated_recurrent_checksum_source,
+};
 pub use relocated_recurrent_indexed_source::{
     RelocatedRecurrentIndexedSource, build_relocated_recurrent_indexed_source,
 };
@@ -145,11 +152,13 @@ type SeedPlan = (BTreeMap<u32, SeedAccess>, Vec<(u32, u32)>);
 
 #[derive(Clone, Copy)]
 enum SeedAccess {
-    Reversible(u32),
     ImmutablePair(u32),
+    Reversible(u32),
 }
 type ExtraSeeds = Option<(u32, u32)>;
 type SeedOptions<'words> = (u32, &'words WordPairs, ExtraSeeds);
+type SeedMaterialization<'seeds> =
+    (&'seeds BTreeMap<u32, SeedAccess>, ExtraSeeds);
 
 struct Route<'words> {
     cursor: u32,
@@ -472,6 +481,30 @@ fn initialize_with_extra_seeds(
         rotate(emitter, NEAR_ZERO)?;
         crazy(emitter, NEAR_ONES)?;
     }
+    materialize_recurrent_words(
+        emitter,
+        words,
+        anchors,
+        (&seed_addresses, extra),
+    )?;
+    for &(address, value) in dispatch {
+        for constant in [ONES, NEAR_TWOS, NEAR_ZERO] {
+            rotate(emitter, constant)?;
+            store_dispatch(emitter, address)?;
+        }
+        let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
+        load_seed(emitter, seed, extra, true)?;
+        store_dispatch(emitter, address)?;
+    }
+    Ok(())
+}
+
+fn materialize_recurrent_words(
+    emitter: &mut Emitter<'_>,
+    words: &Words,
+    anchors: &[(u32, u32)],
+    (seed_addresses, extra): SeedMaterialization<'_>,
+) -> Result<(), BuildError> {
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
             return Err(LAYOUT);
@@ -494,15 +527,6 @@ fn initialize_with_extra_seeds(
         load_seed(emitter, seed, extra, normalized)?;
         store_anchored(emitter, address, anchors)?;
     }
-    for &(address, value) in dispatch {
-        for constant in [ONES, NEAR_TWOS, NEAR_ZERO] {
-            rotate(emitter, constant)?;
-            store_dispatch(emitter, address)?;
-        }
-        let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        load_seed(emitter, seed, extra, true)?;
-        store_dispatch(emitter, address)?;
-    }
     Ok(())
 }
 
@@ -511,6 +535,25 @@ fn plan_seeds(
     words: &Words,
     (stride, dispatch): (u32, &WordPairs),
     extra: ExtraSeeds,
+) -> Result<SeedPlan, BuildError> {
+    let paired_count = if extra.is_some() {
+        IMMUTABLE_PAIRS
+    } else {
+        0
+    };
+    plan_seeds_with_pairs(
+        emitter,
+        words,
+        (stride, dispatch),
+        (extra, paired_count),
+    )
+}
+
+fn plan_seeds_with_pairs(
+    emitter: &Emitter<'_>,
+    words: &Words,
+    (stride, dispatch): (u32, &WordPairs),
+    (extra, paired_count): (ExtraSeeds, usize),
 ) -> Result<SeedPlan, BuildError> {
     let mut frequency = BTreeMap::<u32, usize>::new();
     for value in words
@@ -533,11 +576,6 @@ fn plan_seeds(
     } else {
         SEED_END
     };
-    let paired_count = if extra.is_some() {
-        IMMUTABLE_PAIRS
-    } else {
-        0
-    };
     for (index, (value, _)) in values.into_iter().enumerate() {
         let paired = index < paired_count;
         let offset = u32::try_from(
@@ -546,24 +584,7 @@ fn plan_seeds(
         .map_err(|_error| LAYOUT)?
         .checked_mul(stride)
         .ok_or(LAYOUT)?;
-        let mut address = SEEDS.checked_add(offset).ok_or(LAYOUT)?;
-        if address >= seed_end {
-            let (base, end) = extra.ok_or(LAYOUT)?;
-            let slots = seed_end
-                .checked_sub(SEEDS)
-                .ok_or(LAYOUT)?
-                .checked_add(stride.checked_sub(1).ok_or(LAYOUT)?)
-                .ok_or(LAYOUT)?
-                .checked_div(stride)
-                .ok_or(LAYOUT)?;
-            let overflow = offset
-                .checked_sub(slots.checked_mul(stride).ok_or(LAYOUT)?)
-                .ok_or(LAYOUT)?;
-            address = base.checked_add(overflow).ok_or(LAYOUT)?;
-            if address >= end {
-                return Err(LAYOUT);
-            }
-        }
+        let address = seed_slot(offset, stride, seed_end, extra)?;
         let inverse =
             profile_crazy(ALL_ONES, value, emitter.profile.word_trits());
         let access = if paired {
@@ -585,6 +606,33 @@ fn plan_seeds(
         let _: Option<SeedAccess> = seed_addresses.insert(value, access);
     }
     Ok((seed_addresses, seeds))
+}
+
+fn seed_slot(
+    offset: u32,
+    stride: u32,
+    seed_end: u32,
+    extra: ExtraSeeds,
+) -> Result<u32, BuildError> {
+    let mut address = SEEDS.checked_add(offset).ok_or(LAYOUT)?;
+    if address >= seed_end {
+        let (base, end) = extra.ok_or(LAYOUT)?;
+        let slots = seed_end
+            .checked_sub(SEEDS)
+            .ok_or(LAYOUT)?
+            .checked_add(stride.checked_sub(1).ok_or(LAYOUT)?)
+            .ok_or(LAYOUT)?
+            .checked_div(stride)
+            .ok_or(LAYOUT)?;
+        let overflow = offset
+            .checked_sub(slots.checked_mul(stride).ok_or(LAYOUT)?)
+            .ok_or(LAYOUT)?;
+        address = base.checked_add(overflow).ok_or(LAYOUT)?;
+        if address >= end {
+            return Err(LAYOUT);
+        }
+    }
+    Ok(address)
 }
 
 // With A=all ones, a prefix trit of two is stable exactly where the

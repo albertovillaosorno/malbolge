@@ -13995,3 +13995,49 @@ historical-profile refusal apply. The independent checksum oracle
 checks both four- and five-bit projections across all 65,536
 full-state/raw-byte pairs. The bounded witnesses remain distinct
 from complete eight-bit arithmetic and source-frame admission.
+
+### Carry-aware recurrent full-byte checksum
+
+The separate 6,550,170-cell
+`build_relocated_recurrent_checksum_source` image commits both nibbles
+of the original checksum recurrence. The raw-byte dispatch selects
+two immutable projections. The low transition uses 256 joint
+nibble entries and retains the unwrapped result from 3 through 32.
+Its selected record exposes the carry and the next low state through
+two distinct physical access envelopes. The carry has three possible
+values: zero, one and two. In particular, a prior low nibble of 15
+and an even input nibble of 14 produce 32 before wrapping.
+
+The high transition uses 1,536 entries for prior high nibble, raw
+high nibble, parity and carry. It applies XOR for odd bytes and
+addition for even bytes, adds the low carry and wraps to four bits.
+The two immutable next-state records stage left-rotated masks. One
+physical scratch rotation restores each inverse for the dirty state
+commit. The low and high capture index masks and both scratch words
+are restored before the actual backedge. Successful byte paths never
+emit output. The two EOF landings share a terminal which selects
+sixteen high and sixteen low residue words, using disjoint sets of
+ternary digit positions. The last crazy fold produces a word whose
+low byte is the full checksum, followed by one output and halt.
+
+The expanded data plan would exceed the original bootstrap layout.
+A 27-entry immutable mask bank synthesizes each inverse seed in five
+three-trit chunks, with three physical scratch rotations between
+chunks. Eighty frequently used seeds have immutable prefix/value
+pairs. After seed construction, the frame word becomes a pointer to
+the nearby constants, reducing reset walks. The temporary marker
+tape starts at M7177001; its occupied odd destinations are normalized
+with three folds before reuse by the recurrent classifier and byte
+route. The virgin even loader reset cells remain intact until their
+final materialization. The boot replay has a 6,540,044-step bound.
+
+Independent VM replay covers all 256 low-state/nibble edges and
+1,280 reachable high-state/high-nibble/parity/carry edges in a
+single recurrent stream. Short streams cover all 512 state/EOF
+combinations and the empty input. The replay checks each selected
+immutable record, both physical commits, both scratch rotations,
+per-step arithmetic and routing, restored persistent state and
+the actual terminal output. The other 256 high-table entries
+represent unreachable odd-byte carry-two combinations. This is
+full-byte recurrent arithmetic, not independent source-C CFG
+admission. The 100,000-step publication bound remains unmet.
