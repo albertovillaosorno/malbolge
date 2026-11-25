@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_158_000;
+const BOOT_BUDGET: usize = 1_156_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -66,6 +66,7 @@ type FrozenVectors = [(&'static [u8], usize); 5];
 type DirectTargetReceipt = (usize, [u32; 2]);
 type ShortcutReceipt = ([u32; 3], usize);
 type SharedReadReceipt = ([usize; 3], [u32; 3]);
+type VirginSeedCommits = BTreeMap<u32, (u32, u32)>;
 
 #[derive(Clone, Copy)]
 enum TargetRouteProgress {
@@ -2700,6 +2701,87 @@ fn audit_shared_reads(
         audit.observe(&mut vm, opcode)?;
     }
     Err("missing shared-read first input".to_owned())
+}
+
+fn check_virgin_seed_commits(
+    vm: &ProfileMachine,
+    commits: &VirginSeedCommits,
+) -> Result<(), String> {
+    for (&address, &(value, _)) in commits {
+        if word(vm, address)? != value {
+            return Err("virgin seed commit not preserved".to_owned());
+        }
+    }
+    Ok(())
+}
+
+// A virgin odd seed holds the loader marker 37. A nonzero accumulator
+// may commit its final inverse directly only if the executed fold produces
+// the same word that is still present after all bootstrap seed reads.
+fn audit_virgin_seed_commits(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<VirginSeedCommits, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut visited = BTreeSet::new();
+    let mut commits = BTreeMap::new();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            check_virgin_seed_commits(&vm, &commits)?;
+            return Ok(commits);
+        }
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        let seed = (7_174_611..=7_174_970).contains(&address)
+            || (7_175_601..=7_176_586).contains(&address);
+        if seed
+            && !address.is_multiple_of(2)
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'p')
+            && visited.insert(address)
+        {
+            let old = word(&vm, address)?;
+            let value = independent_crazy(old, registers.accumulator);
+            if old != 37 {
+                return Err("nonvirgin seed first store".to_owned());
+            }
+            check_store(&step(&mut vm)?, address, old, value)?;
+            if registers.accumulator != 0 {
+                let _old =
+                    commits.insert(address, (value, registers.code_pointer));
+            }
+        } else {
+            advance_boot(&mut vm)?;
+        }
+    }
+    Err("missing first input after virgin seed commits".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_virgin_seed_commits_preserved()
+-> Result<(), String> {
+    let guest = source()?;
+    let commits = audit_virgin_seed_commits(&guest)?;
+    if commits.len() != 26 {
+        return Err(format!(
+            "unexpected virgin seed commits: {}",
+            commits.len()
+        ));
+    }
+    let &(_, site) = commits.values().next().ok_or("no virgin seed commits")?;
+    let modified = omit_site(&guest, site)?;
+    if audit_virgin_seed_commits(&modified)
+        .is_ok_and(|actual| actual == commits)
+    {
+        return Err("accepted omitted virgin seed commit".to_owned());
+    }
+    Ok(())
 }
 
 #[test]

@@ -1466,8 +1466,10 @@ fn initialize_materialization(
             scratch.synthesize(emitter, inverse)?;
             fast_store(emitter, address, anchors, reset)?;
         } else {
-            fast_rotate(emitter, NEAR_ZERO)?;
-            store_seed(emitter, address, routing)?;
+            if needs_normalization(address, inverse, value) {
+                fast_rotate(emitter, NEAR_ZERO)?;
+                store_seed(emitter, address, routing)?;
+            }
             scratch.synthesize(emitter, inverse)?;
             store_seed(emitter, address, routing)?;
         }

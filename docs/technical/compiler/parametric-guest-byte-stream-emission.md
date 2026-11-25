@@ -14826,3 +14826,15 @@ without charging any recurrent work. A subsequent experiment should
 therefore target fewer materialization and reload effects in the
 shared target phase, in addition to compact routes. The temporary
 trace instrumentation was removed after measurement.
+
+A further seed-initialization experiment reuses the existing virgin
+cell normalization predicate for shared seed stores. When the
+independently observed loader marker and synthesized inverse already
+produce the final seed, the preliminary zero rotation and
+normalization store are omitted. A VM replay identifies 26 such
+commits, checks their actual crazy folds and their preservation
+through first input, and rejects an omitted commit. The first-input
+count falls to 1,155,507 (1,038 steps saved), with the same source
+extent and recurrent routes. All 22 physical checksum tests pass;
+the physical regression ceiling is now 1,156,000, not the
+100,000-step publication bound.
