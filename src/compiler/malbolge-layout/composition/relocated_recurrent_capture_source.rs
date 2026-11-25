@@ -38,14 +38,17 @@ use super::super::{
     BOOT_RETURN, BuildError, Emitter, FRAME, LAYOUT, TapeBounds,
 };
 use super::relocated_recurrent_access::{AccessBlock, AccessShape};
-use super::{TWOS, ZERO, after_store, initialize_words};
+use super::{ONES, TWOS, ZERO, after_store, initialize_words};
 
 const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_240_001,
     start: 7_183_001,
 };
-const SOURCE_CELLS: usize = 3_510_210;
-const CODE_BASE: u32 = 3_500_000;
+const SOURCE_CELLS: usize = 3_360_186;
+const CODE_BASE: u32 = 3_349_976;
+// These virgin odd cells are outside the prefix's frame and return pair.
+const NEAR_ZERO: u32 = 7_174_471;
+const NEAR_TWOS: u32 = 7_174_473;
 const SEEDS: u32 = 7_174_611;
 const ANCHOR_START: u32 = 7_174_951;
 const ANCHORS: [(u32, u32); 7] = [
@@ -69,7 +72,7 @@ const RESET_ROUTE: u32 = 7_177_000;
 const BYTE: u32 = 7_180_650;
 const BYTE_ROUTE_POINTER: u32 = 7_180_670;
 const EOF: [u32; 2] = [7_178_463, 7_179_921];
-const TERMINAL: u32 = 3_510_000;
+const TERMINAL: u32 = 3_359_976;
 const ALL_ONES: u32 = 7_174_453;
 const ALL_TWOS: u32 = 14_348_906;
 // The captured raw word swaps 0 and 1, preserving 2. In particular
@@ -348,6 +351,17 @@ fn crazy(emitter: &mut Emitter<'_>, address: u32) -> Result<(), BuildError> {
     after_store(emitter)
 }
 
+// Establish uniform words closer to the frame reset than the original
+// marker-tape constants. All intervening even reset pointers stay virgin.
+fn prepare_near_constants(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    rotate(emitter, ONES)?;
+    crazy(emitter, NEAR_ZERO)?;
+    rotate(emitter, ZERO)?;
+    crazy(emitter, NEAR_TWOS)?;
+    rotate(emitter, TWOS)?;
+    crazy(emitter, NEAR_TWOS)
+}
+
 // Keep one immutable inverse seed per distinct route value. The target
 // words are still virgin and have no trit two. Prepare an all-one
 // baseline only when the inverse seed cannot write the virgin word
@@ -382,6 +396,7 @@ fn initialize(
         seeds.push((anchor, previous(base)?));
     }
     initialize_words(emitter, &seeds)?;
+    prepare_near_constants(emitter)?;
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
             return Err(LAYOUT);
@@ -396,12 +411,12 @@ fn initialize(
         let trits = emitter.profile.word_trits();
         let inverse = profile_crazy(ALL_ONES, value, trits);
         if profile_crazy(virgin, inverse, trits) != value {
-            rotate(emitter, ZERO)?;
+            rotate(emitter, NEAR_ZERO)?;
             store_anchored(emitter, address, anchors)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
         for _ in 0..2u8 {
-            rotate(emitter, TWOS)?;
+            rotate(emitter, NEAR_TWOS)?;
             crazy(emitter, seed)?;
         }
         store_anchored(emitter, address, anchors)?;
