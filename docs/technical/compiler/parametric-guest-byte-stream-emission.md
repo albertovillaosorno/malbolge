@@ -14290,3 +14290,24 @@ scratch crazy stores, the actual full output accumulator and halt.
 The five complete frozen traces pass; an aliased EOF scratch refuses.
 This remains a finite witness, not a compact execution or general
 source-frame certificate.
+
+The successful-byte transition replay now also authenticates the 31
+remaining arithmetic effects between guard dispatch and the next input:
+the reversible raw capture loads, both raw-index preparations, the
+low-state and high-state table predecessors (including carry), the
+lookup constants, the capture reset, and both two-fold pointer resets
+and immutable inverse-seed restorations. It verifies the exact old
+operand, relevant accumulator, result, write and restored code cell
+for each effect, and records all 31 ordered trace indices. The five
+actual pointer-selection jumps must precede their respective table
+jumps, so the chronological lookup receipt now contains eleven jumps
+and ten immutable reads. Expanded-memory code execution or encryption
+is refused after the first observed input. Wrong or aliased route
+geometry refuses, and omitting the actual bootstrap store for a raw
+restore seed rejects a one-byte run even though the previous combined
+loop-only proof still accepts its guard, state and output.
+All five frozen runs pass this stronger finite witness; it does not
+admit the complete source frame, arbitrary control routes, unexecuted
+table entries or the initialization proof. The physical image and
+100,000-step publication gate remain unchanged.
+Evidence: `tests/compiler/source_recurrent_transition.rs`.

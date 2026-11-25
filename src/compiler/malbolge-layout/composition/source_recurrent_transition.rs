@@ -38,6 +38,27 @@ use super::{
     TernaryOperation, admit_probe, project_function_with_plans, replay_guest,
 };
 
+/// Physical arithmetic geometry between the guard, lookups and commits.
+#[derive(Clone, Copy, Debug)]
+pub struct SourceRecurrentRouteProbe {
+    /// Uniform constant for restoring the capture word.
+    pub capture_reset_constant: u32,
+    /// Two reversible crazy-load sites.
+    pub load_addresses: [u32; 2],
+    /// Uniform all-two constant for initially reading the raw byte.
+    pub load_raw_constant: u32,
+    /// Uniform all-one constants before the five lookups.
+    pub lookup_constants: [u32; 5],
+    /// Low and high mutable raw-byte index words.
+    pub raw_pointers: [u32; 2],
+    /// Uniform reset constants for the low and high index words.
+    pub raw_reset_constants: [u32; 2],
+    /// Immutable prefix and inverse seed for each index-word restoration.
+    pub raw_restore_words: [[u32; 2]; 2],
+    /// Two uniform all-two constants for recovering the captured input.
+    pub recover_raw_constants: [u32; 2],
+}
+
 /// Physical factored transition geometry for the paired source loop.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceRecurrentTransitionProbe<'source> {
@@ -55,6 +76,8 @@ pub struct SourceRecurrentTransitionProbe<'source> {
     pub reset_constants: [[u32; 2]; 2],
     /// Shared uniform constant rotation instruction.
     pub rotate_address: u32,
+    /// Raw-pointer preparation and restoration geometry.
+    pub route: SourceRecurrentRouteProbe,
     /// Rotation site for the two dirty result scratches.
     pub scratch_rotate_address: u32,
     /// Low and high physical intermediate scratch words.
@@ -96,6 +119,8 @@ pub struct SourceRecurrentTransitionCheckpoint {
     pub prior_state: u8,
     /// The successful source and physical input byte.
     pub raw_byte: u8,
+    /// Actual arithmetic effects between lookups and scratch commits.
+    pub route_effect_indices: [usize; 31],
     /// Canonical source parity block.
     pub source_block: u32,
     /// Actual selected source successor.
@@ -297,7 +322,9 @@ fn block(
         .ok_or(Error::InvalidTransitionBinding)
 }
 
-fn branch_targets(block: &TernaryCfgBlock) -> Result<BranchTargets, Error> {
+const fn branch_targets(
+    block: &TernaryCfgBlock,
+) -> Result<BranchTargets, Error> {
     let TernaryCfgTerminator::Branch {
         false_target,
         true_target,
@@ -366,7 +393,7 @@ fn parity_condition(
     Ok(*condition)
 }
 
-fn source_arm(
+const fn source_arm(
     arm: &TernaryCfgBlock,
     signed_phi: u32,
     unsigned_phi: u32,
@@ -535,9 +562,13 @@ fn verify_pairs(
             || next.state.trace_index != transition.next_input_index
             || next.state.write_indices != transition.commit_indices
             || transition
-                .lookup_indices
+                .route_effect_indices
                 .first()
                 .is_none_or(|first| *first <= prior.guard.guard_index)
+            || transition
+                .route_effect_indices
+                .last()
+                .is_none_or(|last| *last >= next.guard.input_index)
         {
             return Err(Error::GuestTransitionMismatch);
         }
@@ -552,7 +583,8 @@ fn verify_pairs(
 ///
 /// # Errors
 /// Refuses incompatible loop probes, nonmatching source operations, missing,
-/// mutated or out-of-order indexed effects, scratch transfers, dirty resets
+/// mutated or out-of-order indexed effects, raw-pointer preparation and
+/// restoration, scratch transfers, dirty resets, expanded-memory code execution
 /// and incorrect carried-state commits.
 pub fn verify_source_recurrent_transition(
     probe: &SourceRecurrentTransitionProbe<'_>,

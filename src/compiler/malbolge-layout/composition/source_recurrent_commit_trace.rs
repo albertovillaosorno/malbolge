@@ -31,14 +31,14 @@ use super::super::{Error, SourceRecurrentTransitionProbe};
 use super::validate_site;
 
 #[derive(Clone, Copy)]
-struct Site {
+pub(super) struct Site {
     address: u32,
     cell: u32,
     opcode: u8,
 }
 
 impl Site {
-    fn new(
+    pub(super) fn new(
         source: &[u8],
         occupied: &mut BTreeMap<u32, u32>,
         address: u32,
@@ -54,7 +54,8 @@ impl Site {
 
 type Operands = (Option<u32>, Option<u32>, Option<u32>);
 
-struct Expected {
+#[derive(Clone, Copy)]
+pub(super) struct Expected {
     address: u32,
     input: Option<u32>,
     old: Option<u32>,
@@ -63,7 +64,7 @@ struct Expected {
 }
 
 impl Expected {
-    const fn new(
+    pub(super) const fn new(
         site: Site,
         address: u32,
         (old, input, output): Operands,
@@ -77,7 +78,7 @@ impl Expected {
         }
     }
 
-    fn verify(self, trace: &ProfileStepTrace) -> Result<u32, Error> {
+    pub(super) fn verify(self, trace: &ProfileStepTrace) -> Result<u32, Error> {
         let before = trace.before.registers;
         let after = trace.after.registers;
         let read = trace
@@ -292,6 +293,6 @@ impl CommitTrace {
     }
 }
 
-fn crazy(data: u32, accumulator: u32) -> u32 {
+pub(super) fn crazy(data: u32, accumulator: u32) -> u32 {
     profile_crazy(data, accumulator, current_profile().word_trits())
 }

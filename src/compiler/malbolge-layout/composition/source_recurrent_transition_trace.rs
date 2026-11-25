@@ -25,6 +25,8 @@
 
 #[path = "source_recurrent_commit_trace.rs"]
 mod source_recurrent_commit_trace;
+#[path = "source_recurrent_route_trace.rs"]
+mod source_recurrent_route_trace;
 #[path = "source_recurrent_terminal_trace.rs"]
 mod source_recurrent_terminal_trace;
 
@@ -35,6 +37,7 @@ use malbolge::{
     profile_crazy,
 };
 use source_recurrent_commit_trace::{CommitGeometry, CommitTrace};
+use source_recurrent_route_trace::{RouteGeometry, RouteTrace};
 use source_recurrent_terminal_trace::TerminalTrace;
 
 use super::super::{Effect, Error, ProjectedIo};
@@ -135,6 +138,8 @@ struct Geometry {
     commit: CommitGeometry,
     encoding: [[u32; 16]; 2],
     lookup_sites: [[u32; 2]; 5],
+    pointers: [u32; 5],
+    route: RouteGeometry,
     seeds: [u32; 4],
     sites: BTreeMap<u32, u32>,
     tables: [u32; 4],
@@ -160,6 +165,10 @@ impl Geometry {
             let jump = first
                 .checked_sub(offset)
                 .ok_or(Error::InvalidTransitionBinding)?;
+            let selector =
+                jump.checked_sub(1).ok_or(Error::InvalidTransitionBinding)?;
+            let _selector_cell =
+                validate_site(source, &mut sites, selector, b'j')?;
             let _jump_cell = validate_site(source, &mut sites, jump, b'j')?;
             if index == 4 {
                 let _cell = validate_site(
@@ -171,11 +180,16 @@ impl Geometry {
             }
         }
         let commit = CommitGeometry::new(probe, &sites)?;
+        let route = RouteGeometry::new(probe, &sites)?;
         validate_data_geometry(probe)?;
+        let [raw_low, raw_high] = probe.route.raw_pointers;
+        let [low, high] = probe.loop_probe.state.words;
         Ok(Self {
             commit,
             encoding: probe.loop_probe.state.encoding,
             lookup_sites: probe.lookup,
+            pointers: [raw_low, low, raw_high, high, low],
+            route,
             seeds: probe.seeds,
             sites,
             tables: probe.tables,
@@ -204,7 +218,7 @@ impl Geometry {
         &self,
         expectations: [LookupExpectation; 5],
     ) -> Result<Vec<LookupStep>, Error> {
-        let mut steps = Vec::with_capacity(16);
+        let mut steps = Vec::with_capacity(21);
         for (index, ([first, second], expected)) in
             self.lookup_sites.into_iter().zip(expectations).enumerate()
         {
@@ -213,6 +227,15 @@ impl Geometry {
             } else {
                 1
             };
+            let selector = *self
+                .pointers
+                .get(index)
+                .ok_or(Error::InvalidTransitionBinding)?;
+            steps.push(self.step(
+                first.saturating_sub(offset).saturating_sub(1),
+                selector,
+                LookupKind::Jump(expected.address),
+            )?);
             steps.push(self.step(
                 first.saturating_sub(offset),
                 expected.address,
@@ -247,6 +270,7 @@ struct PendingTransition {
     indices: Vec<usize>,
     input_index: usize,
     pending_commit: Option<CommitTrace>,
+    route: RouteTrace,
     source: SourceTransitionValue,
 }
 
@@ -257,8 +281,8 @@ impl PendingTransition {
         step: LookupStep,
     ) -> Result<(), Error> {
         let (slot, nibble) = match self.indices.len() {
-            12 => (1, self.source.next_state >> 4u32),
-            16 => (0, self.source.next_state & 15),
+            16 => (1, self.source.next_state >> 4u32),
+            21 => (0, self.source.next_state & 15),
             _ => return Ok(()),
         };
         let LookupKind::Value(lookup) = step.kind else {
@@ -272,9 +296,9 @@ impl PendingTransition {
         // The state was the selected table predecessor before its
         // two-fold dirty reset. Bind that old value as well.
         let first = if slot == 1 {
-            9
+            13
         } else {
-            12
+            17
         };
         let dirty_state = self
             .expected
@@ -320,6 +344,7 @@ impl PendingTransition {
             parity: source.parity,
             prior_state: source.prior_state,
             raw_byte: source.raw_byte,
+            route_effect_indices: self.route.finish()?,
             source_block: source.source_block,
             source_target: source.source_target,
         })
@@ -334,13 +359,15 @@ impl PendingTransition {
             return Err(Error::InvalidTransitionBinding);
         }
         let (expectations, carry) = lookup_expectations(geometry, source)?;
+        let route = RouteTrace::new(&geometry.route, source, &expectations)?;
         Ok(Self {
             carry,
             chains: [None, None],
             expected: geometry.steps(expectations)?,
-            indices: Vec::with_capacity(16),
+            indices: Vec::with_capacity(21),
             input_index: index,
             pending_commit: None,
+            route,
             source,
         })
     }
@@ -351,6 +378,9 @@ impl PendingTransition {
         trace: &ProfileStepTrace,
         index: usize,
     ) -> Result<(), Error> {
+        if !self.route.dispatch(&geometry.route, trace)? {
+            return Ok(());
+        }
         let before = trace.before.registers;
         let site = before.code_pointer;
         if self.pending_commit.is_some() {
@@ -367,6 +397,7 @@ impl PendingTransition {
         if geometry.sites.contains_key(&site)
             && matches!(trace.decoded, Some(b'j' | b'p' | b'*'))
         {
+            self.route.require_before_lookup(self.indices.len())?;
             let step = self
                 .expected
                 .get(self.indices.len())
@@ -374,6 +405,8 @@ impl PendingTransition {
             step.verify(trace)?;
             self.indices.push(index);
             self.begin_commit(geometry, *step)?;
+        } else if matches!(trace.decoded, Some(b'p' | b'*')) {
+            self.route.observe(self.indices.len(), trace, index)?;
         }
         Ok(())
     }
@@ -408,6 +441,8 @@ pub(in super::super) struct TransitionTrace {
     pub(super) checkpoints: Vec<SourceRecurrentTransitionCheckpoint>,
     geometry: Geometry,
     pending: Option<PendingTransition>,
+    source_extent: u32,
+    started: bool,
     pub(super) terminal: TerminalTrace,
 }
 
@@ -426,6 +461,11 @@ impl TransitionTrace {
             checkpoints: Vec::new(),
             geometry: Geometry::new(probe)?,
             pending: None,
+            source_extent: u32::try_from(
+                probe.loop_probe.guard.io.physical_source.len(),
+            )
+            .map_err(|_error| Error::InvalidTransitionBinding)?,
+            started: false,
             terminal: TerminalTrace::new(probe)?,
         })
     }
@@ -436,6 +476,24 @@ impl TransitionTrace {
         index: usize,
         projected_event: Option<ProjectedIo>,
     ) -> Result<(), Error> {
+        if projected_event
+            .is_some_and(|event| matches!(event.effect, Effect::Input(_)))
+        {
+            self.started = true;
+        }
+        if self.started
+            && (trace.before.registers.code_pointer >= self.source_extent
+                || trace
+                    .memory_reads
+                    .encryption
+                    .is_some_and(|read| read.address >= self.source_extent)
+                || trace
+                    .memory_delta
+                    .encryption
+                    .is_some_and(|write| write.address >= self.source_extent))
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
         self.terminal.observe(trace, index, projected_event)?;
         if let Some(event) = projected_event {
             if let Some(pending) = self.pending.take() {
@@ -488,7 +546,8 @@ fn validate_data_geometry(
         .chain(guard.eof_landings)
         .chain([guard.capture_word, guard.byte_landing, probe.output_scratch])
         .chain(probe.scratch_words)
-        .chain(probe.reset_constants.into_iter().flatten());
+        .chain(probe.reset_constants.into_iter().flatten())
+        .chain(probe.route.data_words());
     for (index, (start, end)) in ranges.iter().copied().enumerate() {
         if usize::try_from(start)
             .map_or(true, |address| address < source_length)
@@ -528,7 +587,7 @@ fn validate_site(
     Ok(cell)
 }
 
-fn inverse_rotation(value: u32) -> u32 {
+const fn inverse_rotation(value: u32) -> u32 {
     value
         .rem_euclid(4_782_969)
         .saturating_mul(3)
@@ -550,7 +609,7 @@ fn high_selector(high: u32, parity: u32, high_table: u32) -> u32 {
         .saturating_add(low.rem_euclid(81))
 }
 
-fn record(base: u32, index: u32) -> u32 {
+const fn record(base: u32, index: u32) -> u32 {
     base.saturating_add(index.saturating_mul(8))
 }
 

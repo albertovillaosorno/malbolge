@@ -258,7 +258,15 @@ scratch commit: selected immutable result, dirty table predecessor,
 two-fold state reset, scratch rotation, exact state store and
 restored scratch. Wrong or aliased scratch and reset geometry, a
 wrong valid rotation site and an omitted physical rotation refuse.
-Raw-pointer preparation and restoration are not yet fully bound.
+The remaining 31 actual arithmetic effects now bind raw-pointer
+preparation, both state table predecessors, capture recovery/reset
+and both pointer restorations. Five actual pointer-selection jumps
+extend the chronological lookup receipt to 21 effects. All five
+frozen runs pass; aliased or wrong geometry refuses. Omitting a
+restore seed rejects a one-byte run despite its loop-only proof
+still accepting the same state, guard and output. Expanded-memory
+code execution and encryption after the first input refuse.
+The bootstrap and unobserved control edges remain unverified.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:
 `tests/compiler/relocated_recurrent_checksum.rs`,

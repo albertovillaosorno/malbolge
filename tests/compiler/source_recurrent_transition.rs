@@ -22,7 +22,10 @@
 
 use core::mem::swap;
 
-use malbolge::{current_profile, decode_profile_instruction};
+use malbolge::{
+    ProfileMachine, StepOutcome, current_profile, decode_profile_instruction,
+    profile_crazy,
+};
 
 use super::super::super::super::{
     RelocatedRecurrentChecksumSource, build_relocated_recurrent_checksum_source,
@@ -32,11 +35,13 @@ use super::super::source_recurrent_io_tests::{
     VECTORS, checksum, checksum_wire,
 };
 use super::super::source_recurrent_state::source_recurrent_state_tests;
+use super::super::verify_source_recurrent_loop;
 use super::{
     Error, GuardPlan, ParityPlan, ProjectionPlans, SourceRecurrentLoopProbe,
-    SourceRecurrentTransitionCheckpoint, SourceRecurrentTransitionProbe,
-    SourceTransitionValue, StatePlan, TernaryCfgTerminator, admit_probe,
-    project_function_with_plans, verify_source_recurrent_transition,
+    SourceRecurrentRouteProbe, SourceRecurrentTransitionCheckpoint,
+    SourceRecurrentTransitionProbe, SourceTransitionValue, StatePlan,
+    TernaryCfgTerminator, admit_probe, project_function_with_plans,
+    verify_source_recurrent_transition,
 };
 
 fn proposal<'source>(
@@ -56,6 +61,18 @@ fn proposal<'source>(
         reset_addresses: [guest.capture.reset[0], guest.capture.reset[1]],
         reset_constants: [[7_180_832, 7_180_840], [7_180_836, 7_180_844]],
         rotate_address: guest.capture.rotate,
+        route: SourceRecurrentRouteProbe {
+            capture_reset_constant: 7_175_040,
+            load_addresses: guest.load,
+            load_raw_constant: 7_180_800,
+            lookup_constants: [
+                7_180_812, 7_180_816, 7_180_820, 7_180_824, 7_180_828,
+            ],
+            raw_pointers: guest.pointers,
+            raw_reset_constants: [7_180_848, 7_180_852],
+            raw_restore_words: [[7_180_872, 7_180_876], [7_180_880, 7_180_884]],
+            recover_raw_constants: [7_180_804, 7_180_808],
+        },
         scratch_rotate_address: guest.scratch_rotate,
         scratch_words: guest.scratch,
         seeds: [7_211_000, 7_243_100, 7_211_200, 7_243_400],
@@ -100,7 +117,8 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
                 || receipt.condition != 11
                 || receipt.source_block != 2
                 || !ordered_scratch_chains(receipt)
-                || receipt.lookup_indices.len() != 16
+                || !ordered_raw_route(receipt)
+                || receipt.lookup_indices.len() != 21
                 || receipt.lookup_indices.windows(2).any(
                     |pair| matches!(pair, [first, second] if first >= second),
                 )
@@ -131,12 +149,126 @@ fn ordered_scratch_chains(
         && ordered(&high)
         && low.get(5).copied() == receipt.commit_indices.first().copied()
         && high.get(5).copied() == receipt.commit_indices.last().copied()
-        && receipt.lookup_indices.get(11) < high.first()
-        && high.last() < receipt.lookup_indices.get(12)
+        && receipt.lookup_indices.get(15) < high.first()
+        && high.last() < receipt.lookup_indices.get(16)
         && receipt.lookup_indices.last() < low.first()
         && low
             .last()
             .is_some_and(|last| *last < receipt.next_input_index)
+}
+
+fn ordered_raw_route(receipt: &SourceRecurrentTransitionCheckpoint) -> bool {
+    let route = &receipt.route_effect_indices;
+    let lookup = &receipt.lookup_indices;
+    let [low_commit, high_commit] = receipt.commit_effect_indices;
+    let precedes = |left: Option<&usize>, right: Option<&usize>| {
+        left.zip(right)
+            .is_some_and(|(earlier, later)| earlier < later)
+    };
+    route
+        .windows(2)
+        .all(|pair| matches!(pair, [first, second] if first < second))
+        && route
+            .first()
+            .is_some_and(|first| *first > receipt.input_index)
+        && precedes(route.get(3), lookup.first())
+        && precedes(lookup.get(3), route.get(4))
+        && precedes(route.get(5), lookup.get(4))
+        && precedes(lookup.get(7), route.get(6))
+        && precedes(route.get(12), lookup.get(8))
+        && precedes(lookup.get(11), route.get(13))
+        && precedes(route.get(14), lookup.get(12))
+        && precedes(high_commit.last(), route.get(15))
+        && precedes(route.get(15), lookup.get(16))
+        && precedes(low_commit.last(), route.get(16))
+        && route
+            .last()
+            .is_some_and(|last| *last < receipt.next_input_index)
+}
+
+#[test]
+fn source_recurrent_transition_rejects_raw_route_aliases() -> Result<(), String>
+{
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[255], &guest)?;
+    let route = probe.route;
+    let [low, high] = route.raw_pointers;
+    let [first, second] = route.load_addresses;
+    for invalid in [
+        SourceRecurrentRouteProbe {
+            raw_pointers: [low, low],
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            raw_pointers: [probe.loop_probe.state.words[0], high],
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            capture_reset_constant: probe.tables[0].saturating_add(729),
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            load_addresses: [first, first],
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            load_addresses: [probe.commit_address, second],
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            raw_restore_words: [
+                [route.raw_reset_constants[0], route.raw_restore_words[0][1]],
+                route.raw_restore_words[1],
+            ],
+            ..route
+        },
+    ] {
+        let candidate =
+            SourceRecurrentTransitionProbe { route: invalid, ..probe };
+        if verify_source_recurrent_transition(&candidate)
+            != Err(Error::InvalidTransitionBinding)
+        {
+            return Err("aliased raw route accepted".to_owned());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_wrong_raw_route() -> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[255], &guest)?;
+    let route = probe.route;
+    let [low, high] = route.raw_pointers;
+    let [first, second] = route.load_addresses;
+    let [low_restore, high_restore] = route.raw_restore_words;
+    for wrong in [
+        SourceRecurrentRouteProbe {
+            raw_pointers: [high, low],
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            load_addresses: [second, first],
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            raw_restore_words: [high_restore, low_restore],
+            ..route
+        },
+    ] {
+        let candidate =
+            SourceRecurrentTransitionProbe { route: wrong, ..probe };
+        if verify_source_recurrent_transition(&candidate)
+            != Err(Error::GuestTransitionMismatch)
+        {
+            return Err("wrong executed raw route accepted".to_owned());
+        }
+    }
+    Ok(())
 }
 
 #[test]
@@ -218,6 +350,87 @@ fn source_recurrent_transition_rejects_omitted_scratch_rotation()
         != Err(Error::InvalidTransitionBinding)
     {
         return Err("omitted physical scratch rotation accepted".to_owned());
+    }
+    Ok(())
+}
+
+fn materialization_site(
+    guest: &RelocatedRecurrentChecksumSource,
+    (address, expected): (u32, u32),
+) -> Result<u32, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    for _ in 0usize..2_000_000 {
+        let before = vm.registers();
+        let candidate = before.data_pointer == address
+            && decode_profile_instruction(
+                vm.memory_word(before.code_pointer)
+                    .map_err(|error| error.to_string())?,
+                before.code_pointer,
+            ) == Some(b'p')
+            && vm.memory_word(address).map_err(|error| error.to_string())?
+                != expected;
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("unexpected halt during materialization".to_owned());
+        }
+        if candidate
+            && vm.memory_word(address).map_err(|error| error.to_string())?
+                == expected
+        {
+            return Ok(before.code_pointer);
+        }
+    }
+    Err("restore seed never materialized".to_owned())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_missing_restore_seed()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let mut guest =
+        build_relocated_recurrent_checksum_source(current_profile())
+            .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[255], &guest)?;
+    let profile = current_profile();
+    let mask = profile_crazy(
+        probe.tables[0],
+        profile.eof_word(),
+        profile.word_trits(),
+    )
+    .saturating_add(364);
+    let seed = profile_crazy(
+        profile.eof_word().div_euclid(2),
+        mask,
+        profile.word_trits(),
+    );
+    let address = probe.route.raw_restore_words[0][1];
+    let site = materialization_site(&guest, (address, seed))?;
+    let noop = (33u8..=126)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), site) == Some(b'o')
+        })
+        .ok_or("no noop encoding")?;
+    *guest
+        .capture
+        .source
+        .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
+        .ok_or("missing seed store")? = noop;
+    let mutated_probe = proposal(&wire, &[255], &guest)?;
+    // A one-byte input followed by EOF does not use the restored raw pointer.
+    // The older proof observes the same source state, guard and output.
+    let _loop_only = verify_source_recurrent_loop(&mutated_probe.loop_probe)
+        .map_err(|error| {
+            format!("restore seed control did not preserve I/O: {error:?}")
+        })?;
+    let refusal = verify_source_recurrent_transition(&mutated_probe);
+    if refusal != Err(Error::GuestTransitionMismatch) {
+        return Err(format!("missing restore seed: {refusal:?}"));
     }
     Ok(())
 }
