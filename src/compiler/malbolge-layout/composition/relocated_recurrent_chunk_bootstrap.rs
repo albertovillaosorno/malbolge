@@ -45,10 +45,22 @@ const CHUNK_RETURN: u32 = CHUNK_SCRATCH + 4;
 const CHUNK_ANCHOR: u32 = ANCHOR_START;
 const CHUNK_BANK: u32 = 7_176_601;
 const CHUNK_RESET: u32 = 7_174_468;
+// The directory is between the immutable chunk-mask bank and the
+// operand tape. Its odd pointers leave each even reset word virgin.
+pub(super) const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
+const DIRECTORY_BANK: u32 = 7_176_721;
+const DIRECTORY_STRIDE: u32 = 32;
+const DIRECTORY_END: u32 = 7_176_900;
 
 type ChunkMasks = Vec<(u32, u32)>;
+type SeedDirectory = Vec<(u32, u32)>;
+struct SeedRouting<'directory> {
+    directory: &'directory [(u32, u32)],
+    extra: (u32, u32),
+}
+
 type ChunkMaterialization<'seeds> =
-    ((u32, u32), u32, &'seeds BTreeMap<u32, SeedAccess>);
+    (u32, &'seeds BTreeMap<u32, SeedAccess>, SeedRouting<'seeds>);
 
 fn chunk_access(
     emitter: &mut Emitter<'_>,
@@ -160,19 +172,78 @@ fn fast_store(
     after_store(emitter)
 }
 
+fn seed_directory(extra: (u32, u32)) -> Result<SeedDirectory, BuildError> {
+    let mut directory = Vec::new();
+    for (start, end) in [(SEEDS, 7_174_970), extra] {
+        for base in (start..end).step_by(
+            usize::try_from(DIRECTORY_STRIDE).map_err(|_error| LAYOUT)?,
+        ) {
+            let address = DIRECTORY_BANK
+                .checked_add(
+                    u32::try_from(directory.len())
+                        .map_err(|_error| LAYOUT)?
+                        .checked_mul(2)
+                        .ok_or(LAYOUT)?,
+                )
+                .ok_or(LAYOUT)?;
+            if address >= DIRECTORY_END {
+                return Err(LAYOUT);
+            }
+            directory.push((address, base));
+        }
+    }
+    Ok(directory)
+}
+
+fn go_seed(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    routing: &SeedRouting<'_>,
+) -> Result<(), BuildError> {
+    let extra = routing.extra;
+    let (root, base) = if (extra.0..extra.1).contains(&address) {
+        (EXTRA_SEED_ANCHOR, extra.0)
+    } else {
+        (SEED_ANCHOR, SEEDS)
+    };
+    let (slot, page) = routing
+        .directory
+        .iter()
+        .copied()
+        .rev()
+        .find(|&(_, page)| page <= address)
+        .ok_or(LAYOUT)?;
+    let direct = root
+        .checked_add(address.checked_sub(base).ok_or(LAYOUT)?)
+        .ok_or(LAYOUT)?;
+    let indirect = SEED_DIRECTORY
+        .checked_add(slot.checked_sub(DIRECTORY_BANK).ok_or(LAYOUT)?)
+        .and_then(|value| value.checked_add(1))
+        .and_then(|value| value.checked_add(address.checked_sub(page)?))
+        .ok_or(LAYOUT)?;
+    if indirect < direct {
+        fast_go(emitter, SEED_DIRECTORY)?;
+        emitter.jump(DIRECTORY_BANK)?;
+        emitter.walk(slot)?;
+        emitter.jump(page)?;
+    } else {
+        fast_go(emitter, root)?;
+        emitter.jump(base)?;
+    }
+    emitter.walk(address)
+}
+
 fn fast_load(
     emitter: &mut Emitter<'_>,
     seed: SeedAccess,
-    extra: (u32, u32),
     accumulator_ones: bool,
+    routing: &SeedRouting<'_>,
 ) -> Result<(), BuildError> {
     if let SeedAccess::ImmutablePair(prefix) = seed {
         if !accumulator_ones {
             fast_rotate(emitter, NEAR_ONES)?;
         }
-        fast_go(emitter, SEED_ANCHOR)?;
-        emitter.jump(SEEDS)?;
-        emitter.walk(prefix)?;
+        go_seed(emitter, prefix, routing)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
         emitter.walk(prefix.checked_add(2).ok_or(LAYOUT)?)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
@@ -181,16 +252,9 @@ fn fast_load(
     let SeedAccess::Reversible(address) = seed else {
         return Err(LAYOUT);
     };
-    let (anchor, base) = if (extra.0..extra.1).contains(&address) {
-        (EXTRA_SEED_ANCHOR, extra.0)
-    } else {
-        (SEED_ANCHOR, SEEDS)
-    };
     for _ in 0..2u32 {
         fast_rotate(emitter, NEAR_TWOS)?;
-        fast_go(emitter, anchor)?;
-        emitter.jump(base)?;
-        emitter.walk(address)?;
+        go_seed(emitter, address, routing)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
         after_store(emitter)?;
     }
@@ -217,6 +281,21 @@ fn chunk_masks() -> Result<ChunkMasks, BuildError> {
     Ok(masks)
 }
 
+fn initialize_seed_directory(
+    emitter: &mut Emitter<'_>,
+    extra: (u32, u32),
+) -> Result<SeedDirectory, BuildError> {
+    let directory = seed_directory(extra)?;
+    let directory_anchor = [(SEED_DIRECTORY, DIRECTORY_BANK)];
+    for &(address, base) in &directory {
+        rotate(emitter, NEAR_ZERO)?;
+        store_anchored(emitter, address, &directory_anchor)?;
+        chunk_word(emitter, profile_crazy(ALL_ONES, previous(base)?, 15))?;
+        store_anchored(emitter, address, &directory_anchor)?;
+    }
+    Ok(directory)
+}
+
 pub(super) fn initialize_chunk_seeds(
     emitter: &mut Emitter<'_>,
     words: &Words,
@@ -227,9 +306,10 @@ pub(super) fn initialize_chunk_seeds(
         (SEED_ANCHOR, previous(SEEDS)?),
         (EXTRA_SEED_ANCHOR, previous(extra.0)?),
         (CHUNK_ANCHOR, previous(CHUNK_BANK)?),
+        (SEED_DIRECTORY, previous(DIRECTORY_BANK)?),
     ];
     for &(anchor, base) in anchors {
-        if anchor <= CHUNK_ANCHOR || anchor >= ANCHOR_END {
+        if anchor <= SEED_DIRECTORY || anchor >= ANCHOR_END {
             return Err(LAYOUT);
         }
         near.push((anchor, previous(base)?));
@@ -237,7 +317,9 @@ pub(super) fn initialize_chunk_seeds(
     near.sort_unstable_by_key(|&(address, _)| address);
     if words.range(extra.0..=extra.1).next().is_some()
         || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
+        || words.range(DIRECTORY_BANK..=DIRECTORY_END).next().is_some()
         || extra.1 >= CHUNK_BANK
+        || DIRECTORY_END >= emitter.tape_bounds.start
     {
         return Err(LAYOUT);
     }
@@ -263,6 +345,7 @@ pub(super) fn initialize_chunk_seeds(
         chunk_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
         store_anchored(emitter, address, &seed_anchors)?;
     }
+    let directory = initialize_seed_directory(emitter, extra)?;
     reset_chunk_word(emitter, FRAME)?;
     chunk_word(emitter, profile_crazy(ALL_ONES, previous(NEAR_ONES)?, 15))?;
     emitter.go(FRAME)?;
@@ -272,7 +355,10 @@ pub(super) fn initialize_chunk_seeds(
         emitter,
         words,
         anchors,
-        (extra, tape_end, &seed_addresses),
+        (tape_end, &seed_addresses, SeedRouting {
+            directory: &directory,
+            extra,
+        }),
     )
 }
 
@@ -280,7 +366,7 @@ fn materialize_chunk_words(
     emitter: &mut Emitter<'_>,
     words: &Words,
     anchors: &[(u32, u32)],
-    (extra, tape_end, seed_addresses): ChunkMaterialization<'_>,
+    (tape_end, seed_addresses, routing): ChunkMaterialization<'_>,
 ) -> Result<(), BuildError> {
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.limit).contains(&address) {
@@ -305,7 +391,7 @@ fn materialize_chunk_words(
             fast_store(emitter, address, anchors)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        fast_load(emitter, seed, extra, normalized)?;
+        fast_load(emitter, seed, normalized, &routing)?;
         fast_store(emitter, address, anchors)?;
     }
     Ok(())

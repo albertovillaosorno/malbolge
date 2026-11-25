@@ -29,25 +29,27 @@ use malbolge::{ProfileDescriptor, profile_crazy};
 use super::super::super::super::LinearOpcode;
 use super::super::super::{BuildError, Emitter, LAYOUT, TapeBounds};
 use super::super::relocated_recurrent_access::AccessBlock;
-use super::relocated_recurrent_chunk_bootstrap::initialize_chunk_seeds;
+use super::relocated_recurrent_chunk_bootstrap::{
+    SEED_DIRECTORY, initialize_chunk_seeds,
+};
 use super::relocated_recurrent_mod4_source::{
     LOOP_RETURN, Mod4Blocks, seed_address,
 };
 use super::relocated_recurrent_reload_source::main_route;
 use super::{
-    ALL_ONES, ALL_TWOS, ANCHOR_END, ANCHOR_START, BYTE, BYTE_ROUTE_POINTER,
-    Blocks, CAPTURE, CONSTANTS, EOF, INITIAL, MAIN_ROUTE,
-    RelocatedRecurrentCaptureSource, Route, STATES, Words, bootstrap, code,
-    go_anchored, immutable_seed_prefix, insert, previous,
+    ALL_ONES, ALL_TWOS, ANCHOR_END, BYTE, BYTE_ROUTE_POINTER, Blocks, CAPTURE,
+    CONSTANTS, EOF, INITIAL, MAIN_ROUTE, RelocatedRecurrentCaptureSource,
+    Route, STATES, Words, bootstrap, code, go_anchored, immutable_seed_prefix,
+    insert, previous,
 };
 
 const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_360_001,
     start: 7_177_001,
 };
-const CODE_BASE: u32 = 6_140_168;
-const TERMINAL: u32 = 6_150_168;
-const SOURCE_CELLS: usize = 6_150_294;
+const CODE_BASE: u32 = 5_350_568;
+const TERMINAL: u32 = 5_360_568;
+const SOURCE_CELLS: usize = 5_360_694;
 const BYTE_ROUTE: u32 = 7_194_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
 const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];
@@ -609,7 +611,7 @@ fn route_anchors(words: &Words) -> Result<RouteAnchors, BuildError> {
     let mut cuts = vec![0usize, addresses.len()];
     let count = usize::try_from(
         ANCHOR_END
-            .checked_sub(ANCHOR_START + 2)
+            .checked_sub(SEED_DIRECTORY + 2)
             .ok_or(LAYOUT)?
             .div_euclid(2),
     )
@@ -648,7 +650,7 @@ fn route_anchors(words: &Words) -> Result<RouteAnchors, BuildError> {
     for (index, (_, base)) in partitions.into_iter().enumerate() {
         anchors.push((
             plus(
-                ANCHOR_START + 2,
+                SEED_DIRECTORY + 2,
                 times(u32::try_from(index).map_err(|_error| LAYOUT)?, 2)?,
             )?,
             base,

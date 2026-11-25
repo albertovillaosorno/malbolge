@@ -156,7 +156,7 @@ five-bit witness with 32 states, 1,024 joint transition pointers and
 a four-rotation EOF decoder. Independent replay covers all 8,192
 state/raw-byte pairs, all 64 state/EOF combinations and the same
 eight omitted effects; the bootstrap bound is 5,500,000 instructions.
-A separate 6,150,294-cell split-state recurrent witness now computes
+A separate 5,360,694-cell split-state recurrent witness now computes
 the full byte. Its low record supplies both carry (zero, one or two)
 and the next nibble; its high transition consumes the actual raw
 parity and carry. Two rotated scratch reloads commit the state, and
@@ -166,6 +166,10 @@ and a shorter frame reset bound bootstrap by 6,000,000 steps.
 Omitting the 256 impossible odd-byte carry-two entries, ranking dense
 route partitions near the frame, and shrinking the source extent cut
 measured bootstrap steps from 6,347,795 to 5,973,677.
+A 44-entry two-hop inverse-seed directory, with independent pointer
+and adjacent-reset audit, reduces the shortened image's bootstrap
+to 5,238,250 instructions under a 5,300,000-step bound. An omitted
+directory store refuses.
 Independent VM replay covers all 256 low and 1,280 reachable high
 factored edges, all 512 state/EOF combinations, and empty input.
 The exact byte arithmetic visit journal and all 65,536 combinations

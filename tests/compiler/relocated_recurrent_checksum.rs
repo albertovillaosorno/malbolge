@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 6_000_000;
+const BOOT_BUDGET: usize = 5_300_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -713,12 +713,36 @@ fn census() -> Result<Vec<u8>, String> {
     Ok(stream)
 }
 
+// Independent physical audit of the two-hop seed directory. The address
+// bank is intentionally not obtained from the production planner.
+fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
+    let mut address = 7_176_721;
+    if word(vm, 7_174_489)? != 7_176_720 {
+        return Err("missing seed directory root".to_owned());
+    }
+    for (start, end) in
+        [(7_174_611u32, 7_174_970u32), (7_175_601u32, 7_176_600u32)]
+    {
+        for base in (start..end).step_by(32) {
+            if word(vm, address)?
+                != base.checked_sub(1).ok_or("directory base")?
+                || word(vm, plus(address, 1)?)? != 7_174_416
+            {
+                return Err(format!("incorrect seed directory M{address}"));
+            }
+            address = plus(address, 2)?;
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn relocated_recurrent_checksum_all_factored_edges_and_eof()
 -> Result<(), String> {
     let guest = source()?;
     let initial = boot(&guest)?;
     check_materialized_tables(&initial)?;
+    check_seed_directory(&initial)?;
     let stream = census()?;
     run(&initial, &guest, &stream)?;
     run(&initial, &guest, &[])?;
@@ -745,7 +769,11 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
         (&[5, 0, 129], 34_685),
     ];
     let guest = source()?;
+    if guest.capture.source.len() != 5_360_694 {
+        return Err("unexpected recurrent source extent".to_owned());
+    }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
+    check_seed_directory(&initial)?;
     // This is a physical witness, not yet source-C publication.
     if bootstrap_steps <= PUBLICATION_BUDGET {
         return Err("publication budget evidence must be revisited".to_owned());
@@ -833,6 +861,29 @@ fn materialization_site(
         }
     }
     Err("missing materialized table store".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_directory_store_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    // Second near seed page: it is actually selected by the shorter
+    // two-hop path, not merely allocated as unused bootstrap data.
+    let site = materialization_site(&guest, (7_176_723, 7_174_642))?;
+    let modified = omit_site(&guest, site)?;
+    if let Ok(initial) = boot(&modified) {
+        if check_seed_directory(&initial).is_ok() {
+            return Err("accepted omitted seed-directory store".to_owned());
+        }
+        if check_materialized_tables(&initial).is_ok()
+            && run(&initial, &modified, &[0, 255]).is_ok()
+        {
+            return Err(
+                "directory mutation did not affect used route".to_owned()
+            );
+        }
+    }
+    Ok(())
 }
 
 #[test]

@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 6,150,294-cell
+The separate 5,360,694-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14029,7 +14029,13 @@ the nearby constants, reducing reset walks. The temporary marker
 tape starts at M7177001; its occupied odd destinations are normalized
 with three folds before reuse by the recurrent classifier and byte
 route. The virgin even loader reset cells remain intact until their
-final materialization. The boot replay has a 6,000,000-step bound.
+final materialization. A two-hop seed directory at M7176721 contains
+44 page pointers spaced at two cells, each leaving its adjacent even
+frame-reset word virgin.
+The near root M7174489 selects the directory; a page pointer selects
+a 32-cell section of either inverse-seed bank. The emitter compares
+the direct and two-hop linear walk costs before choosing either
+physical path. The boot replay has a 5,300,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14051,9 +14057,16 @@ receive the closest near-frame anchors; their lookup stays sorted by
 target base. Moving the code phase by 399,876 cells preserves the
 instruction phases and the periodic loader tail.
 
-The reduced image reaches its first input in 5,973,677 instructions
-(previously 6,347,795). The five original C23 vectors also run on this
-physical guest. Starting at its first input, the empty, NUL, high-byte,
+The 6,150,294-cell image previously reached its first input in
+5,973,677 instructions (originally 6,347,795). The directory alone
+reduces that to 5,159,114; shifting the code phase by 789,600 cells
+preserves the decoder and loader phases and gives the present
+5,360,694-cell image with 5,238,250 bootstrap instructions.
+Independent replay audits all 44 directory pointers and their
+untouched reset words. Omitting the actual store for the second
+near seed page invalidates the route; a directory entry is not
+merely an assumed initialized word. The five original C23 vectors
+also run on this physical guest. Starting at its first input, the empty, NUL, high-byte,
 mixed and truncated vectors halt in 446, 11,859, 11,859, 46,098 and
 34,685 instructions respectively. A fresh normative VM exhausts the
 100,000-step publication budget before any input or output. This is
