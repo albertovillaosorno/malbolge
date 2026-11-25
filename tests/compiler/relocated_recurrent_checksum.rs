@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 3_500_000;
+const BOOT_BUDGET: usize = 3_100_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -713,6 +713,30 @@ fn census() -> Result<Vec<u8>, String> {
     Ok(stream)
 }
 
+// Every mask remains immutable after synthesizing the page and seed
+// banks, including the special return-pointer mask at the final pair.
+fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
+    for index in 0..28u32 {
+        let address = plus(7_176_601, mul(index, 4)?)?;
+        let prefix = word(vm, address)?;
+        let value = word(vm, plus(address, 2)?)?;
+        let expected = if index == 27 {
+            independent_crazy(ONES, 7_174_440)
+        } else {
+            plus(EOF.checked_sub(26).ok_or("mask base")?, index)?
+        };
+        if value != expected
+            || independent_crazy(prefix, ONES) != prefix
+            || independent_crazy(value, prefix) != value
+            || word(vm, plus(address, 1)?)? != 7_174_416
+            || word(vm, plus(address, 3)?)? != 7_174_416
+        {
+            return Err(format!("wrong immutable chunk mask M{address}"));
+        }
+    }
+    Ok(())
+}
+
 // Independent physical audit of the two-hop seed directory. The address
 // bank is intentionally not obtained from the production planner.
 fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
@@ -740,11 +764,24 @@ fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
 // plan, not at their own bank or the bootstrap scratch space.
 fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
     let mut targets = BTreeSet::new();
-    for (root, bank) in [(7_174_491u32, 7_300_001u32), (7_174_493, 7_300_201)] {
+    for (root, bank) in [
+        (7_174_491u32, 7_300_001u32),
+        (7_174_493u32, 7_300_201u32),
+        (7_174_495u32, 7_300_401u32),
+        (7_174_497u32, 7_300_601u32),
+        (7_174_499u32, 7_300_801u32),
+        (7_174_501u32, 7_301_001u32),
+        (7_174_503u32, 7_301_201u32),
+        (7_174_505u32, 7_301_401u32),
+        (7_174_507u32, 7_301_601u32),
+        (7_174_509u32, 7_301_801u32),
+        (7_174_511u32, 7_302_001u32),
+        (7_174_513u32, 7_302_201u32),
+    ] {
         if word(vm, root)? != bank.checked_sub(1).ok_or("target root")? {
             return Err("incorrect target directory root".to_owned());
         }
-        for offset in 0..48u32 {
+        for offset in 0..24u32 {
             let slot = plus(bank, mul(offset, 2)?)?;
             let target = plus(word(vm, slot)?, 1)?;
             if !(7_175_000..7_244_000).contains(&target)
@@ -755,7 +792,7 @@ fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
             }
         }
     }
-    for root in (7_174_495..7_174_601).step_by(2) {
+    for root in (7_174_515..7_174_601).step_by(2) {
         let target = plus(word(vm, root)?, 1)?;
         if !(7_175_000..7_244_000).contains(&target)
             || !targets.insert(target)
@@ -764,7 +801,7 @@ fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
             return Err(format!("incorrect direct target M{root}"));
         }
     }
-    if targets.len() != 149 {
+    if targets.len() != 331 {
         return Err("missing target directory partition".to_owned());
     }
     Ok(())
@@ -778,6 +815,7 @@ fn relocated_recurrent_checksum_all_factored_edges_and_eof()
     check_materialized_tables(&initial)?;
     check_seed_directory(&initial)?;
     check_target_directory(&initial)?;
+    check_chunk_mask_bank(&initial)?;
     let stream = census()?;
     run(&initial, &guest, &stream)?;
     run(&initial, &guest, &[])?;
@@ -804,12 +842,13 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
         (&[5, 0, 129], 34_685),
     ];
     let guest = source()?;
-    if guest.capture.source.len() != 3_694_074 {
+    if guest.capture.source.len() != 3_194_934 {
         return Err("unexpected recurrent source extent".to_owned());
     }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
     check_seed_directory(&initial)?;
     check_target_directory(&initial)?;
+    check_chunk_mask_bank(&initial)?;
     // This is a physical witness, not yet source-C publication.
     if bootstrap_steps <= PUBLICATION_BUDGET {
         return Err("publication budget evidence must be revisited".to_owned());

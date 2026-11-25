@@ -51,10 +51,16 @@ const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 32;
 const DIRECTORY_END: u32 = 7_176_900;
-const TARGET_ROOTS: [u32; 2] = [7_174_491, 7_174_493];
-const TARGET_BANKS: [u32; 2] = [7_300_001, 7_300_201];
-const TARGET_PAGE_COUNT: u32 = 48;
-const TARGET_DIRECT_START: u32 = 7_174_495;
+const TARGET_ROOTS: [u32; 12] = [
+    7_174_491, 7_174_493, 7_174_495, 7_174_497, 7_174_499, 7_174_501,
+    7_174_503, 7_174_505, 7_174_507, 7_174_509, 7_174_511, 7_174_513,
+];
+const TARGET_BANKS: [u32; 12] = [
+    7_300_001, 7_300_201, 7_300_401, 7_300_601, 7_300_801, 7_301_001,
+    7_301_201, 7_301_401, 7_301_601, 7_301_801, 7_302_001, 7_302_201,
+];
+const TARGET_PAGE_COUNT: u32 = 24;
+const TARGET_DIRECT_START: u32 = 7_174_515;
 
 type ChunkMasks = Vec<(u32, u32)>;
 type SeedDirectory = Vec<(u32, u32)>;
@@ -144,34 +150,50 @@ fn read_chunk_mask(
     after_store(emitter)
 }
 
+fn apply_chunk_mask(
+    emitter: &mut Emitter<'_>,
+    part: u32,
+) -> Result<(), BuildError> {
+    let column = profile_crazy(ALL_ONES, profile_crazy(part, ALL_TWOS, 15), 15)
+        .rem_euclid(27);
+    read_chunk_mask(emitter, column)?;
+    emitter.go(CHUNK_SCRATCH)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(CHUNK_TWOS)?;
+    let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
+    emitter.walk(CHUNK_RETURN)?;
+    emitter.jump(CHUNK_SCRATCH)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    Ok(())
+}
+
 fn chunk_word(
     emitter: &mut Emitter<'_>,
     mut value: u32,
 ) -> Result<(), BuildError> {
     reset_chunk_word(emitter, CHUNK_SCRATCH)?;
+    let mut uniform = true;
     for _ in 0..5u32 {
         // On an all-one low chunk, the first mask fold and the all-two
         // fold produce the requested trits. Everywhere else two
-        // all-two folds cancel. Three rotations expose the next chunk.
+        // all-two folds cancel. An already-one chunk needs neither fold.
         let part = value.rem_euclid(27);
-        let column =
-            profile_crazy(ALL_ONES, profile_crazy(part, ALL_TWOS, 15), 15)
-                .rem_euclid(27);
-        read_chunk_mask(emitter, column)?;
-        emitter.go(CHUNK_SCRATCH)?;
-        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
-        emitter.walk(CHUNK_TWOS)?;
-        let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
-        emitter.walk(CHUNK_RETURN)?;
-        emitter.jump(CHUNK_SCRATCH)?;
-        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        value = value.div_euclid(27);
+        if part != 13 {
+            apply_chunk_mask(emitter, part)?;
+            uniform = false;
+        }
+        if uniform {
+            continue;
+        }
+        // Three rotations expose the next chunk. Rotation of the
+        // initial uniform scratch would have no effect.
         for _ in 0..3u32 {
-            emitter.walk(CHUNK_RETURN)?;
+            emitter.go(CHUNK_RETURN)?;
             emitter.jump(CHUNK_SCRATCH)?;
             let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
         }
         emitter.walk(CHUNK_RESET)?;
-        value = value.div_euclid(27);
     }
     if value != 0 {
         return Err(LAYOUT);

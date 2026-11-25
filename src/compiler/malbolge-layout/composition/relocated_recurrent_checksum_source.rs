@@ -46,9 +46,9 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_360_001,
     start: 7_177_001,
 };
-const CODE_BASE: u32 = 3_683_948;
-const TERMINAL: u32 = 3_693_948;
-const SOURCE_CELLS: usize = 3_694_074;
+const CODE_BASE: u32 = 3_184_808;
+const TERMINAL: u32 = 3_194_808;
+const SOURCE_CELLS: usize = 3_194_934;
 const BYTE_ROUTE: u32 = 7_194_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
 const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];
@@ -627,7 +627,7 @@ fn route_anchors(words: &Words) -> Result<TargetAnchors, BuildError> {
         cuts.sort_unstable();
     }
     // Give densely used partitions the shortest near-frame walk. The
-    // returned anchors remain sorted by base for the target lookup.
+    // target lookup compares every eligible anchor by total walk cost.
     let mut partitions = Vec::new();
     for endpoints in cuts.windows(2) {
         let [start, end] = endpoints else {

@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 3,694,074-cell
+The separate 3,194,934-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14023,7 +14023,8 @@ low byte is the full checksum, followed by one output and halt.
 The expanded data plan would exceed the original bootstrap layout.
 A 27-entry immutable mask bank synthesizes each inverse seed in five
 three-trit chunks, with three physical scratch rotations between
-chunks. Eighty frequently used seeds have immutable prefix/value
+chunks. A chunk already equal to ternary 111 needs no mask folds;
+rotations of the still-uniform initial scratch are also unnecessary. Eighty frequently used seeds have immutable prefix/value
 pairs. Before seed construction, the frame word becomes a pointer to
 the nearby constants and the inverse-seed directory is materialized,
 so seed stores themselves use the shorter routes. The temporary marker
@@ -14038,14 +14039,14 @@ frame-reset word virgin.
 The near root M7174489 selects the directory; a page pointer selects
 a 32-cell section of either inverse-seed bank. The emitter compares
 the direct and two-hop linear walk costs before choosing either
-physical path. Two additional target directories at M7300001 and
-M7300201 supply 96 odd page pointers. Together with 53 direct
-anchors, the planner splits the destination ranges into 149
+physical path. Twelve target directories from M7300001 to M7302201
+(at 200-cell intervals) supply 288 odd page pointers. Together with
+43 direct anchors, the planner splits the destination ranges into 331
 partitions and assigns denser partitions to cheaper access slots.
 For each destination it compares the cost of every eligible direct
 or two-hop path. The page pointers are synthesized in the guest
 before the first route write; their even reset cells remain virgin.
-The boot replay has a 3,500,000-step bound.
+The boot replay has a 3,100,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14063,8 +14064,8 @@ pointer store; the guest still boots, but both the table audit and affected
 byte execution refuse. The 256 unreachable odd-byte carry-two
 combinations are not materialized: XOR of two nibbles is at most 15,
 so adding three cannot carry twice. Densely used route partitions
-receive the closest near-frame anchors; their lookup stays sorted by
-target base. Moving the code phase by 399,876 cells preserves the
+receive the closest near-frame anchors; lookup compares the total
+walk cost of every eligible direct or paged path. Moving the code phase by 399,876 cells preserves the
 instruction phases and the periodic loader tail.
 
 The 6,150,294-cell image previously reached its first input in
@@ -14078,14 +14079,20 @@ with 3,906,625 bootstrap instructions. Early seed-directory reuse
 and two-fold normalization cut the bootstrap to 3,520,626 steps
 before a phase-aligned shift of 397,620 cells. The resulting
 3,694,074-cell image reaches its first input in 3,483,020 steps.
+Expanding the target geometry to six banks of 32 pages reduces
+bootstrap to 3,237,174 steps; twelve banks of 24 pages reduce it
+to 3,152,204 steps. Skipping identity chunk operations brings it
+to 3,066,388 steps. A final phase-aligned shift of 499,140 cells
+yields the 3,194,934-cell image and 3,044,085 bootstrap steps.
 An independent trace checks the two scratch-reset stores and
 rejects omission of the second fold.
 Independent replay audits all 44 directory pointers and their
 untouched reset words. Omitting the actual store for the second
 near seed page invalidates the route; a directory entry is not
 merely an assumed initialized word. A second audit authenticates
-all 149 distinct target partitions, their two near roots and the
-untouched adjacent reset words. Omitting a selected target page
+all 331 distinct target partitions, their twelve near roots and the
+untouched adjacent reset words. The 28 chunk-mask pairs (including
+the return-pointer pair) are independently checked after synthesis. Omitting a selected target page
 store also refuses. The five original C23 vectors
 also run on this physical guest. Starting at its first input, the empty, NUL, high-byte,
 mixed and truncated vectors halt in 446, 11,859, 11,859, 46,098 and
