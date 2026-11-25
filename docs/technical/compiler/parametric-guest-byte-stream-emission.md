@@ -1465,6 +1465,12 @@ that partial execution. The full two-result-store C0 `*`, C1 `p`,
 C2 `p`, C3 `v` provenance control still succeeds. The combined stronger
 CFG verifier already checked operation visit order; these standalone
 necessary gates must not accidentally certify a partial word result.
+A separate six-step N15 control executes C0 `*`, C1 `j`, C2 `*`,
+C3 `j`, C4 `*`, C5 `v`: the real data pointer writes the high C32 word
+at M101 **before** its low word at M100. The exact two-word
+zero-extension result passes, and corrupting only M101 refuses. Result
+coverage follows the physical code sites, not an assumed ascending
+memory address or numeric code-site order.
 This is a necessary store-completeness check on actual VM execution, not
 authorization of source arithmetic dataflow, arbitrary physical branching,
 C23 runtime state, or full seven-block checksum publication.

@@ -425,6 +425,138 @@ fn real_guest_skipped_low_word_store_cannot_certify_a_c32_result()
     Ok(())
 }
 
+// The full source-typed result need not be stored low word first. A real
+// N15 j sets D to a higher frame address for C2's high-word *, then a
+// second j retargets C4's low-word *. This is *not* C computation causality;
+// it isolates exact physical two-word result checking under address reorder.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "a six-step physical N15 data-pointer reversal"
+)]
+fn real_guest_high_word_before_low_word_authenticates_c32_result()
+-> Result<(), String> {
+    let mut source = (0..59)
+        .map(|at| graphical(at, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (at, opcode) in [
+        (0, b'*'),
+        (1, b'j'),
+        (2, b'*'),
+        (3, b'j'),
+        (4, b'*'),
+        (5, b'v'),
+    ] {
+        source[at] = graphical(at, opcode)?;
+    }
+    let profile = malbolge::current_profile();
+    let loaded =
+        malbolge::ProfileMachine::from_source(profile, &source, Vec::new())
+            .map_err(|error| format!("source load: {error:?}"))?;
+    let trace = |high_seed: u32| -> Result<Vec<ProfileStepTrace>, String> {
+        let mut memory = loaded.memory().to_vec();
+        memory[70] = 3; // C0 * materializes U8 1.
+        memory[71] = 100; // C1 j selects D=101 after increment.
+        memory[101] = high_seed; // C2 * writes high word first.
+        memory[102] = 99; // C3 j selects D=100 after increment.
+        memory[100] = 3; // C4 * writes low word 1.
+        let mut machine = malbolge::ProfileMachine::from_state(
+            profile,
+            memory,
+            Vec::new(),
+            malbolge::ProfileRegisters {
+                accumulator: profile.eof_word(),
+                code_pointer: 0,
+                data_pointer: 70,
+            },
+        )
+        .map_err(|error| format!("seeded guest: {error:?}"))?;
+        let mut steps = Vec::new();
+        let outcome = machine
+            .run_traced(6, &mut |step| steps.push(*step))
+            .map_err(|error| format!("guest run: {error:?}"))?;
+        assert_eq!(outcome, malbolge::RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 6,
+        });
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| step.before.registers.code_pointer)
+                .collect::<Vec<_>>(),
+            [0, 1, 2, 3, 4, 5],
+        );
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| step.before.registers.data_pointer)
+                .collect::<Vec<_>>(),
+            [70, 71, 101, 102, 100, 101],
+        );
+        Ok(steps)
+    };
+    let valid = trace(0)?;
+    let high_corrupted = trace(3)?;
+    let result = GuestPlacedOperand {
+        address: 100,
+        type_kind: TernaryCfgScalarKind::U32,
+        value: 1,
+        words: 2,
+    };
+    let sites = [GuestCodeOperationSite {
+        block: 0,
+        computation: Some(GuestCodeComputation::Cast {
+            operation: CastOp::ZeroExtend,
+            source: operand(70, 0),
+            result,
+        }),
+        start: 2,
+        end_exclusive: 5,
+        function: 0,
+        ordinal: 1,
+    }];
+    let effects = [(0u32, 70u32, 0u32), (2, 101, 1), (4, 100, 1)].map(
+        |(code_address, destination, ordinal)| GuestCodeOperationEffectSite {
+            block: 0,
+            code_address,
+            effect: GuestCodeOperationEffect::Store {
+                destination,
+                literal: None,
+            },
+            function: 0,
+            ordinal,
+        },
+    );
+    let frames = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 103,
+        source_cells: 59,
+    }];
+    assert_eq!(
+        verify_source_computation_values(
+            &sites,
+            &effects,
+            &[],
+            &frames,
+            &valid
+        ),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_computation_values(
+            &sites,
+            &effects,
+            &[],
+            &frames,
+            &high_corrupted,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue),
+    );
+    Ok(())
+}
+
 #[test]
 fn typed_c32_checksum_operations_preserve_full_width() {
     let i32_operand = |address, value| GuestPlacedOperand {
