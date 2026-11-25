@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_480_000;
+const BOOT_BUDGET: usize = 1_455_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -52,6 +52,8 @@ const LOW_SEEDS: u32 = 7_243_100;
 const HIGH_SEEDS: u32 = 7_243_400;
 const HIGH_TABLE: u32 = 7_223_661;
 const EOF_SCRATCH: u32 = 7_180_900;
+const SHORTCUT_ADDRESS: u32 = 7_174_447;
+const SHORTCUT_PREDECESSOR: u32 = 7_174_468;
 
 type ArithmeticVisit = (u32, u32);
 type DirectoryPage = (u32, u32);
@@ -62,6 +64,94 @@ type LowEdge = (u8, u8);
 type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
 type DirectTargetReceipt = (usize, [u32; 2]);
+type ShortcutReceipt = ([u32; 3], usize);
+
+// The new scratch-to-constants root is installed before its first use.
+// Observe every actual selection and require its adjacent reset to stay virgin.
+#[derive(Default)]
+struct ScratchConstantsAudit {
+    commit: Option<u32>,
+    jump: Option<u32>,
+    normalize: Option<u32>,
+    selections: usize,
+}
+
+impl ScratchConstantsAudit {
+    fn finish(&self, vm: &ProfileMachine) -> Result<ShortcutReceipt, String> {
+        if word(vm, SHORTCUT_ADDRESS)? != SHORTCUT_PREDECESSOR
+            || word(vm, plus(SHORTCUT_ADDRESS, 1)?)? != 7_174_416
+        {
+            return Err("scratch constants root changed".to_owned());
+        }
+        Ok((
+            [
+                self.normalize.ok_or("missing shortcut normalization")?,
+                self.commit.ok_or("missing shortcut commit")?,
+                self.jump.ok_or("missing shortcut selection")?,
+            ],
+            self.selections,
+        ))
+    }
+
+    fn jump(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let trace = step(vm)?;
+        if trace
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value))
+            != Some((SHORTCUT_ADDRESS, SHORTCUT_PREDECESSOR))
+            || trace.after.registers.data_pointer
+                != plus(SHORTCUT_PREDECESSOR, 1)?
+            || trace.after.registers.accumulator
+                != trace.before.registers.accumulator
+            || trace.memory_delta.data.is_some()
+        {
+            return Err("incorrect scratch constants jump".to_owned());
+        }
+        let _first =
+            self.jump.get_or_insert(trace.before.registers.code_pointer);
+        self.selections = self.selections.saturating_add(1);
+        Ok(())
+    }
+
+    fn observe(&mut self, vm: &mut ProfileMachine) -> Result<bool, String> {
+        let registers = vm.registers();
+        if registers.data_pointer != SHORTCUT_ADDRESS {
+            return Ok(false);
+        }
+        match decode_profile_instruction(
+            word(vm, registers.code_pointer)?,
+            registers.code_pointer,
+        ) {
+            Some(b'p') if self.normalize.is_none() => {
+                if registers.accumulator != 0 {
+                    return Err("wrong shortcut normalization".to_owned());
+                }
+                check_store(&step(vm)?, SHORTCUT_ADDRESS, 37, ONES)?;
+                self.normalize = Some(registers.code_pointer);
+            },
+            Some(b'p') if self.commit.is_none() => {
+                let inverse = independent_crazy(ONES, SHORTCUT_PREDECESSOR);
+                if registers.accumulator != inverse
+                    || word(vm, 7_174_441)? != inverse
+                {
+                    return Err("wrong shortcut producer".to_owned());
+                }
+                check_store(
+                    &step(vm)?,
+                    SHORTCUT_ADDRESS,
+                    ONES,
+                    SHORTCUT_PREDECESSOR,
+                )?;
+                self.commit = Some(registers.code_pointer);
+            },
+            Some(b'j') if self.commit.is_some() => self.jump(vm)?,
+            Some(b'o') => return Ok(false),
+            _ => return Err("unexpected scratch constants effect".to_owned()),
+        }
+        Ok(true)
+    }
+}
 
 // Authenticate the two actual stores at every root, and every page
 // selection after initialization, not just the final memory snapshot.
@@ -755,6 +845,8 @@ fn boot_with_steps(
             persistent(&vm, guest, 0)?;
             if vm.input_consumed() != 0
                 || word(&vm, 7_174_417)? != 7_174_468
+                || word(&vm, 7_174_447)? != 7_174_468
+                || word(&vm, 7_174_448)? != 7_174_416
                 || word(&vm, 7_174_469)? != ONES
                 || word(&vm, 7_174_471)? != 0
                 || word(&vm, 7_174_473)? != EOF
@@ -1691,6 +1783,49 @@ fn relocated_recurrent_checksum_omitted_chunk_page_refuses()
         let modified = omit_site(&guest, site)?;
         if audit_chunk_pages(&modified).is_ok() {
             return Err("accepted omitted chunk page effect".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn audit_scratch_constants(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<ShortcutReceipt, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = ScratchConstantsAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
+        if audit.observe(&mut vm)? {
+            continue;
+        }
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature shortcut termination".to_owned());
+        }
+    }
+    Err("missing first input after shortcut".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_scratch_constants_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let (sites, selections) = audit_scratch_constants(&guest)?;
+    if selections != 1_313 {
+        return Err(format!("unexpected shortcut count: {selections}"));
+    }
+    for site in sites {
+        let modified = omit_site(&guest, site)?;
+        if audit_scratch_constants(&modified).is_ok() {
+            return Err("accepted omitted scratch constants effect".to_owned());
         }
     }
     Ok(())

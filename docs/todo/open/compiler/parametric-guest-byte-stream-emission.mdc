@@ -295,6 +295,9 @@ to 1,482,923 steps (9,069 fewer), with all 47 tests passing again.
 Reusing both local immutable columns for fast scratch folds reaches
 first input in 1,477,595 steps; independently omitted reads refuse.
 All 17 physical and 31 source-recurrent tests pass.
+A new scratch-local pointer jumps directly to the immutable constants;
+1,313 independently traced jumps and three omitted-effect controls
+pass. First input now takes 1,450,391 steps in the same physical image.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

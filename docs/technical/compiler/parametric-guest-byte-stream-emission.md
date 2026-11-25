@@ -14552,3 +14552,15 @@ reaches first input in 1,477,595 steps, 5,328 fewer, without changing
 its extent. The physical regression ceiling is now 1,480,000 steps;
 all 17 physical and 31 source-recurrent tests pass. The separate
 100,000-step source-C publication limit remains unchanged.
+
+A new odd scratch-local pointer shares the frame's predecessor of the
+immutable constants. It is normalized and committed from the retained
+scratch inverse before the fast path becomes reachable. Subsequent
+fast reloads walk to that pointer and jump directly to the constants
+instead of walking the 27-cell gap. Its adjacent even reset stays
+virgin. Independent trace replay checks both ordered initialization
+stores and all 1,313 actual accumulator-preserving jumps; omitting
+either store or the first jump refuses. The unchanged 2,318,854-cell
+image reaches first input in 1,450,391 steps, saving 27,204. The
+physical regression ceiling is now 1,455,000 steps. The original
+100,000-step source-C publication limit remains unchanged.

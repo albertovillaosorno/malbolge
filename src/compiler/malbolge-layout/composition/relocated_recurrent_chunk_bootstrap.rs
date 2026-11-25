@@ -51,6 +51,8 @@ const CHUNK_SCRATCH: u32 = 7_174_441;
 const CHUNK_NEXT: u32 = CHUNK_SCRATCH + 1;
 const CHUNK_TWOS: u32 = CHUNK_SCRATCH + 2;
 const CHUNK_RETURN: u32 = CHUNK_SCRATCH + 4;
+// An initialized shortcut avoids the long forward walk from scratch.
+const CHUNK_CONSTANTS: u32 = CHUNK_SCRATCH + 6;
 const CHUNK_ANCHOR: u32 = ANCHOR_START;
 // Seven immutable pointers cover four mask pairs each. They precede
 // the mask bank so the bootstrap can still walk to virgin masks before
@@ -461,8 +463,13 @@ fn fast_go(emitter: &mut Emitter<'_>, target: u32) -> Result<(), BuildError> {
     if emitter.data > target {
         emitter.reset()?;
     }
-    if emitter.data == FRAME && target >= NEAR_ONES {
-        emitter.jump(NEAR_ONES)?;
+    if target >= NEAR_ONES {
+        if emitter.data == FRAME {
+            emitter.jump(NEAR_ONES)?;
+        } else if (CHUNK_NEXT..=CHUNK_CONSTANTS).contains(&emitter.data) {
+            emitter.walk(CHUNK_CONSTANTS)?;
+            emitter.jump(NEAR_ONES)?;
+        }
     }
     emitter.walk(target)
 }
@@ -1131,6 +1138,13 @@ fn initialize_chunk_roots(
     emitter.go(FRAME)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(CHUNK_RESET)?;
+    // The frame and the new shortcut share the same predecessor word.
+    // The inverse remains in scratch after the frame commit. Reload it
+    // without changing scratch and initialize the virgin odd slot.
+    rotate(emitter, NEAR_ZERO)?;
+    chunk_access(emitter, CHUNK_CONSTANTS, LinearOpcode::CrazyData)?;
+    reload_chunk(emitter)?;
+    chunk_access(emitter, CHUNK_CONSTANTS, LinearOpcode::CrazyData)?;
     initialize_chunk_returns(emitter)?;
     let mut scratch = ChunkWord { value: frame_seed };
     for (address, value) in roots {
