@@ -2722,9 +2722,14 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
     let ones = crazy(7_174_416, 0);
     assert_eq!(ones, 7_174_453);
     for class in 0..=256u16 {
-        let raw = u8::try_from(class).map_or(profile.eof_word(), u32::from);
+        let raw = u8::try_from(class)
+            .map_or_else(|_error| profile.eof_word(), u32::from);
         let encoded = crazy(ones, raw);
-        let first = (encoded + 1) % profile.word_modulus();
+        let first = if encoded == profile.eof_word() {
+            0
+        } else {
+            encoded + 1
+        };
         assert_eq!(first == 0, class == 256, "class {class}");
     }
 
@@ -2781,7 +2786,7 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
         } else {
             assert_eq!(outcome, Ok(RunOutcome::BudgetExhausted { steps: 67 }));
         }
-        assert_eq!(trace.len(), usize::try_from(limit).unwrap_or(0));
+        assert_eq!(trace.len(), limit);
         assert_eq!(trace[14].decoded, Some(b'p'));
         assert_eq!(trace[17].decoded, Some(b'p'));
         assert_eq!(trace[34].decoded, Some(b'*'));
@@ -2812,7 +2817,7 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
         }
         assert_eq!(
             vm.memory_word(7_174_419),
-            Ok(byte.map_or(profile.eof_word(), u32::from))
+            Ok(byte.map_or_else(|| profile.eof_word(), u32::from))
         );
         assert_eq!(vm.memory_word(7_174_420), Ok(0));
         assert_eq!(vm.input_consumed(), usize::from(byte.is_some()));
@@ -2841,6 +2846,7 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
 #[test]
 #[expect(
     clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
     reason = "two exact source-site mutations"
 )]
 fn original_checksum_eof_code_arm_requires_both_branch_and_target()
@@ -2892,6 +2898,7 @@ fn original_checksum_eof_code_arm_requires_both_branch_and_target()
 // complete source return and signed input contract must remain unproved.
 #[test]
 #[expect(
+    clippy::cognitive_complexity,
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
     clippy::too_many_lines,
@@ -2918,60 +2925,61 @@ fn original_checksum_empty_output_site_has_missing_source_operand()
     let wire = pairs
         .iter()
         .map(|bytes| {
-            let hex = str::from_utf8(bytes).map_err(|e| e.to_string())?;
-            u8::from_str_radix(hex, 16).map_err(|e| e.to_string())
+            let hex =
+                str::from_utf8(bytes).map_err(|error| error.to_string())?;
+            u8::from_str_radix(hex, 16).map_err(|error| error.to_string())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let g = layout::build_adjacent_c32_zero_c37_eof_code_arm_source(
+    let guest = layout::build_adjacent_c32_zero_c37_eof_code_arm_source(
         current_profile(),
     )
-    .map_err(|e| format!("guest: {e:?}"))?;
+    .map_err(|error| format!("guest: {error:?}"))?;
     let entries = [GuestCodeFunctionEntryAnchor {
-        function: 0,
         block: 0,
         code_address: 0,
+        function: 0,
     }];
     let operations = [GuestCodeOperationAnchor {
-        function: 0,
         block: 0,
-        ordinal: 1,
         code_address: 37,
+        function: 0,
+        ordinal: 1,
     }];
     let effects = [
         GuestCodeEffectAnchor {
-            function: 0,
             block: 0,
-            ordinal: 0,
-            effect_index: 0,
             code_address: 17,
-        },
-        GuestCodeEffectAnchor {
-            function: 0,
-            block: 0,
-            ordinal: 0,
-            effect_index: 1,
-            code_address: 14,
-        },
-        GuestCodeEffectAnchor {
-            function: 0,
-            block: 0,
-            ordinal: 1,
-            effect_index: 1,
-            code_address: 50,
-        },
-        GuestCodeEffectAnchor {
-            function: 0,
-            block: 0,
-            ordinal: 1,
-            effect_index: 2,
-            code_address: 51,
-        },
-        GuestCodeEffectAnchor {
-            function: 0,
-            block: 6,
-            ordinal: 1,
             effect_index: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 14,
+            effect_index: 1,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 50,
+            effect_index: 1,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 51,
+            effect_index: 2,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 6,
             code_address: 88,
+            effect_index: 0,
+            function: 0,
+            ordinal: 1,
         },
     ];
     let bind = |anchors: &[GuestCodeEffectAnchor]| {
@@ -2980,7 +2988,7 @@ fn original_checksum_empty_output_site_has_missing_source_operand()
                 canonical: &wire,
                 control_anchors: &[],
                 effect_anchors: anchors,
-                frame_base: g.pointer.byte_pair.zero_pair.zero_low_address,
+                frame_base: guest.pointer.byte_pair.zero_pair.zero_low_address,
                 function_entries: &entries,
                 operation_anchors: &operations,
                 phi_anchors: &[],
@@ -2990,12 +2998,12 @@ fn original_checksum_empty_output_site_has_missing_source_operand()
             },
         )
     };
-    let plan = bind(&effects).map_err(|e| format!("plan: {e:?}"))?;
+    let plan = bind(&effects).map_err(|error| format!("plan: {error:?}"))?;
     assert_eq!(plan.code_blocks.len(), 7);
     assert_eq!(plan.code_blocks[6].start, 87);
     assert_eq!(plan.code_blocks[6].control_start, 89);
     assert_eq!(plan.return_sites.len(), 1);
-    assert_eq!(plan.return_sites[0].address, g.eof_halt_code_address);
+    assert_eq!(plan.return_sites[0].address, guest.eof_halt_code_address);
     let output_sites = plan
         .operation_effect_sites
         .iter()
@@ -3013,7 +3021,7 @@ fn original_checksum_empty_output_site_has_missing_source_operand()
             source_output.ordinal,
             source_output.code_address
         ),
-        (0, 6, 1, g.eof_output_code_address)
+        (0, 6, 1, guest.eof_output_code_address)
     );
     let GuestCodeOperationEffect::Output { source } = source_output.effect
     else {
@@ -3028,14 +3036,14 @@ fn original_checksum_empty_output_site_has_missing_source_operand()
     // frame cell; the VM must not be passed as a complete source linker.
     let mut vm = ProfileMachine::from_source(
         current_profile(),
-        &g.pointer.byte_pair.zero_pair.source,
+        &guest.pointer.byte_pair.zero_pair.source,
         vec![],
     )
-    .map_err(|e| format!("guest source load: {e:?}"))?;
+    .map_err(|error| format!("guest source load: {error:?}"))?;
     let mut trace = Vec::new();
     assert_eq!(
         vm.run_traced(70, &mut |step| trace.push(*step))
-            .map_err(|e| format!("empty-input guest: {e:?}"))?,
+            .map_err(|error| format!("empty-input guest: {error:?}"))?,
         RunOutcome::Terminated {
             reason: Termination::HaltInstruction,
             steps: 70,
