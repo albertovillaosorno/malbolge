@@ -33,6 +33,9 @@ mod relocated_eof_parity_source;
 mod relocated_first_byte_add_source;
 #[path = "relocated_live_parity_source.rs"]
 mod relocated_live_parity_source;
+use std::array;
+use std::sync::OnceLock;
+
 use malbolge::{ProfileDescriptor, current_profile};
 pub use relocated_eof_parity_source::{
     RelocatedEofParitySource, build_relocated_eof_parity_source,
@@ -40,9 +43,11 @@ pub use relocated_eof_parity_source::{
 pub use relocated_first_byte_add_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstByteAddSource,
     RelocatedFirstIterationSource, RelocatedSecondAddSource,
-    RelocatedSecondParityAddSource, ScratchResetSite,
-    build_relocated_dirty_phi_source, build_relocated_first_byte_add_source,
+    RelocatedSecondEvenMaskSource, RelocatedSecondParityAddSource,
+    ScratchResetSite, build_relocated_dirty_phi_source,
+    build_relocated_first_byte_add_source,
     build_relocated_first_iteration_source, build_relocated_second_add_source,
+    build_relocated_second_even_mask_source,
     build_relocated_second_parity_add_source,
 };
 pub use relocated_live_parity_source::{
@@ -70,6 +75,10 @@ const TAPE_BOUNDS: TapeBounds = TapeBounds {
     start: TAPE_START,
 };
 const SOURCE_CELLS: usize = 6_642;
+const DECODE_PHASES: usize = 94;
+// Canonical no-ops are profile-independent. Cache the independently checked
+// phase encodings instead of scanning the printable alphabet for every walk.
+static NOOP_ENCODINGS: OnceLock<[Option<u8>; DECODE_PHASES]> = OnceLock::new();
 const ROTATION_ORDER: [u32; 15] =
     [3, 2, 1, 0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4];
 
@@ -222,8 +231,12 @@ impl Emitter<'_> {
         if position >= self.source_cells {
             return Err(LAYOUT);
         }
-        let byte = unique_graphical_cell(self.profile, op, position)
-            .map_err(|_error| LAYOUT)?;
+        let byte = if op == LinearOpcode::NoOperation {
+            canonical_noop_cell(self.profile, position)?
+        } else {
+            unique_graphical_cell(self.profile, op, position)
+                .map_err(|_error| LAYOUT)?
+        };
         self.source.push(byte);
         u32::try_from(position).map_err(|_error| LAYOUT)
     }
@@ -440,6 +453,23 @@ impl Emitter<'_> {
         let _: u32 = self.linear(LinearOpcode::RotateData)?;
         Ok(())
     }
+}
+
+fn canonical_noop_cell(
+    profile: &ProfileDescriptor,
+    position: usize,
+) -> Result<u8, BuildError> {
+    let encodings = NOOP_ENCODINGS.get_or_init(|| {
+        array::from_fn(|phase| {
+            unique_graphical_cell(profile, LinearOpcode::NoOperation, phase)
+                .ok()
+        })
+    });
+    encodings
+        .get(position.rem_euclid(DECODE_PHASES))
+        .copied()
+        .flatten()
+        .ok_or(LAYOUT)
 }
 
 fn extended_prefix(

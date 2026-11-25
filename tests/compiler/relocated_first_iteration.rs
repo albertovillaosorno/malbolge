@@ -33,9 +33,10 @@ use malbolge::{
 use super::super::crazy as independent_crazy;
 use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
-    RelocatedSecondAddSource, RelocatedSecondParityAddSource,
-    ZeroCellSourceError, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
+    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source, build_relocated_second_even_mask_source,
     build_relocated_second_parity_add_source,
 };
 use super::{at, check_transfer, check_write, word};
@@ -43,6 +44,11 @@ use super::{at, check_transfer, check_write, word};
 const ITERATION_BUDGET: usize = 700_000;
 const SECOND_ADD_BUDGET: usize = 2_600_000;
 const SECOND_PARITY_ADD_BUDGET: usize = 4_400_000;
+const SECOND_MASK_BUDGET: usize = 3_400_000;
+
+type MaskTraceBuffers<'trace> =
+    (&'trace mut Vec<ProfileStepTrace>, &'trace mut ScratchReplay);
+type MaskTraceSites<'sites> = (&'sites [u32], &'sites [u32]);
 
 #[derive(Default)]
 struct ScratchReplay {
@@ -1105,10 +1111,10 @@ fn record_second_add(
     reason = "ordered physical dirty scratch witness"
 )]
 fn check_scratch_replay(
-    guest: &RelocatedSecondAddSource,
+    resets: &[ScratchResetSite],
     replay: &ScratchReplay,
 ) -> Result<(), String> {
-    let count = guest.scratch_resets.len();
+    let count = resets.len();
     assert_eq!(
         replay.resets.len(),
         count.checked_mul(3).ok_or("reset count overflow")?,
@@ -1123,7 +1129,7 @@ fn check_scratch_replay(
         replay.prior.values().any(|&value| value != 7_174_453),
         "the reused bank must be dirty"
     );
-    for reset in &guest.scratch_resets {
+    for reset in resets {
         let old = *replay
             .prior
             .get(&reset.address)
@@ -1169,7 +1175,7 @@ fn check_second_add(
         }),
         "{outcome:?}"
     );
-    check_scratch_replay(guest, &replay)?;
+    check_scratch_replay(&guest.scratch_resets, &replay)?;
     let checksum = u32::from(first.wrapping_add(3));
     let current = u32::from(second);
     assert_eq!(
@@ -1313,7 +1319,7 @@ fn relocated_second_add_rejects_omitted_scratch_reset() -> Result<(), String> {
     assert_eq!(machine.input_consumed(), 2);
     assert!(machine.output().is_empty());
     assert!(
-        check_scratch_replay(&guest, &replay).is_err(),
+        check_scratch_replay(&guest.scratch_resets, &replay).is_err(),
         "no-op reset must fail physical replay"
     );
     Ok(())
@@ -1503,7 +1509,7 @@ fn check_second_parity_add(
     check_second_parity_route(guest, initial, &trace, second)?;
     check_second_parity_result(guest, &machine, &trace, [first, second])?;
     if second & 1 == 0 {
-        check_scratch_replay(&guest.addition, &replay)?;
+        check_scratch_replay(&guest.addition.scratch_resets, &replay)?;
     } else {
         assert!(
             replay.resets.is_empty(),
@@ -1703,5 +1709,348 @@ fn second_even_mask_needs_exactly_one_double_wrap_case() -> Result<(), String> {
         [(252, 254)],
         "one-subtraction mask fails only at the maximum even sum"
     );
+    Ok(())
+}
+
+fn second_mask_source() -> Result<RelocatedSecondEvenMaskSource, String> {
+    build_relocated_second_even_mask_source(current_profile())
+        .map_err(|error| format!("second even mask source: {error:?}"))
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact first and second wrap branches and dirty C32 stores"
+)]
+fn check_second_mask_result(
+    guest: &RelocatedSecondEvenMaskSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: [u8; 2],
+) -> Result<(), String> {
+    let [first, second] = input;
+    let checksum = u32::from(first.wrapping_add(3));
+    let sum = checksum
+        .checked_add(u32::from(second))
+        .and_then(|value| value.checked_add(3))
+        .ok_or("second sum overflow")?;
+    let residual = if sum >= 256 {
+        sum.checked_sub(256).ok_or("wrap underflow")?
+    } else {
+        sum
+    };
+    let expected = sum & 255;
+    let first_wrap = sum >= 256;
+    let double_wrap = residual == 256;
+    let [first_branch, double_branch] = guest.branch_code_addresses;
+    let [first_flag, double_flag] = guest.flag_addresses;
+    let [first_store, double_store] = guest.flag_store_code_addresses;
+    check_write(trace, first_store, first_flag, u32::from(first_wrap))?;
+    check_write(trace, double_store, double_flag, u32::from(double_wrap))?;
+    let (first_ptr, first_entry) = if first_wrap {
+        (7_174_811, 3_115_000)
+    } else {
+        (7_174_801, 3_100_000)
+    };
+    let (double_ptr, double_entry) = if double_wrap {
+        (7_174_883, 3_215_000)
+    } else {
+        (7_174_873, 3_200_000)
+    };
+    check_transfer(trace, first_branch, first_ptr, first_entry)?;
+    check_transfer(trace, double_branch, double_ptr, double_entry)?;
+    assert_eq!(
+        word(machine, guest.residual_address)?,
+        residual,
+        "once-wrap"
+    );
+    assert_eq!(
+        word(machine, guest.parity.incremented_address)?,
+        sum,
+        "incremented input must survive reuse"
+    );
+    check_second_mask_stores(guest, machine, trace, [checksum, expected])?;
+    check_second_parity_preserved(&guest.parity, machine, input)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact dirty result pair"
+)]
+fn check_second_mask_stores(
+    guest: &RelocatedSecondEvenMaskSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    values: [u32; 2],
+) -> Result<(), String> {
+    let [checksum, expected] = values;
+    let [low, high] = guest.result_pair;
+    let [low_copy, high_copy] = guest.result_copies;
+    let temp = 7_174_633;
+    check_dirty_reset(
+        trace,
+        low_copy.temporary_resets,
+        temp,
+        independent_crazy(7_174_453, checksum),
+    )?;
+    check_dirty_reset(trace, low_copy.destination_resets, low, checksum)?;
+    check_write(
+        trace,
+        low_copy.temporary_store,
+        temp,
+        independent_crazy(7_174_453, expected),
+    )?;
+    check_write(trace, low_copy.destination_store, low, expected)?;
+    check_dirty_reset(
+        trace,
+        high_copy.temporary_resets,
+        temp,
+        independent_crazy(7_174_453, expected),
+    )?;
+    check_dirty_reset(trace, high_copy.destination_resets, high, 0)?;
+    check_write(trace, high_copy.temporary_store, temp, 7_174_453)?;
+    check_write(trace, high_copy.destination_store, high, 0)?;
+    assert_eq!(
+        [word(machine, low)?, word(machine, high)?],
+        [expected, 0],
+        "canonical second checksum"
+    );
+    Ok(())
+}
+
+fn record_second_mask(
+    guest: &RelocatedSecondEvenMaskSource,
+    sites: MaskTraceSites<'_>,
+    traces: MaskTraceBuffers<'_>,
+    step: &ProfileStepTrace,
+) {
+    let (wanted, reset_sites) = sites;
+    let (trace, replay) = traces;
+    let code = step.before.registers.code_pointer;
+    if wanted.contains(&code) {
+        trace.push(*step);
+    }
+    if reset_sites.get(replay.resets.len()) == Some(&code) {
+        replay.resets.push(*step);
+    }
+    if code >= guest.parity.even_entry
+        && reset_sites.first().is_some_and(|&first| code < first)
+        && matches!(step.decoded, Some(b'p' | b'*'))
+        && let Some(read) = step.memory_reads.data
+        && guest
+            .scratch_resets
+            .binary_search_by_key(&read.address, |reset| reset.address)
+            .is_ok()
+    {
+        let _: Option<u32> = replay
+            .prior
+            .insert(read.address, step.after.registers.accumulator);
+    }
+}
+
+fn second_mask_sites(guest: &RelocatedSecondEvenMaskSource) -> Vec<u32> {
+    guest
+        .branch_code_addresses
+        .into_iter()
+        .chain(guest.flag_store_code_addresses)
+        .chain(guest.result_copies.into_iter().flat_map(dirty_sites))
+        .collect()
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded live arithmetic and exact guest trace"
+)]
+fn check_second_mask_vector(
+    guest: &RelocatedSecondEvenMaskSource,
+    initial: &ProfileMachine,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let mut machine = initial
+        .fork_with_input(vec![first, second, 42])
+        .map_err(|error| error.to_string())?;
+    let mut wanted = second_mask_sites(guest);
+    wanted.extend([
+        guest.parity.pointer_store_code_address,
+        guest.parity.lookup_code_address,
+        guest.parity.parity_store_code_address,
+        guest.parity.branch_code_address,
+        guest
+            .parity
+            .addition
+            .iteration
+            .second_byte_halt_code_address,
+    ]);
+    let reset_sites = guest
+        .scratch_resets
+        .iter()
+        .flat_map(|reset| reset.code_addresses)
+        .collect::<Vec<_>>();
+    let mut trace = Vec::new();
+    let mut replay = ScratchReplay::default();
+    let outcome = machine
+        .run_traced(SECOND_MASK_BUDGET, &mut |step| {
+            record_second_mask(
+                guest,
+                (&wanted, &reset_sites),
+                (&mut trace, &mut replay),
+                step,
+            );
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "first={first} second={second} {outcome:?}"
+    );
+    check_second_parity_route(&guest.parity, initial, &trace, second)?;
+    check_transfer(
+        &trace,
+        guest.parity.branch_code_address,
+        7_174_787,
+        guest.parity.even_entry,
+    )?;
+    check_scratch_replay(&guest.scratch_resets, &replay)?;
+    check_second_mask_result(guest, &machine, &trace, [first, second])?;
+    assert_eq!(machine.input_consumed(), 2, "third byte must remain unread");
+    assert!(
+        machine.output().is_empty(),
+        "unfinished branch cannot output"
+    );
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "freeze finite second-even physical mask geometry"
+)]
+#[test]
+fn relocated_second_even_mask_boundaries() -> Result<(), String> {
+    let guest = second_mask_source()?;
+    assert_eq!(
+        guest.parity.addition.iteration.addition.source.len(),
+        3_380_208,
+        "bounded geometry must preserve virgin bootstrap operands"
+    );
+    assert_eq!(
+        guest.scratch_resets.len(),
+        234,
+        "seven carry rounds and four-trit predicate"
+    );
+    assert_eq!(
+        build_relocated_second_even_mask_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile),
+        "current N15 only"
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.parity.addition.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (first, second) in [
+        (0, 0),
+        (0, 248),
+        (0, 250),
+        (0, 252),
+        (251, 254),
+        (252, 254),
+        (253, 0),
+        (255, 254),
+    ] {
+        check_second_mask_vector(&guest, &initial, first, second)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF and odd branches must not execute even mask"
+)]
+#[test]
+fn relocated_second_even_mask_preserves_bypass_paths() -> Result<(), String> {
+    let guest = second_mask_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.parity.addition.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    let sites = second_mask_sites(&guest);
+    for (input, expected) in [
+        (vec![], vec![0]),
+        (vec![252], vec![255]),
+        (vec![255], vec![2]),
+        (vec![0, 1, 42], vec![]),
+        (vec![255, 255, 42], vec![]),
+    ] {
+        let read_count = input.len().min(2);
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(SECOND_MASK_BUDGET, &mut |step| {
+                reached |= sites.contains(&step.before.registers.code_pointer);
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached, "earlier EOF/odd paths bypass even mask");
+        assert_eq!(machine.input_consumed(), read_count, "exact input");
+        assert_eq!(machine.output(), expected, "preserved output");
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical flag and canonical store omission negatives"
+)]
+#[test]
+fn relocated_second_even_mask_rejects_omitted_effects() -> Result<(), String> {
+    let guest = second_mask_source()?;
+    let sites = second_mask_sites(&guest);
+    for site in [
+        guest.flag_store_code_addresses[1],
+        guest.result_copies[1].destination_store,
+    ] {
+        let mut source =
+            guest.parity.addition.iteration.addition.source.clone();
+        let noop = (33..=126u8)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), site) == Some(b'o')
+            })
+            .ok_or("missing no-op")?;
+        let position =
+            usize::try_from(site).map_err(|error| error.to_string())?;
+        *source.get_mut(position).ok_or("missing code cell")? = noop;
+        let mut machine =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                252, 254, 42,
+            ])
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(SECOND_MASK_BUDGET, &mut |step| {
+                if sites.contains(&step.before.registers.code_pointer) {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(at(&trace, site)?.decoded, Some(b'o'), "mutation reached");
+        assert!(
+            check_second_mask_result(&guest, &machine, &trace, [252, 254])
+                .is_err(),
+            "omitted C{site} accepted: {outcome:?}"
+        );
+    }
     Ok(())
 }

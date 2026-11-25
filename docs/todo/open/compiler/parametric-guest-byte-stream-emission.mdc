@@ -68,8 +68,11 @@ addition and increment by three (336 reused words, 1,008 resets), or
 halts on odd. Full even sum plus three reaches 512, exposing the need
 for a second wrap at that boundary. A bounded trit-equality predicate
 now checks the full 257-value residual and all 32,768 even input pairs
-in host algebra; its guest emission is still open. Nonzero XOR, canonical masking,
-code restoration, and complete source-frame routing remain open. Evidence:
+in host algebra. A compact 3,380,208-cell variant now executes both
+wrap decisions and writes the canonical pair with dirty storage. All
+702 second-mask scratch resets, eight boundary vectors and omitted-
+effect controls pass. Nonzero XOR, a third read, code restoration
+and complete source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

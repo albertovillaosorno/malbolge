@@ -13434,3 +13434,31 @@ flag-mask folds isolate the low trit. The test checks the complete
 `total & 255`, including the sole double-wrap case. This can avoid a
 second general carry pass for masking, but it is not yet emitted,
 allocated or independently replayed as guest code.
+
+
+### Canonical second even mask in the guest
+
+The compact 3,380,208-cell second-even-mask variant retains the parity
+selection and both earlier EOF returns. It resets 234 arithmetic
+scratch words a second time (702 actual reset effects) and adds 473
+to the unmasked sum. The low six trits and first overflow Boolean
+select the original sum or that sum minus 256. The resulting residual
+at M7174869 is in 0..256. Three aligned Boolean AND operations and
+four flag folds then select the second subtraction only at 256.
+The two branches use genuine indirect transfers; fresh code cells
+perform both arms. Dirty temporary and result words are reset and
+copied back to the original canonical pair M7174451/M7174452.
+
+Eight traced boundary pairs, including (252, 254), validate the
+residual, both flags and selected transfers, all scratch resets,
+the dirty result stores, and preservation of the incremented sum,
+header and first parity lookup. Omitted second-flag and high-result
+stores fail the effect checker. Odd-second, empty and one-byte paths
+bypass the mask. The 94-phase canonical no-op encoding cache changes
+construction cost, not emitted bytes. An oversized 7,150,266-cell
+experiment collided with the bootstrap's untouched loader operands;
+the compact layout stays below those addresses.
+
+This proves the bounded second even arithmetic and canonical storage,
+not the nonzero XOR arm, third read, repeated code visits, independent
+source-frame admission or whole-C publication.

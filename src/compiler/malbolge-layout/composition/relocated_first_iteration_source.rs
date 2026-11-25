@@ -129,6 +129,45 @@ const WITH_SECOND_PARITY_ADD: Geometry = Geometry {
     eof_entry: 4_490_000,
     ..WITH_MASK
 };
+// The second mask has separate mutable operands and virgin continuations.
+// Its scratch bank is reset again; the incremented operand lives beyond it.
+const SECOND_MASK_COUNT: u32 = 234;
+const SECOND_MASK_STAY: u32 = 7_174_801;
+const SECOND_MASK_WRAP: u32 = 7_174_811;
+const SECOND_MASK_JOIN: u32 = 7_174_821;
+const SECOND_LOW_MASKS: [u32; 2] = [7_174_825, 7_174_829];
+const SECOND_FLAG_MASKS: [u32; 4] =
+    [7_174_833, 7_174_837, 7_174_841, 7_174_845];
+const SECOND_ADJUSTED: [u32; 2] = [7_174_849, 7_174_853];
+const SECOND_MASK_FLAG: [u32; 2] = [7_174_857, 7_174_861];
+const SECOND_SELECTED: [u32; 2] = [7_174_865, 7_174_869];
+const DOUBLE_STAY: u32 = 7_174_873;
+const DOUBLE_WRAP: u32 = 7_174_883;
+const DOUBLE_JOIN: u32 = 7_174_893;
+const DOUBLE_MASKS: [u32; 4] = [7_174_897, 7_174_901, 7_174_905, 7_174_909];
+const DOUBLE_FLAG: [u32; 2] = [7_174_913, 7_174_917];
+const DOUBLE_SELECTED: [u32; 2] = [7_174_921, 7_174_925];
+
+const SECOND_MASK_STAY_ENTRY: usize = 3_100_000;
+const SECOND_MASK_WRAP_ENTRY: usize = 3_115_000;
+const SECOND_MASK_JOIN_ENTRY: usize = 3_130_000;
+const DOUBLE_STAY_ENTRY: usize = 3_200_000;
+const DOUBLE_WRAP_ENTRY: usize = 3_215_000;
+const DOUBLE_JOIN_ENTRY: usize = 3_230_000;
+const SECOND_MASK_HEADER_EOF_ENTRY: usize = 3_300_000;
+const WITH_SECOND_MASK: Geometry = Geometry {
+    bounds: TapeBounds {
+        limit: 7_184_701,
+        start: 7_174_929,
+    },
+    cells: 3_380_208,
+    eof_entry: 3_350_000,
+    even_entry: 425_000,
+    join_entry: 430_000,
+    odd_entry: 427_000,
+    scratch: 7_183_201,
+    ..WITH_MASK
+};
 const WITH_SECOND_ADD: Geometry = Geometry {
     cells: 2_821_848,
     eof_entry: 2_800_000,
@@ -139,19 +178,38 @@ const WITH_SECOND_ADD: Geometry = Geometry {
 pub(super) enum IterationMode {
     First,
     SecondAdd,
+    SecondEvenMask,
     SecondParityAdd,
 }
 
 impl IterationMode {
+    fn first_entry(self, entry: usize) -> Result<usize, BuildError> {
+        if self.has_second_mask() {
+            entry.checked_add(90_000).ok_or(LAYOUT)
+        } else {
+            Ok(entry)
+        }
+    }
+
+    const fn has_second_mask(self) -> bool {
+        matches!(self, Self::SecondEvenMask)
+    }
+
+    const fn has_second_parity(self) -> bool {
+        matches!(self, Self::SecondParityAdd | Self::SecondEvenMask)
+    }
+
     const fn header_eof_entry(self) -> usize {
         match self {
             Self::First => HEADER_EOF_ENTRY,
             Self::SecondAdd => SECOND_ADD_HEADER_EOF_ENTRY,
             Self::SecondParityAdd => SECOND_PARITY_HEADER_EOF_ENTRY,
+            Self::SecondEvenMask => SECOND_MASK_HEADER_EOF_ENTRY,
         }
     }
 }
 
+type ConstantSpec = (u32, u32, bool);
 type ConstantTape = (Vec<u32>, u32, u32);
 
 /// First-iteration probe with canonical masked state and a second read.
@@ -276,6 +334,35 @@ pub struct RelocatedSecondParityAddSource {
     pub pointer_store_code_address: u32,
 }
 
+/// Second even arithmetic with an actual canonical modulo-256 result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondEvenMaskSource {
+    /// First wrap branch and the second (double-wrap) branch.
+    pub branch_code_addresses: [u32; 2],
+    /// Both exact Boolean selectors.
+    pub flag_addresses: [u32; 2],
+    /// Actual low-word stores for the two selectors.
+    pub flag_store_code_addresses: [u32; 2],
+    /// Both parity landings and the arithmetic sites. The earlier sum
+    /// word is reused during masking; the incremented sum survives.
+    pub parity: RelocatedSecondParityAddSource,
+    /// Residual after at most one subtraction.
+    pub residual_address: u32,
+    /// Both final canonical stores, low then high.
+    pub result_copies: [DirtyPhiCopySites; 2],
+    /// The original mask-result SSA reservation, now written again.
+    pub result_pair: [u32; 2],
+    /// Dirty arithmetic scratch reset again before the mask.
+    pub scratch_resets: Vec<ScratchResetSite>,
+}
+
+struct SecondMaskSites {
+    branches: [u32; 2],
+    copies: [DirtyPhiCopySites; 2],
+    flag_stores: [u32; 2],
+    resets: Vec<ScratchResetSite>,
+}
+
 struct SecondParitySites {
     branch: u32,
     lookup: u32,
@@ -316,6 +403,7 @@ struct SecondSites {
     eof_stores: [u32; 2],
     header_branch: u32,
     input: u32,
+    mask: Option<SecondMaskSites>,
     output: u32,
     output_store: u32,
     parity: Option<SecondParitySites>,
@@ -336,43 +424,12 @@ impl MaskTapes {
         plan: &mut TapePlan,
         mode: IterationMode,
     ) -> Result<Self, BuildError> {
-        // For low six trits, preserve via two row-one folds. The high
-        // trits of the offset sum are zero or one: row two then row zero
-        // maps either to zero. To extract a single arbitrary trit, the
-        // four other-digit rows 0,2,2,0 annihilate all three possibilities.
-        let mut constants = vec![
-            (before(STAY_ENTRY)?, STAY, true),
-            (before(WRAP_ENTRY)?, WRAP, true),
-            (before(MASK_JOIN_ENTRY)?, MASK_JOIN, true),
-            (473, OFFSET, true),
-            (14_348_542, LOW_MASKS[0], false),
-            (364, LOW_MASKS[1], true),
-            (1, FLAG_MASKS[0], true),
-            (14_348_905, FLAG_MASKS[1], false),
-            (14_348_905, FLAG_MASKS[2], false),
-            (1, FLAG_MASKS[3], true),
-            (before(SECOND_BYTE_ENTRY)?, SECOND_BYTE, true),
-            (before(SECOND_EOF_ENTRY)?, SECOND_EOF, true),
-            (0, SECOND_CLASS_MASKS[0], true),
-            (14_348_905, SECOND_CLASS_MASKS[1], false),
-            (14_348_905, SECOND_CLASS_MASKS[2], false),
-            (1, SECOND_CLASS_MASKS[3], true),
-            (before(PHI_ENTRY)?, PHI_JOIN, true),
-            (1, HEADER_MASKS[0], true),
-            (14_348_905, HEADER_MASKS[1], false),
-            (14_348_905, HEADER_MASKS[2], false),
-            (1, HEADER_MASKS[3], true),
-            (before(HEADER_BYTE_ENTRY)?, HEADER_BYTE, true),
-            (before(mode.header_eof_entry())?, HEADER_EOF, true),
-        ];
-        if matches!(mode, IterationMode::SecondParityAdd) {
-            constants.extend([
-                (SECOND_PARITY_MASK, SECOND_PARITY_POINTER, false),
-                (14_348_905, SECOND_PARITY_NORMALIZER, false),
-                (1, SECOND_PARITY_FLAG, true),
-                (before(SECOND_PARITY_EVEN_ENTRY)?, SECOND_PARITY_EVEN, true),
-                (before(SECOND_PARITY_ODD_ENTRY)?, SECOND_PARITY_ODD, true),
-            ]);
+        let mut constants = Self::first_mask_constants(mode)?;
+        if mode.has_second_parity() {
+            constants.extend(Self::second_parity_constants(mode)?);
+        }
+        if mode.has_second_mask() {
+            constants.extend(Self::second_mask_constants()?);
         }
         let mut mask_tapes = Vec::new();
         for (value, address, baseline_ones) in constants {
@@ -388,6 +445,69 @@ impl MaskTapes {
             ));
         }
         Ok(Self(mask_tapes))
+    }
+
+    fn extend_second_mask_addresses(addresses: &mut Vec<u32>) {
+        addresses.extend([
+            SECOND_MASK_STAY,
+            SECOND_MASK_WRAP,
+            SECOND_MASK_JOIN,
+        ]);
+        addresses.extend(SECOND_LOW_MASKS);
+        addresses.extend(SECOND_FLAG_MASKS);
+        addresses.extend(SECOND_ADJUSTED);
+        addresses.extend(SECOND_MASK_FLAG);
+        addresses.extend(SECOND_SELECTED);
+        addresses.extend([DOUBLE_STAY, DOUBLE_WRAP, DOUBLE_JOIN]);
+        addresses.extend(DOUBLE_MASKS);
+        addresses.extend(DOUBLE_FLAG);
+        addresses.extend(DOUBLE_SELECTED);
+    }
+
+    fn first_mask_constants(
+        mode: IterationMode,
+    ) -> Result<Vec<ConstantSpec>, BuildError> {
+        // For low six trits, preserve via two row-one folds. The high
+        // trits of the offset sum are zero or one: row two then row zero
+        // maps either to zero. To extract a single arbitrary trit, the
+        // four other-digit rows 0,2,2,0 annihilate all three possibilities.
+        Ok(vec![
+            (before(mode.first_entry(STAY_ENTRY)?)?, STAY, true),
+            (before(mode.first_entry(WRAP_ENTRY)?)?, WRAP, true),
+            (before(mode.first_entry(MASK_JOIN_ENTRY)?)?, MASK_JOIN, true),
+            (473, OFFSET, true),
+            (14_348_542, LOW_MASKS[0], false),
+            (364, LOW_MASKS[1], true),
+            (1, FLAG_MASKS[0], true),
+            (14_348_905, FLAG_MASKS[1], false),
+            (14_348_905, FLAG_MASKS[2], false),
+            (1, FLAG_MASKS[3], true),
+            (
+                before(mode.first_entry(SECOND_BYTE_ENTRY)?)?,
+                SECOND_BYTE,
+                true,
+            ),
+            (
+                before(mode.first_entry(SECOND_EOF_ENTRY)?)?,
+                SECOND_EOF,
+                true,
+            ),
+            (0, SECOND_CLASS_MASKS[0], true),
+            (14_348_905, SECOND_CLASS_MASKS[1], false),
+            (14_348_905, SECOND_CLASS_MASKS[2], false),
+            (1, SECOND_CLASS_MASKS[3], true),
+            (before(mode.first_entry(PHI_ENTRY)?)?, PHI_JOIN, true),
+            (1, HEADER_MASKS[0], true),
+            (14_348_905, HEADER_MASKS[1], false),
+            (14_348_905, HEADER_MASKS[2], false),
+            (1, HEADER_MASKS[3], true),
+            (
+                before(mode.first_entry(HEADER_BYTE_ENTRY)?)?,
+                HEADER_BYTE,
+                true,
+            ),
+            (before(mode.header_eof_entry())?, HEADER_EOF, true),
+        ])
     }
 
     pub(super) fn prepare(
@@ -445,11 +565,55 @@ impl MaskTapes {
             HEADER_BYTE,
             HEADER_EOF,
         ];
-        if matches!(mode, IterationMode::SecondParityAdd) {
+        if mode.has_second_parity() {
             addresses.extend(SECOND_PARITY_WORDS);
             addresses.sort_unstable();
         }
+        if mode.has_second_mask() {
+            Self::extend_second_mask_addresses(&mut addresses);
+        }
         emitter.prepare_odd_pairs(&addresses)
+    }
+
+    fn second_mask_constants() -> Result<[ConstantSpec; 16], BuildError> {
+        Ok([
+            (before(SECOND_MASK_STAY_ENTRY)?, SECOND_MASK_STAY, true),
+            (before(SECOND_MASK_WRAP_ENTRY)?, SECOND_MASK_WRAP, true),
+            (before(SECOND_MASK_JOIN_ENTRY)?, SECOND_MASK_JOIN, true),
+            (14_348_542, SECOND_LOW_MASKS[0], false),
+            (364, SECOND_LOW_MASKS[1], true),
+            (1, SECOND_FLAG_MASKS[0], true),
+            (14_348_905, SECOND_FLAG_MASKS[1], false),
+            (14_348_905, SECOND_FLAG_MASKS[2], false),
+            (1, SECOND_FLAG_MASKS[3], true),
+            (before(DOUBLE_STAY_ENTRY)?, DOUBLE_STAY, true),
+            (before(DOUBLE_WRAP_ENTRY)?, DOUBLE_WRAP, true),
+            (before(DOUBLE_JOIN_ENTRY)?, DOUBLE_JOIN, true),
+            (1, DOUBLE_MASKS[0], true),
+            (14_348_905, DOUBLE_MASKS[1], false),
+            (14_348_905, DOUBLE_MASKS[2], false),
+            (1, DOUBLE_MASKS[3], true),
+        ])
+    }
+
+    fn second_parity_constants(
+        mode: IterationMode,
+    ) -> Result<[ConstantSpec; 5], BuildError> {
+        Ok([
+            (SECOND_PARITY_MASK, SECOND_PARITY_POINTER, false),
+            (14_348_905, SECOND_PARITY_NORMALIZER, false),
+            (1, SECOND_PARITY_FLAG, true),
+            (
+                before(mode.first_entry(SECOND_PARITY_EVEN_ENTRY)?)?,
+                SECOND_PARITY_EVEN,
+                true,
+            ),
+            (
+                before(mode.first_entry(SECOND_PARITY_ODD_ENTRY)?)?,
+                SECOND_PARITY_ODD,
+                true,
+            ),
+        ])
     }
 
     pub(super) fn store(
@@ -534,6 +698,42 @@ impl IterationEmitter<'_, '_, '_> {
         self.adder.emitter.linear(CrazyData)
     }
 
+    fn double_wrap(&mut self) -> Result<[u32; 2], BuildError> {
+        // Each digit is one iff the corresponding residual trit is one.
+        // The required places 0,1,2,5 sum to 256, the maximum residual.
+        self.adder
+            .evaluate(b"0sxsypp", RESET_ONES, SECOND_SELECTED[1])?;
+        let mut conjunction = self.adder.copy()?;
+        let aligned = self.adder.copy()?;
+        for shift in 1u32..=5 {
+            self.adder.go(aligned)?;
+            let _: u32 = self.adder.emitter.linear(RotateData)?;
+            if matches!(shift, 1 | 2 | 5) {
+                self.adder
+                    .evaluate(b"xsxsxpsys2ppp", conjunction, aligned)?;
+                conjunction = self.adder.copy()?;
+            }
+        }
+        self.fold(&DOUBLE_MASKS)?;
+        let flag_store = self.copy_to(DOUBLE_FLAG)?;
+        let branch = self.select(DOUBLE_FLAG[1], 416)?;
+        self.selected_arm(
+            (DOUBLE_STAY_ENTRY, DOUBLE_STAY),
+            SECOND_SELECTED[1],
+            (DOUBLE_SELECTED, DOUBLE_JOIN),
+        )?;
+        self.selected_arm(
+            (DOUBLE_WRAP_ENTRY, DOUBLE_WRAP),
+            ZERO,
+            (DOUBLE_SELECTED, DOUBLE_JOIN),
+        )?;
+        self.adder.emitter.pad_to_entry(
+            DOUBLE_JOIN_ENTRY,
+            DOUBLE_JOIN.checked_add(1).ok_or(LAYOUT)?,
+        )?;
+        Ok([branch, flag_store])
+    }
+
     fn fold(&mut self, masks: &[u32]) -> Result<(), BuildError> {
         for &address in masks {
             self.adder.go(address)?;
@@ -577,7 +777,11 @@ impl IterationEmitter<'_, '_, '_> {
         })
     }
 
-    fn mask(&mut self, sum: u32) -> Result<MaskSites, BuildError> {
+    fn mask(
+        &mut self,
+        sum: u32,
+        mode: IterationMode,
+    ) -> Result<MaskSites, BuildError> {
         // Adding 3^6 - 256 makes trit six the overflow flag for sums
         // in 0..=511. Its low six trits are sum - 256 on overflow.
         let adjusted = self.adder.add(sum, OFFSET, 7)?;
@@ -590,11 +794,11 @@ impl IterationEmitter<'_, '_, '_> {
         self.fold(&FLAG_MASKS)?;
         let _: u32 = self.copy_to(FLAG)?;
         let branch = self.select(FLAG[1], 84)?;
-        self.mask_arm(STAY_ENTRY, STAY, sum)?;
-        self.mask_arm(WRAP_ENTRY, WRAP, ADJUSTED[1])?;
+        self.mask_arm(mode.first_entry(STAY_ENTRY)?, STAY, sum)?;
+        self.mask_arm(mode.first_entry(WRAP_ENTRY)?, WRAP, ADJUSTED[1])?;
         self.adder
             .emitter
-            .pad_to_entry(MASK_JOIN_ENTRY, 7_174_562)?;
+            .pad_to_entry(mode.first_entry(MASK_JOIN_ENTRY)?, 7_174_562)?;
         let high = self.prepare_byte_pair(MASKED)?;
         self.adder.load(SELECTED[1])?;
         let low = self.copy_to([MASKED_TEMP, MASKED[0]])?;
@@ -610,14 +814,35 @@ impl IterationEmitter<'_, '_, '_> {
         pointer: u32,
         value: u32,
     ) -> Result<(), BuildError> {
-        self.adder
-            .emitter
-            .pad_to_entry(entry, pointer.checked_add(1).ok_or(LAYOUT)?)?;
-        self.adder.load(value)?;
-        let _: u32 = self.copy_to(SELECTED)?;
-        self.adder.go(MASK_JOIN)?;
-        let _: u32 = self.adder.emitter.append_indirect()?;
-        Ok(())
+        self.selected_arm((entry, pointer), value, (SELECTED, MASK_JOIN))
+    }
+
+    fn once_wrapped(&mut self, sum: u32) -> Result<[u32; 2], BuildError> {
+        let adjusted = self.adder.add(sum, OFFSET, 7)?;
+        self.fold(&SECOND_LOW_MASKS)?;
+        let _: u32 = self.copy_to(SECOND_ADJUSTED)?;
+        for _ in 0u32..6 {
+            self.adder.go(adjusted)?;
+            let _: u32 = self.adder.emitter.linear(RotateData)?;
+        }
+        self.fold(&SECOND_FLAG_MASKS)?;
+        let flag_store = self.copy_to(SECOND_MASK_FLAG)?;
+        let branch = self.select(SECOND_MASK_FLAG[1], 344)?;
+        self.selected_arm(
+            (SECOND_MASK_STAY_ENTRY, SECOND_MASK_STAY),
+            sum,
+            (SECOND_SELECTED, SECOND_MASK_JOIN),
+        )?;
+        self.selected_arm(
+            (SECOND_MASK_WRAP_ENTRY, SECOND_MASK_WRAP),
+            SECOND_ADJUSTED[1],
+            (SECOND_SELECTED, SECOND_MASK_JOIN),
+        )?;
+        self.adder.emitter.pad_to_entry(
+            SECOND_MASK_JOIN_ENTRY,
+            SECOND_MASK_JOIN.checked_add(1).ok_or(LAYOUT)?,
+        )?;
+        Ok([branch, flag_store])
     }
 
     fn prepare_byte_pair(&mut self, pair: [u32; 2]) -> Result<u32, BuildError> {
@@ -658,6 +883,21 @@ impl IterationEmitter<'_, '_, '_> {
         Ok(sites)
     }
 
+    fn reset_scratch(
+        &mut self,
+        count: u32,
+    ) -> Result<Vec<ScratchResetSite>, BuildError> {
+        let mut resets = Vec::new();
+        for slot in 0..count {
+            let address = scratch_address(self.adder.scratch, slot)?;
+            resets.push(ScratchResetSite {
+                address,
+                code_addresses: self.reset_dirty_word(address)?,
+            });
+        }
+        Ok(resets)
+    }
+
     fn second_add(
         &mut self,
         mode: IterationMode,
@@ -665,25 +905,20 @@ impl IterationEmitter<'_, '_, '_> {
         let count = match mode {
             IterationMode::First => return Err(LAYOUT),
             IterationMode::SecondAdd => SECOND_ADD_COUNT,
-            IterationMode::SecondParityAdd => SECOND_PARITY_ADD_COUNT,
+            IterationMode::SecondParityAdd | IterationMode::SecondEvenMask => {
+                SECOND_PARITY_ADD_COUNT
+            },
         };
         let mut adder = Adder {
             count,
             cursor: 0,
             emitter: self.adder.emitter,
-            scratch: MASK_SCRATCH,
+            scratch: self.adder.scratch,
         };
-        let mut scratch_resets = Vec::new();
-        for slot in 0..count {
-            let address = scratch_address(MASK_SCRATCH, slot)?;
-            let mut continuation = IterationEmitter { adder: &mut adder };
-            scratch_resets.push(ScratchResetSite {
-                address,
-                code_addresses: continuation.reset_dirty_word(address)?,
-            });
-        }
+        let scratch_resets =
+            IterationEmitter { adder: &mut adder }.reset_scratch(count)?;
         let sum_address = adder.add(PHI_DEST[2], PHI_DEST[0], 6)?;
-        let incremented = if matches!(mode, IterationMode::SecondParityAdd) {
+        let incremented = if mode.has_second_parity() {
             Some(adder.add(sum_address, THREE, 6)?)
         } else {
             None
@@ -696,10 +931,13 @@ impl IterationEmitter<'_, '_, '_> {
         })
     }
 
-    fn second_byte_arm(&mut self) -> Result<[u32; 3], BuildError> {
+    fn second_byte_arm(
+        &mut self,
+        mode: IterationMode,
+    ) -> Result<[u32; 3], BuildError> {
         self.adder
             .emitter
-            .pad_to_entry(SECOND_BYTE_ENTRY, 7_174_646)?;
+            .pad_to_entry(mode.first_entry(SECOND_BYTE_ENTRY)?, 7_174_646)?;
         let high = self.prepare_byte_pair(SECOND_PAIR)?;
         self.adder.load(SECOND_RAW[1])?;
         let low = self.copy_to([SECOND_PAIR_TEMP, SECOND_PAIR[0]])?;
@@ -707,6 +945,29 @@ impl IterationEmitter<'_, '_, '_> {
         let byte_transfer = self.adder.emitter.append_indirect()?;
 
         Ok([low, high, byte_transfer])
+    }
+
+    fn second_eof_arm(
+        &mut self,
+        eof_low: &[u32],
+        eof_high: &[u32],
+        mode: IterationMode,
+    ) -> Result<[u32; 3], BuildError> {
+        self.adder
+            .emitter
+            .pad_to_entry(mode.first_entry(SECOND_EOF_ENTRY)?, 7_174_656)?;
+        self.prepare_eof_pair(SECOND_PAIR)?;
+        let eof_low_store =
+            self.adder
+                .emitter
+                .store_tape(eof_low, SECOND_PAIR[0], ZERO)?;
+        let eof_high_store =
+            self.adder
+                .emitter
+                .store_tape(eof_high, SECOND_PAIR[1], ZERO)?;
+        self.adder.go(PHI_JOIN)?;
+        let eof_transfer = self.adder.emitter.append_indirect()?;
+        Ok([eof_low_store, eof_high_store, eof_transfer])
     }
 
     fn second_eof_output(&mut self) -> Result<[u32; 3], BuildError> {
@@ -721,7 +982,34 @@ impl IterationEmitter<'_, '_, '_> {
         Ok([store, output, halt])
     }
 
-    fn second_parity(&mut self) -> Result<SecondParitySites, BuildError> {
+    fn second_mask(&mut self, sum: u32) -> Result<SecondMaskSites, BuildError> {
+        let mut adder = Adder {
+            count: SECOND_MASK_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: self.adder.scratch,
+        };
+        let mut mask = IterationEmitter { adder: &mut adder };
+        let resets = mask.reset_scratch(SECOND_MASK_COUNT)?;
+        let [first, first_store] = mask.once_wrapped(sum)?;
+        let [double, double_store] = mask.double_wrap()?;
+        let copies = [
+            mask.copy_dirty_word(DOUBLE_SELECTED[1], MASKED[0], MASKED_TEMP)?,
+            mask.copy_dirty_word(ZERO, MASKED[1], MASKED_TEMP)?,
+        ];
+        adder.finish()?;
+        Ok(SecondMaskSites {
+            branches: [first, double],
+            copies,
+            flag_stores: [first_store, double_store],
+            resets,
+        })
+    }
+
+    fn second_parity(
+        &mut self,
+        mode: IterationMode,
+    ) -> Result<SecondParitySites, BuildError> {
         self.adder.load(PHI_DEST[0])?;
         self.adder.go(SECOND_PARITY_ONES)?;
         let _: u32 = self.adder.emitter.linear(CrazyData)?;
@@ -739,12 +1027,12 @@ impl IterationEmitter<'_, '_, '_> {
         let parity_store = self.adder.emitter.linear(CrazyData)?;
         let branch = self.select(SECOND_PARITY_FLAG, 330)?;
         self.adder.emitter.pad_to_entry(
-            SECOND_PARITY_ODD_ENTRY,
+            mode.first_entry(SECOND_PARITY_ODD_ENTRY)?,
             SECOND_PARITY_ODD.checked_add(1).ok_or(LAYOUT)?,
         )?;
         let odd_halt = self.adder.emitter.append(Halt)?;
         self.adder.emitter.pad_to_entry(
-            SECOND_PARITY_EVEN_ENTRY,
+            mode.first_entry(SECOND_PARITY_EVEN_ENTRY)?,
             SECOND_PARITY_EVEN.checked_add(1).ok_or(LAYOUT)?,
         )?;
         Ok(SecondParitySites {
@@ -764,41 +1052,40 @@ impl IterationEmitter<'_, '_, '_> {
     ) -> Result<SecondSites, BuildError> {
         let InputSites { branch, input } = self.classify_second()?;
 
-        self.adder.emitter.pad_to_entry(PHI_ENTRY, 7_174_706)?;
+        self.adder
+            .emitter
+            .pad_to_entry(mode.first_entry(PHI_ENTRY)?, 7_174_706)?;
         let HeaderSites {
             branch: header_branch,
             commits: phi_commits,
             snapshots: phi_snapshots,
         } = self.header()?;
-        let [low, high, byte_transfer] = self.second_byte_arm()?;
+        let [low, high, byte_transfer] = self.second_byte_arm(mode)?;
 
+        let [eof_low_store, eof_high_store, eof_transfer] =
+            self.second_eof_arm(eof_low, eof_high, mode)?;
         self.adder
             .emitter
-            .pad_to_entry(SECOND_EOF_ENTRY, 7_174_656)?;
-        self.prepare_eof_pair(SECOND_PAIR)?;
-        let eof_low_store =
-            self.adder
-                .emitter
-                .store_tape(eof_low, SECOND_PAIR[0], ZERO)?;
-        let eof_high_store =
-            self.adder
-                .emitter
-                .store_tape(eof_high, SECOND_PAIR[1], ZERO)?;
-        self.adder.go(PHI_JOIN)?;
-        let eof_transfer = self.adder.emitter.append_indirect()?;
-        self.adder
-            .emitter
-            .pad_to_entry(HEADER_BYTE_ENTRY, 7_174_774)?;
-        let parity = if matches!(mode, IterationMode::SecondParityAdd) {
-            Some(self.second_parity()?)
+            .pad_to_entry(mode.first_entry(HEADER_BYTE_ENTRY)?, 7_174_774)?;
+        let parity = if mode.has_second_parity() {
+            Some(self.second_parity(mode)?)
         } else {
             None
         };
         let addition = match mode {
             IterationMode::First => None,
-            IterationMode::SecondAdd | IterationMode::SecondParityAdd => {
-                Some(self.second_add(mode)?)
-            },
+            IterationMode::SecondAdd
+            | IterationMode::SecondParityAdd
+            | IterationMode::SecondEvenMask => Some(self.second_add(mode)?),
+        };
+        let mask = if mode.has_second_mask() {
+            let sum = addition
+                .as_ref()
+                .and_then(|sites| sites.incremented)
+                .ok_or(LAYOUT)?;
+            Some(self.second_mask(sum)?)
+        } else {
+            None
         };
         let byte_halt = self.adder.emitter.append(Halt)?;
         self.adder
@@ -814,6 +1101,7 @@ impl IterationEmitter<'_, '_, '_> {
             eof_stores: [eof_low_store, eof_high_store],
             header_branch,
             input,
+            mask,
             output,
             output_store,
             parity,
@@ -836,6 +1124,24 @@ impl IterationEmitter<'_, '_, '_> {
             let _: u32 = self.adder.emitter.append(NoOperation)?;
         }
         self.adder.emitter.append_indirect()
+    }
+
+    fn selected_arm(
+        &mut self,
+        landing: (usize, u32),
+        value: u32,
+        destination: ([u32; 2], u32),
+    ) -> Result<(), BuildError> {
+        let (entry, pointer) = landing;
+        let (selected, join) = destination;
+        self.adder
+            .emitter
+            .pad_to_entry(entry, pointer.checked_add(1).ok_or(LAYOUT)?)?;
+        self.adder.load(value)?;
+        let _: u32 = self.copy_to(selected)?;
+        self.adder.go(join)?;
+        let _: u32 = self.adder.emitter.append_indirect()?;
+        Ok(())
     }
 }
 
@@ -987,16 +1293,24 @@ pub fn build_relocated_second_parity_add_source(
         Some(IterationMode::SecondParityAdd),
     )?;
     let mut sites = candidate.ok_or(LAYOUT)?;
+    parity_from_sites(addition, &mut sites, IterationMode::SecondParityAdd)
+}
+
+fn parity_from_sites(
+    addition: RelocatedFirstByteAddSource,
+    sites: &mut IterationSites,
+    mode: IterationMode,
+) -> Result<RelocatedSecondParityAddSource, BuildError> {
     let second = sites.second.addition.take().ok_or(LAYOUT)?;
     let parity = sites.second.parity.take().ok_or(LAYOUT)?;
     Ok(RelocatedSecondParityAddSource {
         addition: RelocatedSecondAddSource {
-            iteration: iteration_from_sites(addition, &sites),
+            iteration: iteration_from_sites(addition, sites),
             scratch_resets: second.scratch_resets,
             sum_address: second.sum_address,
         },
         branch_code_address: parity.branch,
-        even_entry: u32::try_from(SECOND_PARITY_EVEN_ENTRY)
+        even_entry: u32::try_from(mode.first_entry(SECOND_PARITY_EVEN_ENTRY)?)
             .map_err(|_error| LAYOUT)?,
         incremented_address: second.incremented.ok_or(LAYOUT)?,
         lookup_code_address: parity.lookup,
@@ -1008,6 +1322,39 @@ pub fn build_relocated_second_parity_add_source(
     })
 }
 
+/// Canonically mask the second even sum, including the 512 boundary.
+///
+/// Odd second bytes still halt before XOR; neither path reads a third byte.
+/// This is an executable physical mask probe, not complete C lowering.
+///
+/// # Errors
+/// Refuses unsupported profiles or exhausted bounded geometry.
+pub fn build_relocated_second_even_mask_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondEvenMaskSource, BuildError> {
+    let (addition, candidate) = build(
+        profile,
+        WITH_SECOND_MASK,
+        Some(IterationMode::SecondEvenMask),
+    )?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let mask = sites.second.mask.take().ok_or(LAYOUT)?;
+    Ok(RelocatedSecondEvenMaskSource {
+        branch_code_addresses: mask.branches,
+        flag_addresses: [SECOND_MASK_FLAG[1], DOUBLE_FLAG[1]],
+        flag_store_code_addresses: mask.flag_stores,
+        parity: parity_from_sites(
+            addition,
+            &mut sites,
+            IterationMode::SecondEvenMask,
+        )?,
+        residual_address: SECOND_SELECTED[1],
+        result_copies: mask.copies,
+        result_pair: MASKED,
+        scratch_resets: mask.resets,
+    })
+}
+
 pub(super) fn emit_iteration(
     adder: &mut Adder<'_, '_>,
     sum: u32,
@@ -1016,7 +1363,7 @@ pub(super) fn emit_iteration(
 ) -> Result<IterationSites, BuildError> {
     let [eof_low, eof_high] = eof;
     let mut emitter = IterationEmitter { adder };
-    let mask = emitter.mask(sum)?;
+    let mask = emitter.mask(sum, mode)?;
     let second = emitter.second_read(eof_low, eof_high, mode)?;
     Ok(IterationSites { mask, second })
 }
