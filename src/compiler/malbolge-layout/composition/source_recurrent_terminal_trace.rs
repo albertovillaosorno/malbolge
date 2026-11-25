@@ -8,23 +8,26 @@
 //   - LICENSE
 // Boundary-Contract:
 // - Owns:
-//   - Finite physical factored lookup and commit trace.
+//   - Finite physical EOF terminal trace.
 // - Must-Not:
 //   - Authorize the complete SSA frame or relax publication limits.
 // - Allows:
-//   - Inputs: source transition values, table geometry and normative trace.
-//   - Outputs: ordered physical transition receipts.
+//   - Inputs: final source state, terminal geometry and normative trace.
+//   - Outputs: exact terminal data-route and output receipt.
 // - Split-When:
 //   - Additional table or commit shapes are needed.
 // - Merge-When:
 //   - Full source-frame verification owns recurrent transition semantics.
 // - Summary:
+//   - Authenticate both EOF contribution paths and their joined byte.
 
 //! Check the straight-line EOF terminal effects in the same normative replay.
 
+use std::collections::BTreeSet;
+
 use malbolge::{
     ProfileStepTrace, StepOutcome, Termination, TraceInput, current_profile,
-    decode_profile_instruction, profile_crazy,
+    decode_profile_instruction, profile_crazy, profile_rotate,
 };
 
 use super::super::{
@@ -33,23 +36,74 @@ use super::super::{
 };
 
 const OPS: &[u8; 33] = b"*jpj*jpooooooj*jjpjpj*jpj*jjpjp<v";
+// The terminal combines residues on disjoint seven/eight-trit fields.
+const SPLIT: u32 = 2_187;
 
-pub(in super::super) struct TerminalTrace {
-    branch: u32,
-    byte: Option<u8>,
-    cells: Vec<u32>,
-    dispatch: Option<(usize, u32)>,
-    eof_landings: [u32; 2],
-    lookup_bases: [u32; 2],
-    output_word: Option<u32>,
+#[derive(Clone, Copy)]
+struct TerminalGeometry {
+    constants: [[u32; 2]; 2],
+    encoding: [[u32; 16]; 2],
     scratch: u32,
-    start_index: Option<usize>,
-    terminal: u32,
+    state: [u32; 2],
+    tables: [u32; 2],
 }
 
-impl TerminalTrace {
-    fn lookup_addresses(&self, byte: u8) -> [u32; 2] {
-        let [high, low] = self.lookup_bases;
+impl TerminalGeometry {
+    fn data_route(self, byte: u8, landing: u32) -> [u32; 33] {
+        let [[low_select, low_twos], [high_select, high_twos]] = self.constants;
+        let [low, high] = self.state;
+        let [high_result, low_result] = self.lookup_addresses(byte);
+        let scratch = self.scratch;
+        [
+            landing.saturating_add(1),
+            landing.saturating_add(2),
+            high,
+            high.saturating_add(1),
+            high_select,
+            high_select.saturating_add(1),
+            high,
+            high.saturating_add(1),
+            high.saturating_add(2),
+            high.saturating_add(3),
+            high.saturating_add(4),
+            high.saturating_add(5),
+            high.saturating_add(6),
+            high.saturating_add(7),
+            high_twos,
+            high_twos.saturating_add(1),
+            high,
+            high_result,
+            high_result.saturating_add(1),
+            scratch,
+            scratch.saturating_add(1),
+            low_select,
+            low_select.saturating_add(1),
+            low,
+            low.saturating_add(1),
+            low_twos,
+            low_twos.saturating_add(1),
+            low,
+            low_result,
+            low_result.saturating_add(1),
+            scratch,
+            scratch.saturating_add(1),
+            scratch.saturating_add(2),
+        ]
+    }
+
+    fn high_selector(self) -> u32 {
+        // A three-field mask selects raw column 17 with parity/carry zero.
+        let ones = current_profile().eof_word().div_euclid(2);
+        let [_, high] = self.tables;
+        crazy(ones, high)
+            .div_euclid(19_683)
+            .saturating_mul(19_683)
+            .saturating_add(19_602)
+            .saturating_add(crazy(ones, 17).rem_euclid(81))
+    }
+
+    fn lookup_addresses(self, byte: u8) -> [u32; 2] {
+        let [low, high] = self.tables;
         [
             high.saturating_add(504)
                 .saturating_add(u32::from(byte >> 4u32).saturating_mul(729)),
@@ -58,25 +112,88 @@ impl TerminalTrace {
         ]
     }
 
+    fn new(probe: &SourceRecurrentTransitionProbe<'_>) -> Result<Self, Error> {
+        let guard = &probe.loop_probe.guard;
+        let extent = guard.io.physical_source.len();
+        let scratch = probe.output_scratch;
+        let state = probe.loop_probe.state.words;
+        let [low, high] = state;
+        let mut reserved = [low, low.saturating_add(1)]
+            .into_iter()
+            .chain((0..=7).map(|offset| high.saturating_add(offset)))
+            .chain(guard.classifier_words)
+            .chain(guard.eof_landings.into_iter().flat_map(|address| {
+                [
+                    address,
+                    address.saturating_add(1),
+                    address.saturating_add(2),
+                    address.saturating_add(3),
+                ]
+            }))
+            .chain([guard.capture_word, guard.byte_landing])
+            .chain(probe.scratch_words)
+            .chain(probe.reset_constants.into_iter().flatten())
+            .chain(probe.route.data_words())
+            .collect::<BTreeSet<_>>();
+        for address in [scratch, scratch.saturating_add(1)].into_iter().chain(
+            probe
+                .output_constants
+                .into_iter()
+                .flatten()
+                .flat_map(|address| [address, address.saturating_add(1)]),
+        ) {
+            if usize::try_from(address).map_or(true, |offset| offset < extent)
+                || address >= current_profile().memory_words()
+                || !reserved.insert(address)
+            {
+                return Err(Error::InvalidTransitionBinding);
+            }
+        }
+        let [_, low_table, _, high_table] = probe.tables;
+        Ok(Self {
+            constants: probe.output_constants,
+            encoding: probe.loop_probe.state.encoding,
+            scratch,
+            state,
+            tables: [low_table, high_table],
+        })
+    }
+
+    fn state_values(self, byte: u8) -> Result<[u32; 2], Error> {
+        let [low, high] = self.encoding;
+        Ok([
+            *low.get(usize::from(byte & 15))
+                .ok_or(Error::InvalidTransitionBinding)?,
+            *high
+                .get(usize::from(byte >> 4u32))
+                .ok_or(Error::InvalidTransitionBinding)?,
+        ])
+    }
+}
+
+pub(in super::super) struct TerminalTrace {
+    branch: u32,
+    byte: Option<u8>,
+    cells: Vec<u32>,
+    dispatch: Option<(usize, u32)>,
+    eof_landings: [u32; 2],
+    geometry: TerminalGeometry,
+    high_word: Option<u32>,
+    output_word: Option<u32>,
+    start_index: Option<usize>,
+    terminal: u32,
+}
+
+impl TerminalTrace {
     pub(in super::super) fn new(
         probe: &SourceRecurrentTransitionProbe<'_>,
     ) -> Result<Self, Error> {
         let guard = &probe.loop_probe.guard;
         let source = guard.io.physical_source;
         let terminal = probe.terminal_address;
-        let scratch = probe.output_scratch;
         let offset = usize::try_from(terminal)
             .map_err(|_error| Error::InvalidTransitionBinding)?;
-        if usize::try_from(scratch)
-            .map_or(true, |address| address < source.len())
-            || scratch >= current_profile().memory_words()
-            || probe.loop_probe.state.words.contains(&scratch)
-            || guard.classifier_words.contains(&scratch)
-            || guard.eof_landings.contains(&scratch)
-            || [guard.capture_word, guard.byte_landing].contains(&scratch)
-        {
-            return Err(Error::InvalidTransitionBinding);
-        }
+        let geometry = TerminalGeometry::new(probe)?;
         let cells = source
             .get(offset..offset.saturating_add(OPS.len()))
             .ok_or(Error::InvalidTransitionBinding)?;
@@ -91,16 +208,15 @@ impl TerminalTrace {
                 return Err(Error::InvalidTransitionBinding);
             }
         }
-        let [_, low, _, high] = probe.tables;
         Ok(Self {
             branch: guard.branch_address,
             byte: None,
             cells: cells.iter().map(|cell| u32::from(*cell)).collect(),
             dispatch: None,
             eof_landings: guard.eof_landings,
-            lookup_bases: [high, low],
+            geometry,
+            high_word: None,
             output_word: None,
-            scratch,
             start_index: None,
             terminal,
         })
@@ -168,7 +284,7 @@ impl TerminalTrace {
         Ok(SourceRecurrentTerminalCheckpoint {
             byte,
             halt_index: start.saturating_add(32),
-            lookup_addresses: self.lookup_addresses(byte),
+            lookup_addresses: self.geometry.lookup_addresses(byte),
             output_word,
             scratch_indices: [
                 start.saturating_add(19),
@@ -184,7 +300,6 @@ impl TerminalTrace {
         offset: usize,
     ) -> Result<(), Error> {
         let before = trace.before.registers;
-        let after = trace.after.registers;
         let byte = self.byte.ok_or(Error::GuestTransitionMismatch)?;
         let expected_result = if offset == 32 {
             StepOutcome::Terminated(Termination::HaltInstruction)
@@ -203,20 +318,11 @@ impl TerminalTrace {
         {
             return Err(Error::GuestTransitionMismatch);
         }
-        let [high, low] = self.lookup_addresses(byte);
-        let address = match offset {
-            17 => Some(high),
-            28 => Some(low),
-            19 | 30 => Some(self.scratch),
-            _ => None,
-        };
-        if let Some(expected) = address {
-            verify_crazy(trace, expected)?;
-        }
-        if offset == 30 && after.accumulator.rem_euclid(256) != u32::from(byte)
-        {
-            return Err(Error::GuestTransitionMismatch);
-        }
+        let (_, landing) =
+            self.dispatch.ok_or(Error::GuestTransitionMismatch)?;
+        let route = self.geometry.data_route(byte, landing);
+        verify_route(trace, offset, &route)?;
+        self.verify_operands(trace, offset, byte)?;
         if offset == 31 {
             if trace.output != Some(byte)
                 || before.accumulator.rem_euclid(256) != u32::from(byte)
@@ -256,32 +362,136 @@ impl TerminalTrace {
         }
         Ok(())
     }
+
+    fn verify_operands(
+        &mut self,
+        trace: &ProfileStepTrace,
+        offset: usize,
+        byte: u8,
+    ) -> Result<(), Error> {
+        let twos = current_profile().eof_word();
+        let ones = twos.div_euclid(2);
+        let carry = twos.saturating_sub(81);
+        let [low, high] = self.geometry.state_values(byte)?;
+        let [high_address, low_address] = self.geometry.lookup_addresses(byte);
+        let high_selector = self.geometry.high_selector();
+        let after = trace.after.registers.accumulator;
+        let before = trace.before.registers.accumulator;
+        let old = trace.memory_reads.data.map(|data| data.value);
+        let valid = match offset {
+            0 => after == carry,
+            2 => old == Some(high) && before == carry,
+            4 => after == high_selector,
+            6 => {
+                old == Some(crazy(high, carry))
+                    && before == high_selector
+                    && after.checked_add(1) == Some(high_address)
+            },
+            14 | 25 => old == Some(twos) && after == twos,
+            17 | 28 => before == twos,
+            19 => {
+                // The high contribution occupies only the low seven trits;
+                // the final low selector supplies twos on this field.
+                let valid = old == Some(ones)
+                    && after.div_euclid(SPLIT) == ones.div_euclid(SPLIT)
+                    && crazy(after, twos).rem_euclid(SPLIT).rem_euclid(256)
+                        == u32::from(byte & 0xf0);
+                if valid {
+                    self.high_word = Some(after);
+                }
+                valid
+            },
+            21 => after == twos.saturating_sub(17),
+            23 => {
+                old == Some(low)
+                    && before == twos.saturating_sub(17)
+                    && after.checked_add(1) == Some(low_address)
+            },
+            30 => {
+                // The low contribution must provide exactly the low nibble
+                // using the other eight trits, not cancel a wrong high one.
+                old == self.high_word
+                    && self.high_word.is_some()
+                    && before.rem_euclid(SPLIT) == SPLIT.saturating_sub(1)
+                    && crazy(ones, before)
+                        .div_euclid(SPLIT)
+                        .saturating_mul(SPLIT)
+                        .rem_euclid(256)
+                        == u32::from(byte & 15)
+                    && after.rem_euclid(256) == u32::from(byte)
+            },
+            _ => true,
+        };
+        if !valid {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        Ok(())
+    }
 }
 
-fn verify_crazy(trace: &ProfileStepTrace, address: u32) -> Result<(), Error> {
+fn crazy(data: u32, accumulator: u32) -> u32 {
+    profile_crazy(data, accumulator, current_profile().word_trits())
+}
+
+fn verify_route(
+    trace: &ProfileStepTrace,
+    offset: usize,
+    route: &[u32; 33],
+) -> Result<(), Error> {
     let before = trace.before.registers;
     let after = trace.after.registers;
-    let data = trace
-        .memory_reads
-        .data
-        .ok_or(Error::GuestTransitionMismatch)?;
-    if before.data_pointer != address
-        || data.address != address
-        || profile_crazy(
-            data.value,
-            before.accumulator,
-            current_profile().word_trits(),
-        ) != after.accumulator
-        || trace.memory_delta.data.map_or(
-            data.value != after.accumulator,
-            |write| {
-                write.address != address
-                    || write.before != data.value
-                    || write.after != after.accumulator
-            },
-        )
-    {
+    let address = *route.get(offset).ok_or(Error::GuestTransitionMismatch)?;
+    let next = route
+        .get(offset.saturating_add(1))
+        .copied()
+        .unwrap_or(address);
+    if before.data_pointer != address || after.data_pointer != next {
         return Err(Error::GuestTransitionMismatch);
+    }
+    match trace.decoded {
+        Some(b'p' | b'*') => {
+            let data = trace
+                .memory_reads
+                .data
+                .ok_or(Error::GuestTransitionMismatch)?;
+            let result = if trace.decoded == Some(b'p') {
+                crazy(data.value, before.accumulator)
+            } else {
+                profile_rotate(data.value, current_profile().memory_words())
+            };
+            if data.address != address
+                || after.accumulator != result
+                || trace
+                    .memory_delta
+                    .data
+                    .map(|write| (write.address, write.before, write.after))
+                    != (data.value != result)
+                        .then_some((address, data.value, result))
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        },
+        Some(b'j') => {
+            let data = trace
+                .memory_reads
+                .data
+                .ok_or(Error::GuestTransitionMismatch)?;
+            if data.address != address
+                || data.value.checked_add(1) != Some(next)
+                || after.accumulator != before.accumulator
+                || trace.memory_delta.data.is_some()
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        },
+        _ => {
+            if trace.memory_reads.data.is_some()
+                || trace.memory_delta.data.is_some()
+                || after.accumulator != before.accumulator
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        },
     }
     Ok(())
 }

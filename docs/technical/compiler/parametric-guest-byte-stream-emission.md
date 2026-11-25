@@ -14338,3 +14338,19 @@ entering the declared terminal. The first terminal instruction must
 occur exactly two trace steps after the guard. All nine transition
 tests pass, including the five frozen full-image replays. This does
 not certify arbitrary byte-arm control paths.
+
+The finite EOF verifier additionally authenticates the data pointer before
+and after each of the 33 terminal instructions, all data accesses, the
+relevant selector and uniform-rotation values, the high/low encoded state
+operands, and both staged output contributions. The two contributions
+occupy disjoint seven/eight-trit fields and must independently yield the
+source high and low nibbles modulo 256; cancellation of incorrect
+contributions is not sufficient. Selector/continuation pairs and scratch
+words must be disjoint from state routes, table banks, seed banks and other
+bound operands. False, overlapping and out-of-bounds selector geometry
+refuses. One actual source-loaded bootstrap and 512 independent forks
+cover every final byte at both EOF landing phases, with the canonical
+source projection, physical transition audit and terminal receipt agreeing.
+This is a bounded post-bootstrap census, not a separate source-compiled
+artifact or an initialization proof. The five full source-backed replays
+and original fail-closed C23 publication gate remain mandatory.

@@ -547,7 +547,15 @@ fn validate_data_geometry(
         .chain([guard.capture_word, guard.byte_landing, probe.output_scratch])
         .chain(probe.scratch_words)
         .chain(probe.reset_constants.into_iter().flatten())
-        .chain(probe.route.data_words());
+        .chain(probe.route.data_words())
+        .chain(
+            probe
+                .output_constants
+                .into_iter()
+                .flatten()
+                .flat_map(|address| [address, address.saturating_add(1)]),
+        )
+        .chain([probe.output_scratch.saturating_add(1)]);
     for (index, (start, end)) in ranges.iter().copied().enumerate() {
         if usize::try_from(start)
             .map_or(true, |address| address < source_length)

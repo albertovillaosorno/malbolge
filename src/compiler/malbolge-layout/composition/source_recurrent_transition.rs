@@ -68,6 +68,8 @@ pub struct SourceRecurrentTransitionProbe<'source> {
     pub lookup: [[u32; 2]; 5],
     /// Same signed guard and unsigned carried-state replay.
     pub loop_probe: SourceRecurrentLoopProbe<'source>,
+    /// EOF selector and uniform rotation constants, in low/high order.
+    pub output_constants: [[u32; 2]; 2],
     /// Expanded scratch word used by both EOF contribution stores.
     pub output_scratch: u32,
     /// Reusable first and second dirty-reset crazy sites.

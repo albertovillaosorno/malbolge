@@ -35,13 +35,15 @@ use super::super::source_recurrent_io_tests::{
     VECTORS, checksum, checksum_wire,
 };
 use super::super::source_recurrent_state::source_recurrent_state_tests;
-use super::super::verify_source_recurrent_loop;
+use super::super::{
+    ReplayJournal, SourceProjection, verify_source_recurrent_loop,
+};
 use super::{
     Error, GuardPlan, ParityPlan, ProjectionPlans, SourceRecurrentLoopProbe,
     SourceRecurrentRouteProbe, SourceRecurrentTransitionCheckpoint,
     SourceRecurrentTransitionProbe, SourceTransitionValue, StatePlan,
-    TernaryCfgTerminator, admit_probe, project_function_with_plans,
-    verify_source_recurrent_transition,
+    TernaryCfgTerminator, TransitionTrace, admit_probe,
+    project_function_with_plans, verify_source_recurrent_transition,
 };
 
 fn proposal<'source>(
@@ -57,6 +59,7 @@ fn proposal<'source>(
             guard: source_recurrent_guard_tests::proposal(wire, stream, guest),
             state: source_recurrent_state_tests::proposal(wire, stream, guest)?,
         },
+        output_constants: [[7_180_890, 7_175_154], [7_175_134, 7_175_136]],
         output_scratch: 7_180_900,
         reset_addresses: [guest.capture.reset[0], guest.capture.reset[1]],
         reset_constants: [[7_180_832, 7_180_840], [7_180_836, 7_180_844]],
@@ -135,6 +138,167 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
         {
             return Err("wrong terminal receipt".to_owned());
         }
+    }
+    Ok(())
+}
+
+// Reuse one actual source-loaded bootstrap, never manufacture a terminal
+// register or memory state. A fork has independent memory and has consumed
+// no input, so both physical EOF landing phases remain reachable.
+fn terminal_boot(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<ProfileMachine, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    for _ in 0..1_950_000usize {
+        if vm.registers().code_pointer == guest.capture.input {
+            if vm.input_consumed() != 0 || !vm.output().is_empty() {
+                return Err("bootstrap performed I/O".to_owned());
+            }
+            return Ok(vm);
+        }
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("bootstrap terminated".to_owned());
+        }
+    }
+    Err("bootstrap exhausted budget".to_owned())
+}
+
+fn verify_terminal_fork(
+    boot: &ProfileMachine,
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+    source_sha256: [u8; 32],
+) -> Result<u8, String> {
+    let stream = probe.loop_probe.guard.io.input;
+    let audit = TransitionTrace::new(probe)
+        .map_err(|error| format!("geometry: {error:?}"))?;
+    let mut journal =
+        ReplayJournal::new(None, None, source_sha256, Some(audit));
+    let mut vm = boot
+        .fork_with_input(stream.to_vec())
+        .map_err(|error| error.to_string())?;
+    let outcome = vm
+        .run_traced(27_000, &mut |trace| {
+            journal.observe(trace, projected);
+        })
+        .map_err(|error| error.to_string())?;
+    let replay = journal
+        .finish(outcome, projected, &vm)
+        .map_err(|error| format!("terminal {stream:?}: {error:?}"))?;
+    let transition = replay.transition.ok_or("missing audit")?;
+    let receipt = transition
+        .terminal
+        .receipt()
+        .map_err(|error| format!("terminal receipt: {error:?}"))?;
+    if transition.checkpoints.len() != stream.len()
+        || receipt.halt_index.saturating_add(1) != replay.io.guest_steps
+        || receipt.scratch_indices
+            != [
+                receipt.terminal_index.saturating_add(19),
+                receipt.terminal_index.saturating_add(30),
+            ]
+        || receipt.output_word.rem_euclid(256) != u32::from(receipt.byte)
+        || vm.output() != [receipt.byte]
+    {
+        return Err(format!("wrong terminal receipt for {stream:?}"));
+    }
+    Ok(receipt.byte)
+}
+
+#[test]
+fn source_recurrent_transition_all_terminal_nibbles_and_phases()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let base = proposal(&wire, &[], &guest)?;
+    let cfg = admit_probe(base.loop_probe.guard.io)
+        .map_err(|error| format!("source: {error:?}"))?;
+    let [function] = cfg.functions.as_slice() else {
+        return Err("one checksum function required".to_owned());
+    };
+    let guard = GuardPlan::new(function, base.loop_probe.guard.source_header)
+        .map_err(|error| format!("guard: {error:?}"))?;
+    let state = StatePlan::new(function, &base.loop_probe.state)
+        .map_err(|error| format!("state: {error:?}"))?;
+    let parity = ParityPlan::new(function, &base.loop_probe, guard.phi)
+        .map_err(|error| format!("parity: {error:?}"))?;
+    let plans = ProjectionPlans {
+        guard: Some(&guard),
+        state: Some(&state),
+        transition: Some(&parity),
+    };
+    let boot = terminal_boot(&guest)?;
+    for byte in u8::MIN..=u8::MAX {
+        // 253 returns the zero checksum to zero, toggling the input phase.
+        let input = byte.wrapping_sub(3);
+        for stream in [&[input][..], &[253, input][..]] {
+            let probe = proposal(&wire, stream, &guest)?;
+            let projected =
+                project_function_with_plans(function, stream, &plans)
+                    .map_err(|error| format!("source {stream:?}: {error:?}"))?;
+            if verify_terminal_fork(
+                &boot,
+                &probe,
+                &projected,
+                cfg.source_sha256,
+            )? != byte
+            {
+                return Err(format!("wrong source byte for {stream:?}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_terminal_geometry() -> Result<(), String>
+{
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[], &guest)?;
+    let [[low, low_twos], [high, high_twos]] = probe.output_constants;
+    let [_, high_state] = probe.loop_probe.state.words;
+    for constant in [
+        low,
+        high.saturating_add(1),
+        high_state.saturating_add(7),
+        probe.output_scratch.saturating_add(1),
+        probe.tables[1].saturating_add(5),
+        probe.seeds[1],
+        0,
+        current_profile().memory_words(),
+    ] {
+        let invalid = SourceRecurrentTransitionProbe {
+            output_constants: [[low, constant], [high, high_twos]],
+            ..probe
+        };
+        if verify_source_recurrent_transition(&invalid)
+            != Err(Error::InvalidTransitionBinding)
+        {
+            return Err(format!("aliased terminal constant: {constant}"));
+        }
+    }
+    // A non-overlapping but false selector address must fail against the
+    // real physical route, rather than merely trusting the same final byte.
+    let wrong = SourceRecurrentTransitionProbe {
+        output_constants: [[low.saturating_add(100), low_twos], [
+            high, high_twos,
+        ]],
+        ..probe
+    };
+    if verify_source_recurrent_transition(&wrong)
+        != Err(Error::GuestTransitionMismatch)
+    {
+        return Err("wrong terminal selector route accepted".to_owned());
     }
     Ok(())
 }
