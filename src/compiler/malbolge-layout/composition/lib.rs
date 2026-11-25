@@ -223,11 +223,12 @@ pub use relocated_eof_branch_source::{
     RelocatedEofBranchSource, build_relocated_eof_branch_source,
 };
 pub use relocated_signed_eof_source::{
-    DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedEofParitySource,
-    RelocatedFirstByteAddSource, RelocatedFirstIterationSource,
-    RelocatedLiveParityBranchSource, RelocatedLiveParitySource,
-    RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
-    RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
+    DirtyPhiCopySites, OddXorStepSites, RelocatedDirtyPhiSource,
+    RelocatedEofParitySource, RelocatedFirstByteAddSource,
+    RelocatedFirstIterationSource, RelocatedLiveParityBranchSource,
+    RelocatedLiveParitySource, RelocatedSecondAddSource,
+    RelocatedSecondEvenMaskSource, RelocatedSecondEvenReadSource,
+    RelocatedSecondOddHalfSource, RelocatedSecondOddXorSource,
     RelocatedSecondParityAddSource, RelocatedSignedEofBranchSource,
     ScratchResetSite, build_relocated_dirty_phi_source,
     build_relocated_eof_parity_source, build_relocated_first_byte_add_source,
@@ -237,6 +238,7 @@ pub use relocated_signed_eof_source::{
     build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
+    build_relocated_second_odd_xor_source,
     build_relocated_second_parity_add_source,
     build_relocated_signed_eof_source,
 };

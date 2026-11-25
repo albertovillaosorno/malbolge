@@ -13519,3 +13519,38 @@ test is an algebraic oracle, not a guest execution of full XOR.
 The other seven decomposition steps, weighted reconstruction,
 increment/mask, convergence with the even arm, subsequent input
 and reusable code remain open for the odd path.
+
+
+### Full physical second-odd XOR
+
+A separate 4,750,164-cell candidate now executes all eight binary
+decomposition stages on the live committed checksum and second byte.
+Both quotients and each XOR bit are copied out of the dirty arithmetic
+bank before the next reset. The first implementation returned 96 rather
+than 24 for (100, 127): crazy stores also mutated the quotient and
+remainder masks. Four immutable complements now restore the sixteen
+mask operands after each of the first seven stages.
+
+Two disjoint sixteen-entry tables reconstruct the low nibble and the
+high nibble multiplied by sixteen. The guest packs each nibble into
+ternary positions 1..4 with digits zero or two, adds its table base,
+and follows the resulting data pointer. Two all-two crazy folds read
+and restore the selected odd data cell. Six ternary carry rounds add
+the two nibble values; a dirty copy saves the full XOR at M7174933.
+For (100, 127, 42) the guest reaches C4654507 in 4,432,615 steps,
+leaving 24 at the result address, two consumed bytes and no output.
+
+Twenty-two traced vectors include all sixteen indices of both tables,
+nontrivial mixed operands, zero, and 255. The checker independently
+reconciles the eight quotient/remainder stages, the dirty bank resets,
+112 mask restores, all preserved bit stores, both table reads/restores,
+the nibble sum copy, and the original header. Five bypass vectors and
+two omitted-effect controls pass. An attempted scratch-heavy layout
+exceeded six million cells and collided with the untouched bootstrap
+loader route at M4783124; the compact image stays below that address.
+
+The XOR result is not yet incremented, masked, or committed to the
+source checksum pair. The even and odd arithmetic are still separate
+physical candidates. Reusable code, the shared next input and complete
+independent source-frame admission remain open; the original C23
+program still refuses publication.

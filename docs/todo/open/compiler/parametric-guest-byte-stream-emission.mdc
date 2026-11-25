@@ -80,8 +80,13 @@ variant performs one physical binary quotient/remainder step on
 both committed bytes and computes the lowest XOR bit after 396
 scratch resets. Seven boundary vectors, five bypass vectors and an
 omitted-result control pass. Independent host algebra checks all
-256 divisions and all 65,536 XOR pairs; full guest reconstruction,
-reusable code and complete source-frame routing remain open. Evidence:
+256 divisions and all 65,536 XOR pairs. A separate 4,750,164-cell
+physical image now executes all eight stages, restores the dirty masks,
+reconstructs both binary nibbles through actual table lookups, and
+saves their sum. Twenty-two traced vectors cover all table indices;
+five bypass vectors and two omitted-store controls pass. Odd increment
+and mask, shared next input, reusable code and complete source-frame
+routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

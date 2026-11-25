@@ -22,7 +22,7 @@
 // - Summary:
 //   - Authenticate arithmetic, second input and physical phi copies.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
@@ -35,11 +35,13 @@ use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
     RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
     RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
-    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
-    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
-    build_relocated_second_add_source, build_relocated_second_even_mask_source,
+    RelocatedSecondOddXorSource, RelocatedSecondParityAddSource,
+    ScratchResetSite, ZeroCellSourceError, build_relocated_dirty_phi_source,
+    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
+    build_relocated_second_odd_xor_source,
     build_relocated_second_parity_add_source,
 };
 use super::{at, check_transfer, check_write, word};
@@ -2828,6 +2830,468 @@ fn relocated_second_odd_half_algebra_covers_all_pairs() -> Result<(), String> {
                 (0, 0, u32::from(left ^ right))
             );
         }
+    }
+    Ok(())
+}
+
+const ODD_XOR_BUDGET: usize = 4_750_164;
+
+fn odd_xor_source() -> Result<RelocatedSecondOddXorSource, String> {
+    build_relocated_second_odd_xor_source(current_profile())
+        .map_err(|error| format!("odd XOR source: {error:?}"))
+}
+
+#[derive(Default)]
+struct OddXorTrace {
+    effects: Vec<ProfileStepTrace>,
+    previous: BTreeMap<u32, u32>,
+    last_write: BTreeMap<u32, u32>,
+}
+
+fn xor_reset_sites(guest: &RelocatedSecondOddXorSource) -> BTreeMap<u32, u32> {
+    let mut sites = BTreeMap::new();
+    let mut resets = |reset: &ScratchResetSite| {
+        let _: Option<u32> =
+            sites.insert(reset.code_addresses[0], reset.address);
+    };
+    for step in &guest.steps {
+        for reset in &step.scratch_resets {
+            resets(reset);
+        }
+        for (reset, _) in &step.mask_restores {
+            resets(reset);
+        }
+    }
+    for reset in guest.reconstruction_resets.iter().chain(&guest.sum_resets) {
+        resets(reset);
+    }
+    for (copy, dest) in xor_copies(guest) {
+        let _: Option<u32> = sites
+            .insert(copy.temporary_resets[0], guest.copy_temporary_address);
+        let _: Option<u32> = sites.insert(copy.destination_resets[0], dest);
+    }
+    sites
+}
+
+fn xor_copies(
+    guest: &RelocatedSecondOddXorSource,
+) -> Vec<(DirtyPhiCopySites, u32)> {
+    let mut copies = Vec::new();
+    for (step, bit) in guest.steps.iter().zip(guest.bit_addresses) {
+        copies.extend(
+            step.quotient_copies
+                .into_iter()
+                .zip(guest.quotient_addresses),
+        );
+        copies.push((step.bit_copy, bit));
+    }
+    copies.push((guest.xor_copy, guest.xor_address));
+    copies
+}
+
+fn xor_effect_sites(guest: &RelocatedSecondOddXorSource) -> BTreeSet<u32> {
+    let mut sites = BTreeSet::from([
+        guest.branch_code_address,
+        guest.odd_halt_code_address,
+    ]);
+    for step in &guest.steps {
+        for reset in &step.scratch_resets {
+            sites.extend(reset.code_addresses);
+        }
+        for (reset, store) in &step.mask_restores {
+            sites.extend(reset.code_addresses);
+            let _: bool = sites.insert(*store);
+        }
+        sites.extend(step.result_words.iter().map(|&(_, code)| code));
+    }
+    for reset in guest.reconstruction_resets.iter().chain(&guest.sum_resets) {
+        sites.extend(reset.code_addresses);
+    }
+    for (copy, _) in xor_copies(guest) {
+        sites.extend(dirty_sites(copy));
+    }
+    sites.extend(guest.table_lookups.into_iter().flatten());
+    sites.extend(guest.nibble_results.into_iter().map(|(_, code)| code));
+    sites
+}
+
+fn trace_xor(
+    guest: &RelocatedSecondOddXorSource,
+    machine: &mut ProfileMachine,
+) -> Result<(RunOutcome, OddXorTrace), String> {
+    let reset_sites = xor_reset_sites(guest);
+    let addresses = reset_sites.values().copied().collect::<BTreeSet<_>>();
+    let wanted = xor_effect_sites(guest);
+    let mut trace = OddXorTrace::default();
+    let outcome = machine
+        .run_traced(ODD_XOR_BUDGET, &mut |step| {
+            if step.decoded == Some(b'o') {
+                return;
+            }
+            let code = step.before.registers.code_pointer;
+            if let Some(address) = reset_sites.get(&code)
+                && let Some(value) = trace.last_write.get(address)
+            {
+                let _: Option<u32> = trace.previous.insert(code, *value);
+            }
+            if matches!(step.decoded, Some(b'p' | b'*'))
+                && let Some(read) = step.memory_reads.data
+                && addresses.contains(&read.address)
+            {
+                let _: Option<u32> = trace
+                    .last_write
+                    .insert(read.address, step.after.registers.accumulator);
+            }
+            if wanted.contains(&code) {
+                trace.effects.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    Ok((outcome, trace))
+}
+
+fn check_xor_reset(
+    trace: &OddXorTrace,
+    reset: ScratchResetSite,
+) -> Result<(), String> {
+    let old = *trace
+        .previous
+        .get(&reset.code_addresses[0])
+        .ok_or("missing prior write")?;
+    check_dirty_reset(&trace.effects, reset.code_addresses, reset.address, old)
+}
+
+fn check_xor_copy(
+    guest: &RelocatedSecondOddXorSource,
+    trace: &OddXorTrace,
+    copy: DirtyPhiCopySites,
+    destination: u32,
+    value: u32,
+) -> Result<(), String> {
+    let temp = guest.copy_temporary_address;
+    check_xor_reset(trace, ScratchResetSite {
+        address: temp,
+        code_addresses: copy.temporary_resets,
+    })?;
+    check_xor_reset(trace, ScratchResetSite {
+        address: destination,
+        code_addresses: copy.destination_resets,
+    })?;
+    check_write(
+        &trace.effects,
+        copy.temporary_store,
+        temp,
+        independent_crazy(7_174_453, value),
+    )?;
+    check_write(&trace.effects, copy.destination_store, destination, value)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact dirty mask restoration and division witnesses"
+)]
+fn check_xor_step(
+    guest: &RelocatedSecondOddXorSource,
+    trace: &OddXorTrace,
+    index: usize,
+    operands: [u32; 2],
+) -> Result<(), String> {
+    let stage = guest.steps.get(index).ok_or("missing division step")?;
+    let bit_address = *guest
+        .bit_addresses
+        .get(index)
+        .ok_or("missing XOR bit address")?;
+    assert_eq!(stage.scratch_resets.len(), 132);
+    assert_eq!(
+        stage.mask_restores.len(),
+        if index == 0 {
+            0
+        } else {
+            16
+        }
+    );
+    for reset in &stage.scratch_resets {
+        check_xor_reset(trace, *reset)?;
+    }
+    let masks = [
+        364, 14_348_542, 14_348_542, 364, 1, 14_348_905, 14_348_905, 1,
+    ];
+    for ((reset, store), value) in
+        stage.mask_restores.iter().zip(masks.into_iter().cycle())
+    {
+        check_xor_reset(trace, *reset)?;
+        check_write(&trace.effects, *store, reset.address, value)?;
+    }
+    let [left, right] = operands;
+    let bit = (left ^ right) & 1;
+    for ((address, site), value) in stage.result_words.into_iter().zip([
+        left >> 1,
+        left & 1,
+        right >> 1,
+        right & 1,
+        bit,
+    ]) {
+        check_write(&trace.effects, site, address, value)?;
+    }
+    for ((copy, dest), value) in stage
+        .quotient_copies
+        .into_iter()
+        .zip(guest.quotient_addresses)
+        .zip([left >> 1, right >> 1])
+    {
+        check_xor_copy(guest, trace, copy, dest, value)?;
+    }
+    check_xor_copy(guest, trace, stage.bit_copy, bit_address, bit)
+}
+
+fn xor_lookup_address(base: u32, nibble: u32) -> u32 {
+    // Independent positional encoding, not the builder's implementation.
+    let index = (0..4)
+        .rev()
+        .fold(0u32, |acc, shift| acc * 3 + 2 * ((nibble >> shift) & 1));
+    base + 1 + 3 * index
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "authenticate table index and both involutive physical writes"
+)]
+fn check_xor_tables(
+    guest: &RelocatedSecondOddXorSource,
+    machine: &ProfileMachine,
+    trace: &OddXorTrace,
+    xor: u32,
+) -> Result<(), String> {
+    for (((base, scale), sites), (word_address, store)) in
+        [(7_175_304, 1), (7_175_790, 16)]
+            .into_iter()
+            .zip(guest.table_lookups)
+            .zip(guest.nibble_results)
+    {
+        let nibble = (xor / scale) & 15;
+        let value = nibble * scale;
+        let address = xor_lookup_address(base, nibble);
+        let [first, second] = sites;
+        let encoded = independent_crazy(value, 14_348_906);
+        assert_eq!(
+            at(&trace.effects, first)?
+                .memory_reads
+                .data
+                .ok_or("lookup read")?
+                .value,
+            value
+        );
+        check_write(&trace.effects, first, address, encoded)?;
+        check_write(&trace.effects, second, address, value)?;
+        check_write(&trace.effects, store, word_address, value)?;
+        assert_eq!(word(machine, word_address)?, value);
+        for index in 0..16 {
+            assert_eq!(
+                word(machine, xor_lookup_address(base, index))?,
+                index * scale,
+                "table entry must be restored"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded physical XOR result and original header"
+)]
+fn check_xor_vector(
+    guest: &RelocatedSecondOddXorSource,
+    initial: &ProfileMachine,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let mut machine = initial
+        .fork_with_input(vec![first, second, 42])
+        .map_err(|error| error.to_string())?;
+    let (outcome, trace) = trace_xor(guest, &mut machine)?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "{outcome:?}"
+    );
+    check_transfer(
+        &trace.effects,
+        guest.branch_code_address,
+        7_174_797,
+        1_610_000,
+    )?;
+    assert_eq!(
+        at(&trace.effects, guest.odd_halt_code_address)?.decoded,
+        Some(b'v')
+    );
+    let left = u32::from(first.wrapping_add(3));
+    let right = u32::from(second);
+    let xor = left ^ right;
+    for index in 0..8 {
+        check_xor_step(guest, &trace, index, [left >> index, right >> index])?;
+    }
+    for reset in guest.reconstruction_resets.iter().chain(&guest.sum_resets) {
+        check_xor_reset(&trace, *reset)?;
+    }
+    check_xor_tables(guest, &machine, &trace, xor)?;
+    check_xor_copy(guest, &trace, guest.xor_copy, guest.xor_address, xor)?;
+    assert_eq!(word(&machine, guest.xor_address)?, xor);
+    for (index, address) in guest.bit_addresses.into_iter().enumerate() {
+        assert_eq!(word(&machine, address)?, (xor >> index) & 1);
+    }
+    for address in guest.quotient_addresses {
+        assert_eq!(word(&machine, address)?, 0);
+    }
+    for (address, value) in guest
+        .iteration
+        .phi_header_words
+        .into_iter()
+        .zip([right, 0, left, 0])
+    {
+        assert_eq!(word(&machine, address)?, value);
+    }
+    assert_eq!(machine.input_consumed(), 2);
+    assert!(machine.output().is_empty());
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "freeze full XOR geometry and nibble census"
+)]
+#[test]
+fn relocated_second_odd_xor_boundaries() -> Result<(), String> {
+    let guest = odd_xor_source()?;
+    assert_eq!(guest.iteration.addition.source.len(), ODD_XOR_BUDGET);
+    assert_eq!(guest.steps.len(), 8);
+    assert_eq!(guest.reconstruction_resets.len(), 128);
+    assert_eq!(guest.sum_resets.len(), 168);
+    assert_eq!(
+        build_relocated_second_odd_xor_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    // Every low and high nibble table entry is reached. This is not a
+    // 65,536-vector guest census; independent host algebra covers that domain.
+    for nibble in 0..16u8 {
+        let desired = 17 * nibble;
+        let first = (desired ^ 1).wrapping_sub(3);
+        check_xor_vector(&guest, &initial, first, 1)?;
+    }
+    for (first, second) in [
+        (0, 1),
+        (252, 255),
+        (253, 1),
+        (255, 255),
+        (100, 127),
+        (249, 85),
+    ] {
+        check_xor_vector(&guest, &initial, first, second)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF and even branch bypass full XOR"
+)]
+#[test]
+fn relocated_second_odd_xor_preserves_bypass_paths() -> Result<(), String> {
+    let guest = odd_xor_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    let first_reset = guest
+        .steps
+        .first()
+        .and_then(|step| step.scratch_resets.first())
+        .ok_or("first division reset")?
+        .code_addresses[0];
+    for (input, expected) in [
+        (vec![], vec![0]),
+        (vec![252], vec![255]),
+        (vec![255], vec![2]),
+        (vec![0, 2, 42], vec![]),
+        (vec![252, 254, 42], vec![]),
+    ] {
+        let count = input.len().min(2);
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(ODD_XOR_BUDGET, &mut |step| {
+                reached |= step.before.registers.code_pointer == first_reset;
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached);
+        assert_eq!(machine.input_consumed(), count);
+        assert_eq!(machine.output(), expected);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "omitted mask restoration and final XOR store must refuse"
+)]
+#[test]
+fn relocated_second_odd_xor_rejects_omitted_effects() -> Result<(), String> {
+    let guest = odd_xor_source()?;
+    let (mask, restore_site) = guest
+        .steps
+        .get(1)
+        .and_then(|step| step.mask_restores.first())
+        .ok_or("first reused mask")?;
+    for (site, address, value) in [
+        (*restore_site, mask.address, 364),
+        (guest.xor_copy.destination_store, guest.xor_address, 24),
+    ] {
+        let mut source = guest.iteration.addition.source.clone();
+        let noop = (33..=126u8)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), site) == Some(b'o')
+            })
+            .ok_or("missing no-op")?;
+        *source
+            .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
+            .ok_or("missing code cell")? = noop;
+        let mut machine =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                100, 127, 42,
+            ])
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(ODD_XOR_BUDGET, &mut |step| {
+                if step.before.registers.code_pointer == site {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(at(&trace, site)?.decoded, Some(b'o'));
+        assert!(
+            check_write(&trace, site, address, value).is_err(),
+            "omission accepted: {outcome:?}"
+        );
     }
     Ok(())
 }
