@@ -13632,3 +13632,28 @@ previous results. Three omitted-store controls refuse, including a
 shared high-word omission invisible in stdout. Both arms still halt
 on a successful third read. The shared continuation is not a reusable
 instruction schedule, and the original source CFG remains unlinked.
+
+
+### Recurrent physical instruction kernel
+
+A separate 154,128-cell image demonstrates actual reuse of four
+instruction cells. The canonical encryption orbit F -> J -> F
+supports input at C150071, crazy at C151050, output at C152027 and
+data relocation at C153002. Each operation encrypts F to J. A genuine
+indirect jump to that cell encrypts J back to F and skips to the
+adjacent immutable indirect dispatcher. The following indirect jump
+targets the preceding graphical dummy and enters the restored operation.
+The dummy is never fetched, so its evolving graphical phase is harmless.
+
+The bootstrap prepares a contiguous twelve-word route and primes three
+cells. Each twelve-step cycle consumes a raw input, applies crazy to
+the prior mutable M7174705, emits its low byte and restores the entry
+C/D and four active-cell phases. All routing words except that state
+remain unchanged. The independent checker reconciles all transfers,
+encryption writes, data effects and I/O over 256 sequential byte
+values and four subsequent EOFs; a separate empty-stream case covers
+eight EOF cycles. Omitting the crazy instruction refuses. This is a
+recurrent physical kernel, not the checksum loop: its initial prefix
+consumes an input and its recurrent path does not terminate on EOF.
+EOF dispatch, recurrent checksum arithmetic and source-frame admission
+remain separate obligations.

@@ -24,6 +24,8 @@
 
 #[path = "relocated_first_iteration.rs"]
 mod relocated_first_iteration;
+#[path = "relocated_reusable.rs"]
+mod relocated_reusable;
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,

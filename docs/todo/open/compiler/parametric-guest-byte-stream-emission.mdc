@@ -96,8 +96,12 @@ phi edge and EOF output; three earlier-path bypasses pass. A single
 6,100,098-cell image now joins the second odd and even results before
 a common increment, mask, third read, and dirty phi edge. Eight traced
 boundary vectors, three earlier bypasses and three omitted-store
-controls pass. Reusable code and complete source-frame routing remain
-open. Evidence:
+controls pass. A separate 154,128-cell kernel restores actual input,
+crazy, output and data relocation cells through indirect transfers on
+the F/J encryption orbit. All 256 sequential byte values and repeated
+EOF authenticate the dirty recurrence. It deliberately does not halt
+on EOF. Recurrent checksum control and complete source-frame routing
+remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 
