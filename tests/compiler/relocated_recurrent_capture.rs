@@ -42,7 +42,7 @@ const BYTE: u32 = 7_180_650;
 const EOF_ODD: u32 = 7_178_463;
 const EOF_EVEN: u32 = 7_179_921;
 const CONSTANTS: [u32; 3] = [7_175_040, 7_175_042, 7_175_044];
-const BOOT_BUDGET: usize = 6_400_000;
+const BOOT_BUDGET: usize = 3_500_000;
 const EFFECT_BUDGET: usize = 2_048;
 
 fn source() -> Result<RelocatedRecurrentCaptureSource, String> {

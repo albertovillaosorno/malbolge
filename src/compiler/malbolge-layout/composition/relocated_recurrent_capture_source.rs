@@ -38,9 +38,19 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_240_001,
     start: 7_183_001,
 };
-const SOURCE_CELLS: usize = 6_410_016;
-const CODE_BASE: u32 = 6_400_000;
+const SOURCE_CELLS: usize = 3_510_210;
+const CODE_BASE: u32 = 3_500_000;
 const SEEDS: u32 = 7_174_611;
+const ANCHOR_START: u32 = 7_174_951;
+const ANCHORS: [(u32, u32); 7] = [
+    (ANCHOR_START, CAPTURE),
+    (7_174_955, MAIN_ROUTE),
+    (7_174_959, BOOT_ROUTE),
+    (7_174_963, RESET_ROUTE),
+    (7_174_967, 7_178_464),
+    (7_174_971, 7_179_922),
+    (7_174_975, 7_180_651),
+];
 const CAPTURE: u32 = 7_175_000;
 const STATES: [u32; 6] = [
     7_175_010, 7_175_012, 7_175_014, 7_175_016, 7_175_018, 7_175_020,
@@ -53,7 +63,7 @@ const RESET_ROUTE: u32 = 7_177_000;
 const BYTE: u32 = 7_180_650;
 const BYTE_ROUTE_POINTER: u32 = 7_180_670;
 const EOF: [u32; 2] = [7_178_463, 7_179_921];
-const TERMINAL: u32 = 6_410_000;
+const TERMINAL: u32 = 3_510_000;
 const ALL_ONES: u32 = 7_174_453;
 const ALL_TWOS: u32 = 14_348_906;
 // The captured raw word swaps 0 and 1, preserving 2. In particular
@@ -331,7 +341,7 @@ fn initialize(
                     .ok_or(LAYOUT)?,
             )
             .ok_or(LAYOUT)?;
-        if address >= CAPTURE {
+        if address >= ANCHOR_START {
             return Err(LAYOUT);
         }
         let inverse =
@@ -339,21 +349,49 @@ fn initialize(
         seeds.push((address, inverse));
         let _: Option<u32> = seed_addresses.insert(value, address);
     }
+    for (anchor, base) in ANCHORS {
+        seeds.push((anchor, previous(base)?));
+    }
     initialize_words(emitter, &seeds)?;
     for (&address, &value) in words {
         if !(CAPTURE..BOUNDS.start).contains(&address) {
             return Err(LAYOUT);
         }
         rotate(emitter, ZERO)?;
-        crazy(emitter, address)?;
+        store_anchored(emitter, address)?;
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
         for _ in 0..2u8 {
             rotate(emitter, TWOS)?;
             crazy(emitter, seed)?;
         }
-        crazy(emitter, address)?;
+        store_anchored(emitter, address)?;
     }
     Ok(())
+}
+
+// Each anchor is a guest-materialized predecessor of a route segment.
+// The immutable near-frame pointer replaces a long linear D walk.
+fn go_anchored(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+) -> Result<(), BuildError> {
+    let (anchor, base) = ANCHORS
+        .into_iter()
+        .rev()
+        .find(|(_, base)| *base <= address)
+        .ok_or(LAYOUT)?;
+    emitter.go(anchor)?;
+    emitter.jump(base)?;
+    emitter.walk(address)
+}
+
+fn store_anchored(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+) -> Result<(), BuildError> {
+    go_anchored(emitter, address)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    after_store(emitter)
 }
 
 /// Construct a recurrent raw-input capture across real EOF dispatch.
@@ -386,8 +424,8 @@ pub fn build_relocated_recurrent_capture_source(
         source_cells: SOURCE_CELLS,
         tape_bounds: BOUNDS,
     };
-    // The loader return at M4,782,982 is covered by this larger image.
-    // Use the already materialized bootstrap return pointer instead.
+    // Use the prepared bootstrap return instead of depending on the
+    // distant loader return word at M4,782,982.
     emitter.source.truncate(126);
     emitter.data = 49;
     emitter.walk(76)?;
@@ -398,8 +436,7 @@ pub fn build_relocated_recurrent_capture_source(
     emitter.jump(FRAME)?;
     let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
     initialize(&mut emitter, &words)?;
-    emitter.go(BOOT_ROUTE)?;
-
+    go_anchored(&mut emitter, BOOT_ROUTE)?;
     let _: u32 = emitter.append_indirect()?;
     for block in blocks.ordered() {
         block.emit(&mut emitter)?;
@@ -407,7 +444,6 @@ pub fn build_relocated_recurrent_capture_source(
     emitter
         .pad_to_entry(usize::try_from(TERMINAL).map_err(|_error| LAYOUT)?, 0)?;
     let _: u32 = emitter.append(LinearOpcode::RotateData)?;
-
     let output = emitter.append(LinearOpcode::OutputByte)?;
     let halt = emitter.append(LinearOpcode::Halt)?;
     let [first, second, third] = &blocks.reset;

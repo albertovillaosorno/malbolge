@@ -13691,15 +13691,19 @@ remain open.
 
 ### Recurrent lossless input capture and dirty reset
 
-A separate 6,410,016-cell candidate uses multi-cell recurrent access
+A separate 3,510,210-cell candidate uses multi-cell recurrent access
 blocks to preserve a raw input across real EOF dispatch. Its bootstrap
-does not consume input. The larger image bypasses the covered virgin
-return word M4782982 using the existing M122 bootstrap return pointer;
-the other virgin classifier word M6554440 remains outside the source.
+does not consume input. The image uses the existing M122 bootstrap
+return pointer instead of depending on the virgin return word
+M4782982. The other virgin classifier word M6554440 remains outside
+the source.
 The bootstrap materializes route operands and immutable inverse seeds
 with guest crazy and rotate instructions, not a host memory overlay.
+Seven immutable anchors at M7174951 through M7174975 select nearby
+route segments rather than walking from the bootstrap frame for each
+store. They reduce the source from 6,410,016 to 3,510,210 cells.
 
-At C6400159 a real input supplies a byte or EOF. The first C6400238
+At C3500165 a real input supplies a byte or EOF. The first C3500244
 crazy writes M7175000, initially all ones, swapping trits zero and one
 and preserving two. The inverse is the same digitwise operation, so
 the saved word contains every raw input trit. Six further calls to the
@@ -13707,7 +13711,7 @@ same physical crazy site mutate M7175010, M7175012, M7175014, M7175016,
 M7175018 and M7175020. They use the encoded input: trits 6 and 7 are one
 for bytes and two for EOF. The initial words are 5832, 5103, 0,
 14329224, 728 and 13122. The resulting class is M7180650 on every byte,
-M7178463 on odd EOF and M7179921 on even EOF. C6400741 relocates D
+M7178463 on odd EOF and M7179921 on even EOF. C3500747 relocates D
 through the actual class word without overwriting the capture.
 
 A recurrent access envelope begins with a data relocation, then zero
@@ -13726,12 +13730,12 @@ arbitrary recurrent schedule.
 
 The byte continuation uses a second relocation to the local reset
 route. It rotates three immutable uniform words to load all ones, all
-twos and zero. C6400366, C6400460 and C6400554 then apply those constants
+twos and zero. C3500372, C3500466 and C3500560 then apply those constants
 to the same dirty M7175000. Their one-, two- and three-cell suffixes
 select different neighboring return operands, avoiding a conflicting
 return pointer at a fixed data location. The last fold restores all
 ones for the next input. EOF leaves the captured all-two word intact
-and reaches C6410000, C6410001 and C6410002 for actual length parity
+and reaches C3510000, C3510001 and C3510002 for actual length parity
 rotation, output and halt.
 
 The independent replay verifies the captured encoding against the
