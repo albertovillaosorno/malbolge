@@ -14864,3 +14864,27 @@ and omitted-route controls. The physical regression ceiling becomes
 1,140,000 steps; source extent and the 100,000-step publication ceiling
 are unchanged. This finite sweep comparison does not establish an
 optimal schedule or source-C publication.
+
+The recurrent prefix's former low input word, M7,174,419, is no
+longer live after convergence. A new frame-directory shortcut
+normalizes that word with two crazy folds, then commits the
+predecessor of the first target root at M7,174,491 from the existing
+chunk scratch. The new fast path walks two words from the frame and
+jumps to that common root, rather than jumping to the constants
+and walking another 22 words. All target-root costs change by the
+same amount on this path; the target partition and its ordering
+are unchanged. Earlier constant and seed routes retain their
+existing paths.
+
+Independent replay authenticates the three post-prefix stores and
+1,102 actual selections, including the exact predecessor read,
+accumulator preservation and unchanged frame-reset word. Omitting
+any one of the stores or the first selection refuses. The existing
+scratch-to-constants selection count increases by one to 1,339.
+All 23 physical checksum tests and 38 source-recurrent tests pass.
+The same five frozen vectors reach first input in 1,117,645 steps
+(21,022 fewer than the sweep-only result), under a tightened
+1,119,000-step physical regression ceiling. The source extent
+remains 2,318,854 cells. This shortcut does not change the
+100,000-step source publication bound or establish C checksum
+admission.

@@ -87,6 +87,9 @@ const HOT_SEED_ROOTS: [(u32, u32); 8] = [
 ];
 const DIRECTORY_END: u32 = 7_176_900;
 const TARGET_RETURN: u32 = 7_174_491;
+// After the recurrent prefix has converged, the former input pair
+// is dead. The odd low cell can shorten frame-to-directory walks.
+const FRAME_DIRECTORY: u32 = FRAME + 2;
 const TARGET_ROOTS: [u32; 12] = [
     TARGET_RETURN,
     7_174_493,
@@ -533,7 +536,12 @@ fn fast_go(emitter: &mut Emitter<'_>, target: u32) -> Result<(), BuildError> {
     }
     if target >= NEAR_ONES {
         if emitter.data == FRAME {
-            emitter.jump(NEAR_ONES)?;
+            if target >= TARGET_RETURN {
+                emitter.walk(FRAME_DIRECTORY)?;
+                emitter.jump(TARGET_RETURN)?;
+            } else {
+                emitter.jump(NEAR_ONES)?;
+            }
         } else if (CHUNK_NEXT..=CHUNK_CONSTANTS).contains(&emitter.data) {
             emitter.walk(CHUNK_CONSTANTS)?;
             emitter.jump(NEAR_ONES)?;
@@ -1262,8 +1270,14 @@ fn initialize_chunk_roots(
     chunk_access(emitter, CHUNK_CONSTANTS, LinearOpcode::CrazyData)?;
     reload_chunk(emitter)?;
     chunk_access(emitter, CHUNK_CONSTANTS, LinearOpcode::CrazyData)?;
+    // Install this pointer before enabling any fast directory access.
+    // The old prefix operand can be dirty, so normalize both folds.
+    reset_chunk_word(emitter, FRAME_DIRECTORY, false)?;
+    let directory_seed = profile_crazy(ALL_ONES, previous(TARGET_RETURN)?, 15);
+    chunk_word(emitter, directory_seed, false)?;
+    chunk_access(emitter, FRAME_DIRECTORY, LinearOpcode::CrazyData)?;
     initialize_chunk_returns(emitter)?;
-    let mut scratch = ChunkWord { value: frame_seed };
+    let mut scratch = ChunkWord { value: directory_seed };
     for (address, value) in roots {
         fast_rotate(emitter, NEAR_ZERO)?;
         fast_go(emitter, address)?;

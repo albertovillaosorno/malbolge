@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_140_000;
+const BOOT_BUDGET: usize = 1_119_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -54,6 +54,8 @@ const HIGH_TABLE: u32 = 7_223_661;
 const EOF_SCRATCH: u32 = 7_180_900;
 const SHORTCUT_ADDRESS: u32 = 7_174_447;
 const SHORTCUT_PREDECESSOR: u32 = 7_174_468;
+const FRAME_DIRECTORY_ADDRESS: u32 = 7_174_419;
+const FRAME_DIRECTORY_PREDECESSOR: u32 = 7_174_490;
 
 type ArithmeticVisit = (u32, u32);
 type DirectoryPage = (u32, u32);
@@ -456,6 +458,73 @@ impl TargetClusterAudit {
                 return Err("incorrect clustered target commit".to_owned());
             }
         }
+        Ok(())
+    }
+}
+
+// The prefix previously used this word for raw input storage. Only
+// count its three new stores after the prefix converges, then require
+// every executed selection to preserve A and the installed pointer.
+#[derive(Default)]
+struct FrameDirectoryAudit {
+    jump: Option<u32>,
+    selections: usize,
+    stores: Vec<u32>,
+}
+
+impl FrameDirectoryAudit {
+    fn finish(self, vm: &ProfileMachine) -> Result<Vec<u32>, String> {
+        if word(vm, FRAME_DIRECTORY_ADDRESS)? != FRAME_DIRECTORY_PREDECESSOR
+            || word(vm, 7_174_424)? != 7_174_416
+            || self.stores.len() != 3
+            || self.selections != 1_102
+        {
+            return Err(format!(
+                "incomplete frame directory audit: {}",
+                self.selections
+            ));
+        }
+        let mut sites = self.stores;
+        sites.push(self.jump.ok_or("missing frame directory selection")?);
+        Ok(sites)
+    }
+
+    fn select(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let trace = step(vm)?;
+        if self.stores.len() != 3
+            || trace
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value))
+                != Some((FRAME_DIRECTORY_ADDRESS, FRAME_DIRECTORY_PREDECESSOR))
+            || trace.after.registers.data_pointer != 7_174_491
+        {
+            return Err("invalid frame directory selection".to_owned());
+        }
+        routing(&trace, u32::MAX)?;
+        let _first =
+            self.jump.get_or_insert(trace.before.registers.code_pointer);
+        self.selections = self.selections.saturating_add(1);
+        Ok(())
+    }
+
+    fn store(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let regs = vm.registers();
+        let inverse = independent_crazy(ONES, FRAME_DIRECTORY_PREDECESSOR);
+        let (old, acc, new) = match self.stores.len() {
+            0 => (ONES, ONES, 0),
+            1 => (0, 0, ONES),
+            2 => (ONES, inverse, FRAME_DIRECTORY_PREDECESSOR),
+            _ => return Err("late frame directory write".to_owned()),
+        };
+        if regs.accumulator != acc
+            || independent_crazy(old, acc) != new
+            || (self.stores.len() == 2 && word(vm, 7_174_441)? != inverse)
+        {
+            return Err("incorrect frame directory producer".to_owned());
+        }
+        check_store(&step(vm)?, FRAME_DIRECTORY_ADDRESS, old, new)?;
+        self.stores.push(regs.code_pointer);
         Ok(())
     }
 }
@@ -1380,6 +1449,9 @@ fn boot_with_steps(
             persistent(&vm, guest, 0)?;
             if vm.input_consumed() != 0
                 || word(&vm, 7_174_417)? != 7_174_468
+                || word(&vm, FRAME_DIRECTORY_ADDRESS)?
+                    != FRAME_DIRECTORY_PREDECESSOR
+                || word(&vm, 7_174_424)? != 7_174_416
                 || word(&vm, 7_174_447)? != 7_174_468
                 || word(&vm, 7_174_448)? != 7_174_416
                 || word(&vm, 7_174_469)? != ONES
@@ -2477,13 +2549,67 @@ fn relocated_recurrent_checksum_omitted_scratch_constants_refuses()
 -> Result<(), String> {
     let guest = source()?;
     let (sites, selections) = audit_scratch_constants(&guest)?;
-    if selections != 1_338 {
+    if selections != 1_339 {
         return Err(format!("unexpected shortcut count: {selections}"));
     }
     for site in sites {
         let modified = omit_site(&guest, site)?;
         if audit_scratch_constants(&modified).is_ok() {
             return Err("accepted omitted scratch constants effect".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn audit_frame_directory(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<Vec<u32>, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = FrameDirectoryAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
+        let regs = vm.registers();
+        if regs.data_pointer == FRAME_DIRECTORY_ADDRESS
+            && regs.code_pointer >= 126
+        {
+            match decode_profile_instruction(
+                word(&vm, regs.code_pointer)?,
+                regs.code_pointer,
+            ) {
+                Some(b'p') => {
+                    audit.store(&mut vm)?;
+                    continue;
+                },
+                Some(b'j') => {
+                    audit.select(&mut vm)?;
+                    continue;
+                },
+                Some(b'o') => {},
+                _ => return Err("unexpected frame directory effect".to_owned()),
+            }
+        }
+        advance_boot(&mut vm)?;
+    }
+    Err("missing first input after frame directory".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_frame_directory_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    for site in audit_frame_directory(&guest)? {
+        let modified = omit_site(&guest, site)?;
+        if audit_frame_directory(&modified).is_ok() {
+            return Err(format!(
+                "accepted omitted frame directory effect C{site}"
+            ));
         }
     }
     Ok(())

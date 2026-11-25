@@ -373,6 +373,11 @@ to 1,138,667 steps. Replay checks 4,701 final clustered commits,
 7,619 shared resets and 8,085 minimum-cost target routes; all 22
 physical and 38 source-recurrent tests pass. The physical ceiling
 is 1,140,000 steps; the publication limit is unchanged.
+A dead prefix operand becomes a frame-to-target-directory shortcut.
+Replay checks three post-prefix stores, 1,102 selections and four
+omitted-effect refusals. First input falls to 1,117,645 steps;
+all 23 physical and 38 source-recurrent tests pass under the
+1,119,000-step physical ceiling, with source extent unchanged.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.
