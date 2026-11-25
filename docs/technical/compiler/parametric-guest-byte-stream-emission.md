@@ -28,6 +28,45 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Stable relocated first-byte/EOF dispatch (2026-11-24)
+
+The earlier 120-cell EOF-only candidate has a real output operand but
+cannot route every successful byte to a valid common arm. The independent
+156-cell `build_relocated_eof_branch_source` experiment moves the first
+input to C53 while preserving the original physical checksum pair
+M7,174,417/418 and raw first-input pair M7,174,419/420. C44/C47 really
+initialize both checksum words; C59 stores the lossless raw-input
+encoding, C63 recovers the raw input and C64 writes its adjacent zero.
+
+Four physical rotations at C67/C75/C83/C91 turn a loader word of 37
+into 6,554,439. C97 folds the encoded input into 32 possible successful
+byte intermediates or the raw EOF sentinel; C99 folds those into exactly
+6,554,439 (all 256 bytes) or 13,108,878 (true EOF). The subsequent
+C107/C108 data jumps use the different virgin-loader words at M6,554,440
+and M13,108,879. Neither arm's C118 route reads the saved raw-input word.
+The actual C118 `i` reads previously encrypted C117=119 on successful
+input or C48=125 on EOF, selecting virgin C120 or C126 respectively.
+
+The byte arm performs a genuine second read at C120 and halts at C121
+without output in 121 instructions. The first-EOF arm reenters expanded
+memory, stores zero at the original output operand M7,174,455 using C139
+and C140, outputs zero at C141 and halts at C142 in 136 instructions.
+The complete source/expanded-image verifier reconciles all 256
+successful-first-byte traces with a trailing second byte and an unread
+third byte, a true first EOF trace, and two first-byte/second-EOF
+boundary traces. Four omitted-effect controls expose wrong
+classification, fallthrough, missing second input or wrong output.
+
+This is a **relocated physical experiment**, not source-C CFG linking.
+The original proposed code sites have changed, some scratch cells borrow
+unattributed source-frame addresses, and the raw EOF pair still is not
+the signed C23 pair. The byte arm does not execute checksum arithmetic
+or its phi/backedge, and no source checksum capsule is published.
+The strict guest-written-pointer gate also needs a distinct proof for
+this input-dependent *address* selection: the two final pointer words
+are encrypted code cells, not input-derived crazy/rotate stores.
+See `tests/compiler/relocated_eof_branch.rs`.
+
 ### Source-known narrow C23 scalar casts (2026-11-24)
 
 The bounded source-CFG return checker now preserves exact typed `i8`/`u8`

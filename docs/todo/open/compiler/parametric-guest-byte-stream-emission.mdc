@@ -41,6 +41,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A separate **156-cell relocated physical branch** now preserves the
+original checksum zero pair and raw first-input pair while uniformly
+dispatching all 256 byte classes to C120 and true first EOF to C126.
+Four real rotations and two crazy folds establish two exact class words.
+The byte arm consumes a genuine second input and halts without output
+in 121 steps; the EOF arm physically writes M7,174,455=0 and emits zero
+in 136 steps. The independent full-image journal reconciles every first
+byte/EOF class, two second-EOF boundary cases and four omitted-effect
+controls. Next: authenticate the input-derived *address* lineage of the
+C118 transfer, normalize signed EOF, reserve the relocated effects,
+implement arithmetic and phi/backedge, and rerun the unchanged whole
+checksum. Scratch frame writes and the incomplete byte arm prohibit
+publication. Evidence: `tests/compiler/relocated_eof_branch.rs` and the
+P2 technical contract.
+
 A fresh source-loaded C23 **empty-EOF-only operand experiment** uses
 two real C58/C59 guest `p` writes to set the original source output SSA
 cell M7,174,455=0 before the physically reached C88 output and C89

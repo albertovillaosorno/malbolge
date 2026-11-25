@@ -28,6 +28,9 @@
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
 
+#[path = "compiler/relocated_eof_branch.rs"]
+mod relocated_eof_branch;
+
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 

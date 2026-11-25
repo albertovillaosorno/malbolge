@@ -12,6 +12,27 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Relocated all-byte first-EOF dispatch (2026-11-24)
+
+`build_relocated_eof_branch_source` emits a distinct 156-cell graphical
+source. It keeps the original physical checksum zero pair and raw first
+input pair, with C53 input and C63/C64 input stores. Four rotations of
+loader word 37 and two crazy folds reduce every successful byte to
+6,554,439, while EOF reduces to 13,108,878. C107/C108 select distinct
+loader routes, and C118 branches to C120 (all bytes) or C126 (true EOF).
+The byte arm reads again and halts without output in 121 instructions;
+the EOF arm uses C139/C140 to write the original output operand zero,
+emits it at C141 and halts in 136 instructions. Full physical-image
+journals cover all 257 first-input classes, two second-EOF boundary
+cases and four omitted-effect controls.
+
+This relocates the earlier EOF-only branch rather than replacing its
+original code-site placement. The byte arm lacks arithmetic, the raw EOF
+pair is not signed C23, scratch writes are not source-frame authorized,
+and no linked phi/backedge or published checksum is claimed. The final
+indirect pointer is selected by an input-derived **address**, not by
+a guest-written input-derived word at the final pointer cell.
+
 ### Real first C23 input-result byte pair, still not signed EOF (2026-11-24)
 
 `build_adjacent_c32_zero_c37_byte_pair_source` extends the original
