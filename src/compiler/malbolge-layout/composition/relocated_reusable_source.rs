@@ -31,8 +31,10 @@ mod relocated_reusable_guard_source;
 
 use malbolge::{ProfileDescriptor, encrypt_profile_cell};
 pub use relocated_recurrent_capture_source::{
-    RelocatedRecurrentCaptureSource, RelocatedRecurrentParitySource,
-    RelocatedRecurrentReloadSource, build_relocated_recurrent_capture_source,
+    RelocatedRecurrentCaptureSource, RelocatedRecurrentIndexedSource,
+    RelocatedRecurrentParitySource, RelocatedRecurrentReloadSource,
+    build_relocated_recurrent_capture_source,
+    build_relocated_recurrent_indexed_source,
     build_relocated_recurrent_parity_source,
     build_relocated_recurrent_reload_source,
 };

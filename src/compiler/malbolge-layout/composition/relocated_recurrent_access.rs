@@ -231,6 +231,60 @@ impl AccessBlock {
         Err(LAYOUT)
     }
 
+    // The two halves exchange a seed-specific route without ever
+    // exposing a dirty seed to another input. Choose bounded, inexpensive
+    // encryption preparation phases for the exact instruction envelopes.
+    pub(super) fn indexed_load(
+        profile: &ProfileDescriptor,
+        bases: [u32; 2],
+    ) -> Result<[Self; 2], BuildError> {
+        use LinearOpcode::{
+            CrazyData, NoOperation, RelocateDataPointer, RotateData,
+        };
+        let [first, second] = bases;
+        Ok([
+            Self::best_phase(profile, first, &[
+                RelocateDataPointer,
+                RelocateDataPointer,
+                RelocateDataPointer,
+                CrazyData,
+                RelocateDataPointer,
+            ])?,
+            Self::best_phase(profile, second, &[
+                RotateData,
+                RelocateDataPointer,
+                CrazyData,
+                NoOperation,
+                RelocateDataPointer,
+            ])?,
+        ])
+    }
+
+    fn best_phase(
+        profile: &ProfileDescriptor,
+        base: u32,
+        operations: &[LinearOpcode],
+    ) -> Result<Self, BuildError> {
+        let mut best = None;
+        let aligned = base.checked_sub(base.rem_euclid(94)).ok_or(LAYOUT)?;
+        // Five operations and the final indirect transfer fit in 94 cells.
+        for phase in 0..=88u32 {
+            let start = aligned.checked_add(phase).ok_or(LAYOUT)?;
+            let candidate =
+                Self::from_operations(profile, start, (0, 0), operations)?;
+            let Ok(preparation) = candidate.preparation(false) else {
+                continue;
+            };
+            let cost = preparation.iter().try_fold(0u32, |sum, jump| {
+                sum.checked_add(jump.words).ok_or(LAYOUT)
+            })?;
+            if best.as_ref().is_none_or(|(old, _)| cost < *old) {
+                best = Some((cost, candidate));
+            }
+        }
+        best.map(|(_, block)| block).ok_or(LAYOUT)
+    }
+
     pub(super) fn selector(
         profile: &ProfileDescriptor,
         start: u32,

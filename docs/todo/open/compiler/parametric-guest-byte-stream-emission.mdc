@@ -126,9 +126,16 @@ byte/EOF dispatch: a complemented raw pointer selects the untouched
 loader parity word; even input toggles persistent state and odd input
 leaves it unchanged. Both arms join through dirty resets and a backedge.
 Seven traced streams, six omitted-effect controls and all 65,536
-checksum/byte projection pairs pass. Full-byte recurrent checksum
+checksum/byte projection pairs pass. A separate 3,670,010-cell indexed
+word-access image uses the live byte to select one of sixteen immutable
+seed records through 256 initialized pointers. Two physical crazy stores
+read and restore the selected seed, and both code envelopes and the
+dirty pointer mask are restored before the backedge. Five traced streams
+cover all bytes in both orders and both EOF routes; an omitted restoring
+store and the historical profile refuse. Full-byte recurrent checksum
 arithmetic, compact execution and complete source-frame routing remain
 open. Evidence:
+`tests/compiler/relocated_recurrent_indexed.rs`,
 `tests/compiler/relocated_recurrent_parity.rs`,
 `tests/compiler/relocated_recurrent_reload.rs`,
 `tests/compiler/relocated_recurrent_capture.rs`, `tests/compiler/relocated_reusable_guard.rs`,

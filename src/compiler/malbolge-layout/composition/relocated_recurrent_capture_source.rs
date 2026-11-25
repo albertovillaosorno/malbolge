@@ -22,6 +22,8 @@
 // - Summary:
 //   - Capture the raw word before dirty classification and reset its slot.
 
+#[path = "relocated_recurrent_indexed_source.rs"]
+mod relocated_recurrent_indexed_source;
 #[path = "relocated_recurrent_parity_source.rs"]
 mod relocated_recurrent_parity_source;
 #[path = "relocated_recurrent_reload_source.rs"]
@@ -31,6 +33,9 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use malbolge::{ProfileDescriptor, profile_crazy};
+pub use relocated_recurrent_indexed_source::{
+    RelocatedRecurrentIndexedSource, build_relocated_recurrent_indexed_source,
+};
 pub use relocated_recurrent_parity_source::{
     RelocatedRecurrentParitySource, build_relocated_recurrent_parity_source,
 };
@@ -59,7 +64,8 @@ const SEED_ANCHOR: u32 = 7_174_483;
 const ANCHOR_START: u32 = 7_174_487;
 const ANCHOR_END: u32 = ONES;
 const SEEDS: u32 = 7_174_611;
-const SEED_END: u32 = 7_174_951;
+// Every inverse-seed slot precedes the first recurrent operand.
+const SEED_END: u32 = CAPTURE;
 const ANCHORS: [(u32, u32); 7] = [
     (ANCHOR_START, CAPTURE),
     (7_174_491, MAIN_ROUTE),

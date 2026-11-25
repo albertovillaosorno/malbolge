@@ -13867,3 +13867,32 @@ before the first input, within its 2,050,000-instruction bound. This is
 not a compact runtime, a full eight-bit checksum, or independent
 source-frame admission. Original whole-C
 publication still requires those remaining obligations.
+
+
+### Recurrent indexed immutable word access
+
+A separate 3,670,010-cell graphical image selects a seed from a live
+input-dependent table. The complemented raw byte and a nonuniform
+pointer mask produce M7185024 minus the input byte after relocation.
+The 256 initialized table entries point to sixteen seed records, one
+for each high binary nibble. Two access envelopes perform dependent
+relocations, a crazy store with all twos, a seed-specific transfer,
+a rotation of a uniform all-two constant, and a second crazy store.
+The second store restores the exact selected seed and leaves its
+original value in A. No host chooses the seed or supplies the output.
+Both code envelopes are restored before the common continuation.
+The builder searches bounded encryption phases to minimize the number
+of preparation route words; the inverse-seed allocation extends only
+up to the first occupied capture word.
+
+Each byte emits its high nibble. The two dirty scratch words are reset,
+then two reversible stores reload an inverse mask seed and restore the
+nonuniform pointer mask before the genuine backedge. EOF bypasses the
+lookup and emits length parity before halt. Independent physical replay
+checks the selected addresses and words, the first and restoring
+stores, output, mask restoration, and EOF. Five streams cover both EOF
+landings, repeated seeds, and ascending and descending byte domains.
+Omitting the restoring store and selecting the historical profile
+refuse. Bootstrap is bounded by 3,600,000 instructions in this test.
+This is a reusable indexed data-access witness, not the full checksum
+or its compact, source-authenticated execution.

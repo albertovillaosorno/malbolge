@@ -67,9 +67,11 @@ pub use relocated_live_parity_source::{
     build_relocated_live_parity_source,
 };
 pub use relocated_reusable_source::{
-    RelocatedRecurrentCaptureSource, RelocatedRecurrentParitySource,
-    RelocatedRecurrentReloadSource, RelocatedReusableGuardSource,
-    RelocatedReusableSource, build_relocated_recurrent_capture_source,
+    RelocatedRecurrentCaptureSource, RelocatedRecurrentIndexedSource,
+    RelocatedRecurrentParitySource, RelocatedRecurrentReloadSource,
+    RelocatedReusableGuardSource, RelocatedReusableSource,
+    build_relocated_recurrent_capture_source,
+    build_relocated_recurrent_indexed_source,
     build_relocated_recurrent_parity_source,
     build_relocated_recurrent_reload_source,
     build_relocated_reusable_guard_source, build_relocated_reusable_source,

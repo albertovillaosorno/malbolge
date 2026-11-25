@@ -22,6 +22,8 @@
 // - Summary:
 //   - Prove one dirty capture slot survives dispatch and is reused.
 
+#[path = "relocated_recurrent_indexed.rs"]
+mod relocated_recurrent_indexed;
 #[path = "relocated_recurrent_parity.rs"]
 mod relocated_recurrent_parity;
 #[path = "relocated_recurrent_reload.rs"]
