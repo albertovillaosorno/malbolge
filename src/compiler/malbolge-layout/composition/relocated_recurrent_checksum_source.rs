@@ -604,8 +604,25 @@ fn finish_byte_route(
 
 // Split the most expensive linear walk at each iteration. This keeps
 // the finite set of near-frame anchors useful across sparse table rows.
-fn route_anchors(words: &Words) -> Result<TargetAnchors, BuildError> {
-    let addresses = words.keys().copied().collect::<Vec<_>>();
+fn route_anchors(
+    profile: &ProfileDescriptor,
+    words: &Words,
+) -> Result<TargetAnchors, BuildError> {
+    let addresses = words
+        .iter()
+        .map(|(&address, &value)| {
+            let virgin = if address.is_multiple_of(2) {
+                7_174_416
+            } else {
+                37
+            };
+            let inverse = crazy(profile, ALL_ONES, value);
+            let weight = 1u64.saturating_add(u64::from(
+                crazy(profile, virgin, inverse) != value,
+            ));
+            (address, weight)
+        })
+        .collect::<Vec<_>>();
     let mut cuts = vec![0usize, addresses.len()];
     let slots = target_slots()?;
     let count = slots.len();
@@ -634,8 +651,13 @@ fn route_anchors(words: &Words) -> Result<TargetAnchors, BuildError> {
             return Err(LAYOUT);
         };
         partitions.push((
-            end.checked_sub(*start).ok_or(LAYOUT)?,
-            *addresses.get(*start).ok_or(LAYOUT)?,
+            addresses
+                .get(*start..*end)
+                .ok_or(LAYOUT)?
+                .iter()
+                .map(|&(_, weight)| weight)
+                .sum::<u64>(),
+            addresses.get(*start).ok_or(LAYOUT)?.0,
         ));
     }
     partitions.sort_unstable_by_key(|&(size, base)| (Reverse(size), base));
@@ -647,22 +669,18 @@ fn route_anchors(words: &Words) -> Result<TargetAnchors, BuildError> {
 }
 
 fn best_anchor_split(
-    addresses: &[u32],
+    addresses: &[(u32, u64)],
     (start, end): (usize, usize),
 ) -> Result<AnchorSplit, BuildError> {
     let mut best = (0u64, 0usize);
-    let base = *addresses.get(start).ok_or(LAYOUT)?;
-    for index in start.checked_add(1).ok_or(LAYOUT)?..end {
-        let distance = addresses
-            .get(index)
-            .ok_or(LAYOUT)?
-            .checked_sub(base)
-            .ok_or(LAYOUT)?;
+    let base = addresses.get(start).ok_or(LAYOUT)?.0;
+    let mut suffix_weight = 0u64;
+    for index in (start.checked_add(1).ok_or(LAYOUT)?..end).rev() {
+        let &(address, weight) = addresses.get(index).ok_or(LAYOUT)?;
+        suffix_weight = suffix_weight.checked_add(weight).ok_or(LAYOUT)?;
+        let distance = address.checked_sub(base).ok_or(LAYOUT)?;
         let benefit = u64::from(distance)
-            .checked_mul(
-                u64::try_from(end.checked_sub(index).ok_or(LAYOUT)?)
-                    .map_err(|_error| LAYOUT)?,
-            )
+            .checked_mul(suffix_weight)
             .ok_or(LAYOUT)?;
         if benefit > best.0 {
             best = (benefit, index);
@@ -775,7 +793,7 @@ pub fn build_relocated_recurrent_checksum_source(
         AccessBlock::rotated_scratch(profile, code(CODE_BASE, 21, 0)?)?;
     byte_route(profile, &blocks, (&lookups, &scratch_rotate), &mut words)?;
     output_table(profile, &mut words)?;
-    let anchors = route_anchors(&words)?;
+    let anchors = route_anchors(profile, &words)?;
     initialize_chunk_seeds(
         &mut emitter,
         &words,

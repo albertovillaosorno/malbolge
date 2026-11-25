@@ -14311,3 +14311,22 @@ admit the complete source frame, arbitrary control routes, unexecuted
 table entries or the initialization proof. The physical image and
 100,000-step publication gate remain unchanged.
 Evidence: `tests/compiler/source_recurrent_transition.rs`.
+
+The bootstrap now ranks each existing paired and reversible seed slot
+by the shorter of its direct and paged access routes, assigning the
+most frequent values to the least costly slots within each group.
+Target-anchor partitions weight destinations that require virgin-word
+normalization twice, rather than treating every destination equally.
+This is a routing heuristic, not a globally optimal construction.
+The same 2,318,854-cell image reaches its first input in 1,968,165
+steps with seed ranking alone, or 1,964,567 with weighted target
+partitions at the original 32-cell seed-directory stride.
+A bounded physical stride sweep gave the following first-input costs:
+16 exhausted the prior 2,000,000-step test bound; 24 took 1,997,073;
+40 took 1,944,790; 48 took 1,943,851; 56 took 1,950,187; and 64
+took 1,955,778. The retained 48-cell stride uses 29 directory pages
+and saves 41,355 steps over the previous retained bootstrap.
+All 12 physical checksum tests and 26 source-recurrent tests pass,
+including the exhaustive factored edges, directory and table audits,
+and omitted-store controls. The physical bootstrap regression bound
+tightens to 1,950,000; the 100,000-step publication gate is unchanged.

@@ -31,8 +31,8 @@ use super::super::super::{BuildError, Emitter, FRAME, LAYOUT};
 use super::super::{after_store, initialize_words_compact_extent};
 use super::{
     ALL_ONES, ALL_TWOS, ANCHOR_END, ANCHOR_START, CAPTURE, EXTRA_SEED_ANCHOR,
-    NEAR_ONES, NEAR_TWOS, NEAR_ZERO, SEED_ANCHOR, SEEDS, SeedAccess, Words,
-    crazy, immutable_seed_prefix, plan_seeds_with_pairs,
+    NEAR_ONES, NEAR_TWOS, NEAR_ZERO, SEED_ANCHOR, SEEDS, SeedAccess, SeedPlan,
+    Words, crazy, immutable_seed_prefix, plan_seeds_with_pairs,
     prepare_near_constants, previous, rotate, store_anchored,
 };
 
@@ -53,7 +53,7 @@ const ELEMENTARY_COLUMNS: [u32; 7] = [8, 17, 20, 23, 24, 25, 27];
 // operand tape. Its odd pointers leave each even reset word virgin.
 const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const DIRECTORY_BANK: u32 = 7_176_721;
-const DIRECTORY_STRIDE: u32 = 32;
+const DIRECTORY_STRIDE: u32 = 48;
 const DIRECTORY_END: u32 = 7_176_900;
 const TARGET_RETURN: u32 = 7_174_491;
 const TARGET_ROOTS: [u32; 12] = [
@@ -79,6 +79,13 @@ const TARGET_DIRECT_START: u32 = 7_174_515;
 
 type ChunkMasks = Vec<(u32, u32)>;
 type SeedDirectory = Vec<(u32, u32)>;
+type SeedPathCost = (SeedPath, u32);
+
+#[derive(Clone, Copy)]
+enum SeedPath {
+    Direct { root: u32, base: u32 },
+    Page { slot: u32, page: u32 },
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum TargetSlot {
@@ -435,11 +442,10 @@ fn seed_directory(extra: (u32, u32)) -> Result<SeedDirectory, BuildError> {
     Ok(directory)
 }
 
-fn go_seed(
-    emitter: &mut Emitter<'_>,
+fn seed_path(
     address: u32,
     routing: &SeedRouting<'_>,
-) -> Result<(), BuildError> {
+) -> Result<SeedPathCost, BuildError> {
     let extra = routing.extra;
     let (root, base) = if (extra.0..extra.1).contains(&address) {
         (EXTRA_SEED_ANCHOR, extra.0)
@@ -462,15 +468,82 @@ fn go_seed(
         .and_then(|value| value.checked_add(address.checked_sub(page)?))
         .ok_or(LAYOUT)?;
     if indirect < direct {
-        fast_go(emitter, SEED_DIRECTORY)?;
-        emitter.jump(DIRECTORY_BANK)?;
-        emitter.walk(slot)?;
-        emitter.jump(page)?;
+        Ok((SeedPath::Page { slot, page }, indirect))
     } else {
-        fast_go(emitter, root)?;
-        emitter.jump(base)?;
+        Ok((SeedPath::Direct { root, base }, direct))
+    }
+}
+
+fn go_seed(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    routing: &SeedRouting<'_>,
+) -> Result<(), BuildError> {
+    let (path, _) = seed_path(address, routing)?;
+    match path {
+        SeedPath::Page { slot, page } => {
+            fast_go(emitter, SEED_DIRECTORY)?;
+            emitter.jump(DIRECTORY_BANK)?;
+            emitter.walk(slot)?;
+            emitter.jump(page)?;
+        },
+        SeedPath::Direct { root, base } => {
+            fast_go(emitter, root)?;
+            emitter.jump(base)?;
+        },
     }
     emitter.walk(address)
+}
+
+fn reorder_seed_group(
+    entries: &mut [(u32, u32)],
+    routing: &SeedRouting<'_>,
+    plan: &mut SeedPlan,
+    paired: bool,
+) -> Result<(), BuildError> {
+    entries.sort_unstable_by_key(|&(address, _)| address);
+    let mut slots = entries
+        .iter()
+        .map(|&(address, _)| {
+            seed_path(address, routing).map(|(_, cost)| (cost, address))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    slots.sort_unstable();
+    for (&(_, value), (_, address)) in entries.iter().zip(slots) {
+        let inverse = profile_crazy(ALL_ONES, value, 15);
+        let access = if paired {
+            plan.1.push((address, immutable_seed_prefix(inverse, 15)?));
+            plan.1
+                .push((address.checked_add(2).ok_or(LAYOUT)?, inverse));
+            SeedAccess::ImmutablePair(address)
+        } else {
+            plan.1.push((address, inverse));
+            SeedAccess::Reversible(address)
+        };
+        let _old = plan.0.insert(value, access);
+    }
+    Ok(())
+}
+
+// The original planner ranks values by frequency, assigning the first
+// 80 to pairs and the remainder to reversible slots. Preserve that
+// partition but reorder each group by actual minimum route cost.
+fn reorder_seed_slots(
+    (addresses, _): SeedPlan,
+    routing: &SeedRouting<'_>,
+) -> Result<SeedPlan, BuildError> {
+    let mut pairs = Vec::new();
+    let mut singles = Vec::new();
+    for (value, access) in addresses {
+        match access {
+            SeedAccess::ImmutablePair(address) => pairs.push((address, value)),
+            SeedAccess::Reversible(address) => singles.push((address, value)),
+        }
+    }
+    let mut plan = (BTreeMap::new(), Vec::new());
+    reorder_seed_group(&mut pairs, routing, &mut plan, true)?;
+    reorder_seed_group(&mut singles, routing, &mut plan, false)?;
+    Ok(plan)
 }
 
 fn store_seed(
@@ -822,7 +895,7 @@ pub(super) fn initialize_chunk_seeds(
     {
         return Err(LAYOUT);
     }
-    let (seed_addresses, mut seeds) =
+    let seed_plan =
         plan_seeds_with_pairs(emitter, words, (2, &[]), (Some(extra), 80))?;
     let tape_end = prepare_chunk_bank(emitter, &near)?;
     let mut scratch = initialize_chunk_roots(emitter, roots)?;
@@ -831,6 +904,7 @@ pub(super) fn initialize_chunk_seeds(
         directory: &directory,
         extra,
     };
+    let (seed_addresses, mut seeds) = reorder_seed_slots(seed_plan, &routing)?;
     seeds.sort_unstable_by_key(|&(_, value)| value);
     for (address, value) in seeds {
         fast_rotate(emitter, NEAR_ZERO)?;

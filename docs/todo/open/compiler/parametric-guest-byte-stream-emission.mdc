@@ -267,6 +267,11 @@ restore seed rejects a one-byte run despite its loop-only proof
 still accepting the same state, guard and output. Expanded-memory
 code execution and encryption after the first input refuse.
 The bootstrap and unobserved control edges remain unverified.
+Seed access-cost ranking and normalization-weighted target partitions
+reduce bootstrap cost; a bounded stride sweep retains 48-cell pages.
+The unchanged 2,318,854-cell image reaches first input in 1,943,851
+steps (41,355 fewer), with a tightened 1,950,000-step physical bound.
+All 12 physical checksum and 26 source-recurrent tests pass.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:
 `tests/compiler/relocated_recurrent_checksum.rs`,

@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 2_000_000;
+const BOOT_BUDGET: usize = 1_950_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -758,7 +758,7 @@ fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
     for (start, end) in
         [(7_174_611u32, 7_174_970u32), (7_175_601u32, 7_176_600u32)]
     {
-        for base in (start..end).step_by(32) {
+        for base in (start..end).step_by(48) {
             if word(vm, address)?
                 != base.checked_sub(1).ok_or("directory base")?
                 || word(vm, plus(address, 1)?)? != 7_174_416
@@ -1294,7 +1294,7 @@ fn relocated_recurrent_checksum_omitted_directory_store_refuses()
     let guest = source()?;
     // Second near seed page: it is actually selected by the shorter
     // two-hop path, not merely allocated as unused bootstrap data.
-    let site = materialization_site(&guest, (7_176_723, 7_174_642))?;
+    let site = materialization_site(&guest, (7_176_723, 7_174_658))?;
     let modified = omit_site(&guest, site)?;
     if let Ok(initial) = boot(&modified) {
         if check_seed_directory(&initial).is_ok() {
