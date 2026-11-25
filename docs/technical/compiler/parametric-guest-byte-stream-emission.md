@@ -13924,3 +13924,38 @@ all 65,536 full-checksum/input-byte pairs. The bootstrap is bounded by
 4,200,000 instructions. This is a real recurrent two-bit projection,
 not full-byte arithmetic or source-C admission; the original P2
 100,000-step publication witness remains unlinked.
+
+### Factorized recurrent four-bit checksum transition
+
+The separate 6,510,126-cell
+`build_relocated_recurrent_nibble_source` image factors a direct
+16-by-256 transition table into two 256-entry tables. A physical
+raw-byte lookup at M7195959 + 729 - byte selects one of sixteen
+restored seeds containing the ternary-transformed low nibble. The next
+crazy fold combines that word with the persistent state mask; the
+second physical lookup selects M7199010 + 27 * (state + 1) - nibble.
+It reads and restores one of sixteen next-state records. The existing
+scratch/reload path commits the new encoded state, and the capture,
+scratch, and raw index mask are restored before the actual backedge.
+The byte arm emits nothing. Three real rotations after the EOF fold
+decode the low four bits, then the guest emits one byte and halts.
+
+The larger route exceeds the original near-anchor and inverse-seed
+capacity. A separate seed bank at M7175601 through M7175999 leaves
+adjacent even loader reset words virgin; its near pointer is M7174485.
+The bounded compact bootstrap selects the cheaper all-zero/all-one
+tape baseline for each value, partitions the operand tape into sixteen
+aligned segments instead of four, and materializes the furthest
+anchor second. This mode leaves the original initializer available
+for earlier physical witnesses. The new bootstrap is bounded by
+6,200,000 instructions, far beyond the P2 publication budget.
+
+Independent VM replay follows a 4,096-byte Euler circuit through every
+raw-byte/prior-nibble pair exactly once. Short streams cover all
+sixteen states at both EOF landings. Both indexed selection addresses,
+four reversible stores, dirty resets, state commit and raw-mask
+restoration are checked against an independent oracle. Five
+omitted-effect controls, the historical profile, and all 65,536
+full-state/raw-byte host projection pairs are checked. This is still
+only a low-nibble projection: carry propagation, high-nibble
+arithmetic, compact execution and source-C admission are open.

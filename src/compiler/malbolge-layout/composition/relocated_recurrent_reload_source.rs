@@ -90,6 +90,13 @@ impl ReloadBlocks {
 }
 
 pub(super) fn anchors(words: &Words) -> Result<Anchors, BuildError> {
+    spaced_anchors(words, 192)
+}
+
+pub(super) fn spaced_anchors(
+    words: &Words,
+    spacing: u32,
+) -> Result<Anchors, BuildError> {
     let mut result = Vec::new();
     let mut next_base = 0u32;
     let mut address = ANCHOR_START;
@@ -102,7 +109,7 @@ pub(super) fn anchors(words: &Words) -> Result<Anchors, BuildError> {
         }
         result.push((address, target));
         address = address.checked_add(2).ok_or(LAYOUT)?;
-        next_base = target.checked_add(192).ok_or(LAYOUT)?;
+        next_base = target.checked_add(spacing).ok_or(LAYOUT)?;
     }
     Ok(result)
 }

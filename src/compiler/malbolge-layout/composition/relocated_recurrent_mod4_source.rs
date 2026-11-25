@@ -41,15 +41,16 @@ const BOUNDS: TapeBounds = TapeBounds {
 const CODE_BASE: u32 = 4_260_000;
 const TERMINAL: u32 = 4_270_000;
 const SOURCE_CELLS: usize = 4_270_106;
-const BYTE_ROUTE: u32 = 7_182_200;
-const STATE: u32 = 7_175_100;
-const STATE_CONSTANTS: [u32; 3] = [7_175_060, 7_175_062, 7_175_064];
-const SCRATCH: u32 = 7_175_120;
-const SCRATCH_CONSTANTS: [u32; 3] = [7_175_070, 7_175_072, 7_175_074];
-const LOAD_CONSTANT: u32 = 7_175_050;
-const LOOKUP_CONSTANT: u32 = 7_175_052;
-const RELOAD_CONSTANTS: [u32; 2] = [7_175_054, 7_175_056];
-const LOOP_RETURN: u32 = 7_175_090;
+pub(super) const BYTE_ROUTE: u32 = 7_182_200;
+pub(super) const STATE: u32 = 7_175_100;
+pub(super) const STATE_CONSTANTS: [u32; 3] = [7_175_060, 7_175_062, 7_175_064];
+pub(super) const SCRATCH: u32 = 7_175_120;
+pub(super) const SCRATCH_CONSTANTS: [u32; 3] =
+    [7_175_070, 7_175_072, 7_175_074];
+pub(super) const LOAD_CONSTANT: u32 = 7_175_050;
+pub(super) const LOOKUP_CONSTANT: u32 = 7_175_052;
+pub(super) const RELOAD_CONSTANTS: [u32; 2] = [7_175_054, 7_175_056];
+pub(super) const LOOP_RETURN: u32 = 7_175_090;
 // The state occupies the high trits and each input occupies six low trits.
 // Rotating the column-two inverse six times on EOF emits the state: the
 // fixed high prefix plus the wrapped low six twos is divisible by 256.
@@ -79,24 +80,27 @@ pub struct RelocatedRecurrentMod4Source {
 
 type TerminalSites = (u32, u32);
 
-struct Mod4Blocks {
-    capture: Blocks,
-    load: [AccessBlock; 2],
-    lookup: [AccessBlock; 2],
+pub(super) struct Mod4Blocks {
+    pub(super) capture: Blocks,
+    pub(super) load: [AccessBlock; 2],
+    pub(super) lookup: [AccessBlock; 2],
 }
 
 impl Mod4Blocks {
-    fn new(profile: &ProfileDescriptor) -> Result<Self, BuildError> {
+    pub(super) fn new(
+        profile: &ProfileDescriptor,
+        base: u32,
+    ) -> Result<Self, BuildError> {
         use LinearOpcode::CrazyData;
         Ok(Self {
-            capture: Blocks::new(profile, CODE_BASE)?,
+            capture: Blocks::new(profile, base)?,
             load: [
-                access(profile, (CODE_BASE, 8, 93), CrazyData, (0, 4, true))?,
-                access(profile, (CODE_BASE, 9, 93), CrazyData, (0, 5, true))?,
+                access(profile, (base, 8, 93), CrazyData, (0, 4, true))?,
+                access(profile, (base, 9, 93), CrazyData, (0, 5, true))?,
             ],
             lookup: AccessBlock::indexed_load(profile, [
-                code(CODE_BASE, 11, 0)?,
-                code(CODE_BASE, 12, 0)?,
+                code(base, 11, 0)?,
+                code(base, 12, 0)?,
             ])?,
         })
     }
@@ -120,11 +124,14 @@ fn next_state(state: u32, byte: u32) -> Result<u32, BuildError> {
     Ok(update.checked_add(3).ok_or(LAYOUT)? & 3)
 }
 
-fn data_words(profile: &ProfileDescriptor) -> Result<Words, BuildError> {
+pub(super) fn data_words(
+    initial_mask: u32,
+    terminal: u32,
+) -> Result<Words, BuildError> {
     let mut words = Words::new();
     for (address, value) in [
         (CAPTURE, ALL_ONES),
-        (STATE, mask(profile, 0)?),
+        (STATE, initial_mask),
         (STATE.checked_add(1).ok_or(LAYOUT)?, previous(STATE)?),
         (SCRATCH, ALL_ONES),
         (LOAD_CONSTANT, ALL_TWOS),
@@ -149,7 +156,7 @@ fn data_words(profile: &ProfileDescriptor) -> Result<Words, BuildError> {
     }
     for landing in EOF {
         for (offset, value) in [
-            (1, previous(TERMINAL)?),
+            (1, previous(terminal)?),
             (2, ALL_TWOS),
             (3, previous(STATE)?),
         ] {
@@ -163,10 +170,37 @@ fn data_words(profile: &ProfileDescriptor) -> Result<Words, BuildError> {
     Ok(words)
 }
 
-fn seed_address(state: u32) -> Result<u32, BuildError> {
-    SEED_BASE
-        .checked_add(state.checked_mul(SEED_STRIDE).ok_or(LAYOUT)?)
+pub(super) fn seed_address(base: u32, state: u32) -> Result<u32, BuildError> {
+    base.checked_add(state.checked_mul(SEED_STRIDE).ok_or(LAYOUT)?)
         .ok_or(LAYOUT)
+}
+
+pub(super) fn seed_records(
+    route: &mut Route<'_>,
+    lookup: &[AccessBlock; 2],
+    (pointer, base): (u32, u32),
+    values: &[u32],
+) -> Result<(), BuildError> {
+    let [first, second] = lookup;
+    route.enter_ready(first, pointer)?;
+    let continuation = previous(route.cursor)?;
+    for (index, &value) in values.iter().enumerate() {
+        let state = u32::try_from(index).map_err(|_error| LAYOUT)?;
+        let seed = seed_address(base, state)?;
+        for (offset, word) in [
+            (0, value),
+            (1, previous(seed.checked_add(4).ok_or(LAYOUT)?)?),
+            (2, continuation),
+            (4, previous(second.start)?),
+            (5, ALL_TWOS),
+            (6, previous(seed)?),
+        ] {
+            insert(route.words, seed.checked_add(offset).ok_or(LAYOUT)?, word)?;
+        }
+    }
+    route.prepare(first, false)?;
+    route.prepare(second, false)?;
+    Ok(())
 }
 
 fn table_records(
@@ -174,25 +208,11 @@ fn table_records(
     route: &mut Route<'_>,
     blocks: &Mod4Blocks,
 ) -> Result<(), BuildError> {
-    let [first, second] = &blocks.lookup;
-    route.enter_ready(first, STATE)?;
-    let continuation = previous(route.cursor)?;
+    let masks = (0..4u32)
+        .map(|state| mask(profile, state))
+        .collect::<Result<Vec<_>, _>>()?;
+    seed_records(route, &blocks.lookup, (STATE, SEED_BASE), &masks)?;
     for state in 0..4u32 {
-        let seed = seed_address(state)?;
-        for (offset, value) in [
-            (0, mask(profile, state)?),
-            (1, previous(seed.checked_add(4).ok_or(LAYOUT)?)?),
-            (2, continuation),
-            (4, previous(second.start)?),
-            (5, ALL_TWOS),
-            (6, previous(seed)?),
-        ] {
-            insert(
-                route.words,
-                seed.checked_add(offset).ok_or(LAYOUT)?,
-                value,
-            )?;
-        }
         let end = TABLE_BASE
             .checked_add(
                 ROW.checked_mul(state.checked_add(1).ok_or(LAYOUT)?)
@@ -204,12 +224,10 @@ fn table_records(
             insert(
                 route.words,
                 address,
-                previous(seed_address(next_state(state, byte)?)?)?,
+                previous(seed_address(SEED_BASE, next_state(state, byte)?)?)?,
             )?;
         }
     }
-    route.prepare(first, false)?;
-    route.prepare(second, false)?;
     Ok(())
 }
 
@@ -255,18 +273,20 @@ fn byte_route(
     Ok(())
 }
 
-fn emit_terminal(
+pub(super) fn emit_terminal(
     emitter: &mut Emitter<'_>,
+    terminal: u32,
+    rotations: u32,
 ) -> Result<TerminalSites, BuildError> {
     use LinearOpcode::{
         CrazyData, Halt, OutputByte, RelocateDataPointer, RotateData,
     };
     emitter
-        .pad_to_entry(usize::try_from(TERMINAL).map_err(|_error| LAYOUT)?, 0)?;
+        .pad_to_entry(usize::try_from(terminal).map_err(|_error| LAYOUT)?, 0)?;
     let _: u32 = emitter.append(RotateData)?;
     let _: u32 = emitter.append(RelocateDataPointer)?;
     let _: u32 = emitter.append(CrazyData)?;
-    for _ in 0..6u32 {
+    for _ in 0..rotations {
         let _: u32 = emitter.append(RelocateDataPointer)?;
         let _: u32 = emitter.append(RotateData)?;
     }
@@ -286,8 +306,8 @@ pub fn build_relocated_recurrent_mod4_source(
     profile: &ProfileDescriptor,
 ) -> Result<RelocatedRecurrentMod4Source, BuildError> {
     let mut emitter = bootstrap(profile, SOURCE_CELLS, BOUNDS)?;
-    let blocks = Mod4Blocks::new(profile)?;
-    let mut words = data_words(profile)?;
+    let blocks = Mod4Blocks::new(profile, CODE_BASE)?;
+    let mut words = data_words(mask(profile, 0)?, TERMINAL)?;
     let entry = main_route(&blocks.capture, &mut words)?;
     byte_route(profile, &blocks, &mut words)?;
     let anchors = anchors(&words)?;
@@ -303,7 +323,7 @@ pub fn build_relocated_recurrent_mod4_source(
     {
         block.emit(&mut emitter)?;
     }
-    let (output, halt) = emit_terminal(&mut emitter)?;
+    let (output, halt) = emit_terminal(&mut emitter, TERMINAL, 6)?;
     let [first, second, third] = &blocks.capture.reset;
     let [load_first, load_second] = &blocks.load;
     let [lookup_first, lookup_second] = &blocks.lookup;

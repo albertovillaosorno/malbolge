@@ -26,6 +26,8 @@
 mod relocated_recurrent_indexed_source;
 #[path = "relocated_recurrent_mod4_source.rs"]
 mod relocated_recurrent_mod4_source;
+#[path = "relocated_recurrent_nibble_source.rs"]
+mod relocated_recurrent_nibble_source;
 #[path = "relocated_recurrent_parity_source.rs"]
 mod relocated_recurrent_parity_source;
 #[path = "relocated_recurrent_reload_source.rs"]
@@ -41,6 +43,9 @@ pub use relocated_recurrent_indexed_source::{
 pub use relocated_recurrent_mod4_source::{
     RelocatedRecurrentMod4Source, build_relocated_recurrent_mod4_source,
 };
+pub use relocated_recurrent_nibble_source::{
+    RelocatedRecurrentNibbleSource, build_relocated_recurrent_nibble_source,
+};
 pub use relocated_recurrent_parity_source::{
     RelocatedRecurrentParitySource, build_relocated_recurrent_parity_source,
 };
@@ -54,7 +59,10 @@ use super::super::{
     BOOT_RETURN, BuildError, Emitter, FRAME, LAYOUT, TapeBounds,
 };
 use super::relocated_recurrent_access::{AccessBlock, AccessShape};
-use super::{ONES, TWOS, ZERO, after_store, initialize_words_with_anchors};
+use super::{
+    ONES, TWOS, ZERO, after_store, initialize_words_compact,
+    initialize_words_with_anchors,
+};
 
 const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_240_001,
@@ -66,6 +74,7 @@ const CODE_BASE: u32 = 1_649_986;
 const NEAR_ZERO: u32 = 7_174_471;
 const NEAR_TWOS: u32 = 7_174_473;
 const SEED_ANCHOR: u32 = 7_174_483;
+const EXTRA_SEED_ANCHOR: u32 = 7_174_485;
 const ANCHOR_START: u32 = 7_174_487;
 const ANCHOR_END: u32 = ONES;
 const SEEDS: u32 = 7_174_611;
@@ -128,6 +137,8 @@ pub struct RelocatedRecurrentCaptureSource {
 type Words = BTreeMap<u32, u32>;
 type WordPairs = [(u32, u32)];
 type SeedPlan = (Words, Vec<(u32, u32)>);
+type ExtraSeeds = Option<(u32, u32)>;
+type SeedOptions<'words> = (u32, &'words WordPairs, ExtraSeeds);
 
 struct Route<'words> {
     cursor: u32,
@@ -403,15 +414,48 @@ fn initialize_with_dispatch(
     anchors: &[(u32, u32)],
     (stride, dispatch): (u32, &WordPairs),
 ) -> Result<(), BuildError> {
-    let (seed_addresses, seeds) = plan_seeds(emitter, words, stride, dispatch)?;
+    initialize_with_extra_seeds(
+        emitter,
+        words,
+        anchors,
+        (stride, dispatch, None),
+    )
+}
+
+fn initialize_with_extra_seeds(
+    emitter: &mut Emitter<'_>,
+    words: &Words,
+    anchors: &[(u32, u32)],
+    (stride, dispatch, extra): SeedOptions<'_>,
+) -> Result<(), BuildError> {
     let mut near = vec![(SEED_ANCHOR, previous(SEEDS)?)];
+    if let Some((base, end)) = extra {
+        if base < CAPTURE
+            || base >= end
+            || end >= emitter.tape_bounds.start
+            || base.is_multiple_of(2)
+            || !stride.is_multiple_of(2)
+            || stride == 0
+            || !end.is_multiple_of(2)
+            || words.range(base..=end).next().is_some()
+        {
+            return Err(LAYOUT);
+        }
+        near.push((EXTRA_SEED_ANCHOR, previous(base)?));
+    }
     for &(anchor, base) in anchors {
         if !(ANCHOR_START..ANCHOR_END).contains(&anchor) {
             return Err(LAYOUT);
         }
         near.push((anchor, previous(base)?));
     }
-    initialize_words_with_anchors(emitter, &near, &seeds)?;
+    let (seed_addresses, seeds) =
+        plan_seeds(emitter, words, (stride, dispatch), extra)?;
+    if extra.is_some() {
+        initialize_words_compact(emitter, &near, &seeds, true)?;
+    } else {
+        initialize_words_with_anchors(emitter, &near, &seeds)?;
+    }
     prepare_near_constants(emitter)?;
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
@@ -431,7 +475,7 @@ fn initialize_with_dispatch(
             store_anchored(emitter, address, anchors)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        load_seed(emitter, seed)?;
+        load_seed(emitter, seed, extra)?;
         store_anchored(emitter, address, anchors)?;
     }
     for &(address, value) in dispatch {
@@ -440,7 +484,7 @@ fn initialize_with_dispatch(
             store_dispatch(emitter, address)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        load_seed(emitter, seed)?;
+        load_seed(emitter, seed, extra)?;
         store_dispatch(emitter, address)?;
     }
     Ok(())
@@ -449,8 +493,8 @@ fn initialize_with_dispatch(
 fn plan_seeds(
     emitter: &Emitter<'_>,
     words: &Words,
-    stride: u32,
-    dispatch: &[(u32, u32)],
+    (stride, dispatch): (u32, &WordPairs),
+    extra: ExtraSeeds,
 ) -> Result<SeedPlan, BuildError> {
     let mut frequency = BTreeMap::<u32, usize>::new();
     for value in words
@@ -467,17 +511,34 @@ fn plan_seeds(
     values.sort_unstable_by_key(|&(value, count)| (Reverse(count), value));
     let mut seed_addresses = BTreeMap::new();
     let mut seeds = Vec::new();
+    // The compact tape has twelve additional anchors at M7174971..4993.
+    let seed_end = if extra.is_some() {
+        7_174_970
+    } else {
+        SEED_END
+    };
     for (index, (value, _)) in values.into_iter().enumerate() {
-        let address = SEEDS
-            .checked_add(
-                u32::try_from(index)
-                    .map_err(|_error| LAYOUT)?
-                    .checked_mul(stride)
-                    .ok_or(LAYOUT)?,
-            )
+        let offset = u32::try_from(index)
+            .map_err(|_error| LAYOUT)?
+            .checked_mul(stride)
             .ok_or(LAYOUT)?;
-        if address >= SEED_END {
-            return Err(LAYOUT);
+        let mut address = SEEDS.checked_add(offset).ok_or(LAYOUT)?;
+        if address >= seed_end {
+            let (base, end) = extra.ok_or(LAYOUT)?;
+            let slots = seed_end
+                .checked_sub(SEEDS)
+                .ok_or(LAYOUT)?
+                .checked_add(stride.checked_sub(1).ok_or(LAYOUT)?)
+                .ok_or(LAYOUT)?
+                .checked_div(stride)
+                .ok_or(LAYOUT)?;
+            let overflow = offset
+                .checked_sub(slots.checked_mul(stride).ok_or(LAYOUT)?)
+                .ok_or(LAYOUT)?;
+            address = base.checked_add(overflow).ok_or(LAYOUT)?;
+            if address >= end {
+                return Err(LAYOUT);
+            }
         }
         let inverse =
             profile_crazy(ALL_ONES, value, emitter.profile.word_trits());
@@ -489,11 +550,22 @@ fn plan_seeds(
 
 // The near pointer skips the gap between the frame and the inverse seed
 // table. Each pair of all-two folds restores the seed after loading it.
-fn load_seed(emitter: &mut Emitter<'_>, seed: u32) -> Result<(), BuildError> {
+fn load_seed(
+    emitter: &mut Emitter<'_>,
+    seed: u32,
+    extra: ExtraSeeds,
+) -> Result<(), BuildError> {
+    let (anchor, base) = if let Some((base, _)) =
+        extra.filter(|(base, end)| (*base..*end).contains(&seed))
+    {
+        (EXTRA_SEED_ANCHOR, base)
+    } else {
+        (SEED_ANCHOR, SEEDS)
+    };
     for _ in 0..2u8 {
         rotate(emitter, NEAR_TWOS)?;
-        emitter.go(SEED_ANCHOR)?;
-        emitter.jump(SEEDS)?;
+        emitter.go(anchor)?;
+        emitter.jump(base)?;
         emitter.walk(seed)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
         after_store(emitter)?;

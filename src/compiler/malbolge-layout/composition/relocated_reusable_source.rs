@@ -32,10 +32,12 @@ mod relocated_reusable_guard_source;
 use malbolge::{ProfileDescriptor, encrypt_profile_cell};
 pub use relocated_recurrent_capture_source::{
     RelocatedRecurrentCaptureSource, RelocatedRecurrentIndexedSource,
-    RelocatedRecurrentMod4Source, RelocatedRecurrentParitySource,
-    RelocatedRecurrentReloadSource, build_relocated_recurrent_capture_source,
+    RelocatedRecurrentMod4Source, RelocatedRecurrentNibbleSource,
+    RelocatedRecurrentParitySource, RelocatedRecurrentReloadSource,
+    build_relocated_recurrent_capture_source,
     build_relocated_recurrent_indexed_source,
     build_relocated_recurrent_mod4_source,
+    build_relocated_recurrent_nibble_source,
     build_relocated_recurrent_parity_source,
     build_relocated_recurrent_reload_source,
 };
@@ -54,6 +56,10 @@ const BOUNDS: TapeBounds = TapeBounds {
 const ONES: u32 = 7_174_601;
 const ZERO: u32 = 7_174_603;
 const TWOS: u32 = 7_174_605;
+const EXTRA_TAPE_ANCHORS: [u32; 12] = [
+    7_174_971, 7_174_973, 7_174_975, 7_174_977, 7_174_979, 7_174_981,
+    7_174_983, 7_174_985, 7_174_987, 7_174_989, 7_174_991, 7_174_993,
+];
 const TAPE_ANCHORS: [u32; 4] = [7_174_475, 7_174_477, 7_174_479, 7_174_481];
 const PRIME: u32 = 7_174_671;
 const ROUTE: u32 = 7_174_700;
@@ -84,6 +90,13 @@ pub struct RelocatedReusableSource {
     /// Mutable data word, initially zero.
     pub state: u32,
 }
+
+type PlannedWord = (u32, Vec<u32>, u32);
+type PlannedAnchor = (u32, u32, Vec<u32>, u32);
+type PlannedWords = Vec<PlannedWord>;
+type PlannedAnchors = Vec<PlannedAnchor>;
+type TapeAnchorSet = Vec<(u32, u32)>;
+type BaselineAnchors<'anchors> = (u32, &'anchors [(u32, u32)]);
 
 fn after_store(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
     // Targets are initialized in ascending order. The next even loader
@@ -157,8 +170,34 @@ fn initialize_words_with_anchors(
     near: &[(u32, u32)],
     words: &[(u32, u32)],
 ) -> Result<(), BuildError> {
-    let mut plan = TapePlan::with_bounds(emitter.tape_bounds);
-    let twos = plan.tape(ALL_TWOS, false)?;
+    initialize_words_compact(emitter, near, words, false)
+}
+
+// With an all-one final target, each mismatched zero/one trit needs
+// four marker/swap operations, while a two needs two on either baseline.
+fn prefer_ones(mut value: u32, compact: bool) -> bool {
+    if !compact {
+        return false;
+    }
+    let mut zeros = 0u32;
+    let mut ones = 0u32;
+    for _ in 0..15u32 {
+        match value.rem_euclid(3) {
+            0 => zeros = zeros.saturating_add(1),
+            1 => ones = ones.saturating_add(1),
+            _ => {},
+        }
+        value = value.div_euclid(3);
+    }
+    zeros > ones
+}
+
+fn plan_destinations(
+    plan: &mut TapePlan,
+    near: &[(u32, u32)],
+    words: &[(u32, u32)],
+    compact: bool,
+) -> Result<PlannedWords, BuildError> {
     let mut destinations = Vec::new();
     // Near anchors may precede the uniform marker constants, but must
     // leave the even frame-reset cells and the bootstrap return intact.
@@ -168,52 +207,126 @@ fn initialize_words_with_anchors(
             return Err(LAYOUT);
         }
         prior = address;
-        destinations.push((address, plan.tape(value, false)?));
+        let ones = prefer_ones(value, compact);
+        destinations.push((
+            address,
+            plan.tape(value, ones)?,
+            if ones {
+                ONES
+            } else {
+                ZERO
+            },
+        ));
     }
     prior = TWOS;
     for &(address, value) in words {
-        if address <= prior || address >= emitter.tape_bounds.start {
+        if address <= prior || address >= plan.bounds.start {
             return Err(LAYOUT);
         }
         prior = address;
-        destinations.push((address, plan.tape(value, false)?));
+        let ones = prefer_ones(value, compact);
+        destinations.push((
+            address,
+            plan.tape(value, ones)?,
+            if ones {
+                ONES
+            } else {
+                ZERO
+            },
+        ));
     }
-    // Partition the original operand tape into four aligned segments.
-    // These additional anchor tapes come after the original operands;
-    // initialize them before using their pointers for the seed stores.
+    Ok(destinations)
+}
+
+fn plan_tape_anchors(
+    plan: &mut TapePlan,
+    compact: bool,
+) -> Result<PlannedAnchors, BuildError> {
+    // Partition the original operand tape into aligned segments. Anchor
+    // tapes follow the original operands; initialize their pointers first.
     let mut anchor_tapes = Vec::new();
-    if !near.is_empty() {
-        let start = plan.bounds.start;
-        let slots = plan
-            .next_slot
-            .checked_sub(start)
+    let start = plan.bounds.start;
+    let slots = plan
+        .next_slot
+        .checked_sub(start)
+        .ok_or(LAYOUT)?
+        .checked_div(4)
+        .ok_or(LAYOUT)?;
+    let mut addresses = TAPE_ANCHORS.to_vec();
+    if compact {
+        addresses.extend(EXTRA_TAPE_ANCHORS);
+    }
+    let count = u32::try_from(addresses.len()).map_err(|_error| LAYOUT)?;
+    for (index, address) in addresses.into_iter().enumerate() {
+        let slot_index = u32::try_from(index).map_err(|_error| LAYOUT)?;
+        let offset = slots
+            .checked_mul(slot_index)
             .ok_or(LAYOUT)?
-            .checked_div(4)
+            .checked_div(count)
+            .ok_or(LAYOUT)?
+            .checked_mul(4)
             .ok_or(LAYOUT)?;
-        for (index, address) in TAPE_ANCHORS.into_iter().enumerate() {
-            let slot_index = u32::try_from(index).map_err(|_error| LAYOUT)?;
-            let offset = slots
-                .checked_mul(slot_index)
-                .ok_or(LAYOUT)?
-                .checked_div(4)
-                .ok_or(LAYOUT)?
-                .checked_mul(4)
-                .ok_or(LAYOUT)?;
-            let base = start.checked_add(offset).ok_or(LAYOUT)?;
-            let tape = plan.tape(base.checked_sub(1).ok_or(LAYOUT)?, false)?;
-            anchor_tapes.push((address, base, tape));
+        let base = start.checked_add(offset).ok_or(LAYOUT)?;
+        let value = base.checked_sub(1).ok_or(LAYOUT)?;
+        let ones = prefer_ones(value, compact);
+        let tape = plan.tape(value, ones)?;
+        anchor_tapes.push((
+            address,
+            base,
+            tape,
+            if ones {
+                ONES
+            } else {
+                ZERO
+            },
+        ));
+    }
+    Ok(anchor_tapes)
+}
+
+fn materialize_tape_anchors(
+    emitter: &mut Emitter<'_>,
+    mut tapes: PlannedAnchors,
+    compact: bool,
+) -> Result<TapeAnchorSet, BuildError> {
+    let mut anchors = Vec::new();
+    // All anchor destinations are odd and leave their adjacent even reset
+    // pointers virgin, so the farthest anchor can be initialized second.
+    // That shortens every subsequent walk to the trailing anchor tapes.
+    if compact && tapes.len() > 1 {
+        let last = tapes.pop().ok_or(LAYOUT)?;
+        tapes.insert(1, last);
+    }
+    for (address, base, tape, baseline) in tapes {
+        store_planned_word(emitter, address, &tape, (baseline, &anchors))?;
+        anchors.push((address, base));
+        if compact {
+            anchors.sort_unstable_by_key(|&(_, target)| target);
         }
     }
+    Ok(anchors)
+}
+
+fn initialize_words_compact(
+    emitter: &mut Emitter<'_>,
+    near: &[(u32, u32)],
+    words: &[(u32, u32)],
+    compact: bool,
+) -> Result<(), BuildError> {
+    let mut plan = TapePlan::with_bounds(emitter.tape_bounds);
+    let twos = plan.tape(ALL_TWOS, false)?;
+    let destinations = plan_destinations(&mut plan, near, words, compact)?;
+    let tapes = if near.is_empty() {
+        Vec::new()
+    } else {
+        plan_tape_anchors(&mut plan, compact)?
+    };
     emitter.prepare_odd_pairs(&[ONES, TWOS])?;
     emitter.prepare_tape(&plan)?;
     let _: u32 = emitter.store_tape(&twos, TWOS, ZERO)?;
-    let mut anchors = Vec::new();
-    for (address, base, tape) in anchor_tapes {
-        store_planned_word(emitter, address, &tape, &anchors)?;
-        anchors.push((address, base));
-    }
-    for (address, tape) in destinations {
-        store_planned_word(emitter, address, &tape, &anchors)?;
+    let anchors = materialize_tape_anchors(emitter, tapes, compact)?;
+    for (address, tape, baseline) in destinations {
+        store_planned_word(emitter, address, &tape, (baseline, &anchors))?;
     }
     Ok(())
 }
@@ -222,7 +335,7 @@ fn store_planned_word(
     emitter: &mut Emitter<'_>,
     address: u32,
     tape: &[u32],
-    anchors: &[(u32, u32)],
+    (baseline, anchors): BaselineAnchors<'_>,
 ) -> Result<(), BuildError> {
     reset_word(emitter, address)?;
     let anchor = tape.first().and_then(|first| {
@@ -233,7 +346,7 @@ fn store_planned_word(
             .find(|(_, base)| base <= first)
     });
     let _: u32 =
-        emitter.store_tape_with_anchor(tape, address, (ZERO, anchor))?;
+        emitter.store_tape_with_anchor(tape, address, (baseline, anchor))?;
     after_store(emitter)
 }
 
