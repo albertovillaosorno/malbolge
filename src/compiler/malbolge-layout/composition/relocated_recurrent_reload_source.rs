@@ -28,8 +28,8 @@ use super::super::super::super::LinearOpcode;
 use super::super::super::{BuildError, LAYOUT, TapeBounds};
 use super::super::relocated_recurrent_access::AccessBlock;
 use super::{
-    ALL_ONES, ALL_TWOS, ANCHOR_START, BYTE, BYTE_ROUTE_POINTER, Blocks,
-    CAPTURE, CONSTANTS, EOF, INITIAL, INPUT, MAIN_ROUTE,
+    ALL_ONES, ALL_TWOS, ANCHOR_END, ANCHOR_START, BYTE, BYTE_ROUTE_POINTER,
+    Blocks, CAPTURE, CONSTANTS, EOF, INITIAL, INPUT, MAIN_ROUTE,
     RelocatedRecurrentCaptureSource, Route, STATES, Words, access, bootstrap,
     go_anchored, initialize, insert, previous,
 };
@@ -38,9 +38,9 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_280_001,
     start: 7_186_001,
 };
-const CODE_BASE: u32 = 5_899_952;
-const TERMINAL: u32 = 5_919_952;
-const SOURCE_CELLS: usize = 5_920_182;
+const CODE_BASE: u32 = 4_699_948;
+const TERMINAL: u32 = 4_719_948;
+const SOURCE_CELLS: usize = 4_720_178;
 const RELOAD_ROUTE: u32 = 7_181_000;
 const LOAD_CONSTANTS: [u32; 2] = [7_175_050, 7_175_052];
 const RAW_CONSTANTS: [u32; 3] = [7_175_060, 7_175_062, 7_175_064];
@@ -97,7 +97,7 @@ pub(super) fn anchors(words: &Words) -> Result<Anchors, BuildError> {
         if target < next_base {
             continue;
         }
-        if address >= CAPTURE {
+        if address >= ANCHOR_END {
             return Err(LAYOUT);
         }
         result.push((address, target));

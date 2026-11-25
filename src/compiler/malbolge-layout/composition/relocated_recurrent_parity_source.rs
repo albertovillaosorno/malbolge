@@ -39,9 +39,9 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_280_001,
     start: 7_186_001,
 };
-const CODE_BASE: u32 = 6_400_000;
-const TERMINAL: u32 = 6_420_000;
-const SOURCE_CELLS: usize = 6_420_168;
+const CODE_BASE: u32 = 4_899_948;
+const TERMINAL: u32 = 4_919_948;
+const SOURCE_CELLS: usize = 4_920_116;
 const BYTE_ROUTE: u32 = 7_181_000;
 const EVEN_ROUTE: u32 = 7_181_820;
 const ODD_ROUTE: u32 = 7_181_800;

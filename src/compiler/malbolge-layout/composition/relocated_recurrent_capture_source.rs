@@ -27,7 +27,8 @@ mod relocated_recurrent_parity_source;
 #[path = "relocated_recurrent_reload_source.rs"]
 mod relocated_recurrent_reload_source;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
 
 use malbolge::{ProfileDescriptor, profile_crazy};
 pub use relocated_recurrent_parity_source::{
@@ -43,27 +44,30 @@ use super::super::{
     BOOT_RETURN, BuildError, Emitter, FRAME, LAYOUT, TapeBounds,
 };
 use super::relocated_recurrent_access::{AccessBlock, AccessShape};
-use super::{ONES, TWOS, ZERO, after_store, initialize_words};
+use super::{ONES, TWOS, ZERO, after_store, initialize_words_with_anchors};
 
 const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_240_001,
     start: 7_183_001,
 };
-const SOURCE_CELLS: usize = 3_360_186;
-const CODE_BASE: u32 = 3_349_976;
+const SOURCE_CELLS: usize = 2_560_152;
+const CODE_BASE: u32 = 2_549_942;
 // These virgin odd cells are outside the prefix's frame and return pair.
 const NEAR_ZERO: u32 = 7_174_471;
 const NEAR_TWOS: u32 = 7_174_473;
+const SEED_ANCHOR: u32 = 7_174_475;
+const ANCHOR_START: u32 = 7_174_481;
+const ANCHOR_END: u32 = ONES;
 const SEEDS: u32 = 7_174_611;
-const ANCHOR_START: u32 = 7_174_951;
+const SEED_END: u32 = 7_174_951;
 const ANCHORS: [(u32, u32); 7] = [
     (ANCHOR_START, CAPTURE),
-    (7_174_955, MAIN_ROUTE),
-    (7_174_959, BOOT_ROUTE),
-    (7_174_963, RESET_ROUTE),
-    (7_174_967, 7_178_464),
-    (7_174_971, 7_179_922),
-    (7_174_975, 7_180_651),
+    (7_174_485, MAIN_ROUTE),
+    (7_174_489, BOOT_ROUTE),
+    (7_174_493, RESET_ROUTE),
+    (7_174_497, 7_178_464),
+    (7_174_501, 7_179_922),
+    (7_174_505, 7_180_651),
 ];
 const CAPTURE: u32 = 7_175_000;
 const STATES: [u32; 6] = [
@@ -77,7 +81,7 @@ const RESET_ROUTE: u32 = 7_177_000;
 const BYTE: u32 = 7_180_650;
 const BYTE_ROUTE_POINTER: u32 = 7_180_670;
 const EOF: [u32; 2] = [7_178_463, 7_179_921];
-const TERMINAL: u32 = 3_359_976;
+const TERMINAL: u32 = 2_559_942;
 const ALL_ONES: u32 = 7_174_453;
 const ALL_TWOS: u32 = 14_348_906;
 // The captured raw word swaps 0 and 1, preserving 2. In particular
@@ -387,14 +391,22 @@ fn initialize_with_dispatch(
     stride: u32,
     dispatch: &[(u32, u32)],
 ) -> Result<(), BuildError> {
-    let values = words
+    let mut frequency = BTreeMap::<u32, usize>::new();
+    for value in words
         .values()
         .copied()
         .chain(dispatch.iter().map(|&(_, value)| value))
-        .collect::<BTreeSet<_>>();
+    {
+        let count = frequency.entry(value).or_default();
+        *count = count.checked_add(1).ok_or(LAYOUT)?;
+    }
+    let mut values = frequency.into_iter().collect::<Vec<_>>();
+    // Each value is loaded twice per target. Assign the shortest walks
+    // to the most frequently loaded seeds, with a stable numeric tie.
+    values.sort_unstable_by_key(|&(value, count)| (Reverse(count), value));
     let mut seed_addresses = BTreeMap::new();
     let mut seeds = Vec::new();
-    for (index, value) in values.into_iter().enumerate() {
+    for (index, (value, _)) in values.into_iter().enumerate() {
         let address = SEEDS
             .checked_add(
                 u32::try_from(index)
@@ -403,7 +415,7 @@ fn initialize_with_dispatch(
                     .ok_or(LAYOUT)?,
             )
             .ok_or(LAYOUT)?;
-        if address >= ANCHOR_START {
+        if address >= SEED_END {
             return Err(LAYOUT);
         }
         let inverse =
@@ -411,10 +423,14 @@ fn initialize_with_dispatch(
         seeds.push((address, inverse));
         let _: Option<u32> = seed_addresses.insert(value, address);
     }
+    let mut near = vec![(SEED_ANCHOR, previous(SEEDS)?)];
     for &(anchor, base) in anchors {
-        seeds.push((anchor, previous(base)?));
+        if !(ANCHOR_START..ANCHOR_END).contains(&anchor) {
+            return Err(LAYOUT);
+        }
+        near.push((anchor, previous(base)?));
     }
-    initialize_words(emitter, &seeds)?;
+    initialize_words_with_anchors(emitter, &near, &seeds)?;
     prepare_near_constants(emitter)?;
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
@@ -434,10 +450,7 @@ fn initialize_with_dispatch(
             store_anchored(emitter, address, anchors)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        for _ in 0..2u8 {
-            rotate(emitter, NEAR_TWOS)?;
-            crazy(emitter, seed)?;
-        }
+        load_seed(emitter, seed)?;
         store_anchored(emitter, address, anchors)?;
     }
     for &(address, value) in dispatch {
@@ -446,11 +459,22 @@ fn initialize_with_dispatch(
             store_dispatch(emitter, address)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        for _ in 0..2u8 {
-            rotate(emitter, NEAR_TWOS)?;
-            crazy(emitter, seed)?;
-        }
+        load_seed(emitter, seed)?;
         store_dispatch(emitter, address)?;
+    }
+    Ok(())
+}
+
+// The near pointer skips the gap between the frame and the inverse seed
+// table. Each pair of all-two folds restores the seed after loading it.
+fn load_seed(emitter: &mut Emitter<'_>, seed: u32) -> Result<(), BuildError> {
+    for _ in 0..2u8 {
+        rotate(emitter, NEAR_TWOS)?;
+        emitter.go(SEED_ANCHOR)?;
+        emitter.jump(SEEDS)?;
+        emitter.walk(seed)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        after_store(emitter)?;
     }
     Ok(())
 }

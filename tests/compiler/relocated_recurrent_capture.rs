@@ -47,7 +47,7 @@ const BYTE: u32 = 7_180_650;
 const EOF_ODD: u32 = 7_178_463;
 const EOF_EVEN: u32 = 7_179_921;
 const CONSTANTS: [u32; 3] = [7_175_040, 7_175_042, 7_175_044];
-const BOOT_BUDGET: usize = 3_100_000;
+const BOOT_BUDGET: usize = 2_500_000;
 const EFFECT_BUDGET: usize = 2_048;
 
 fn source() -> Result<RelocatedRecurrentCaptureSource, String> {
@@ -71,8 +71,14 @@ fn enter(
                 == Some(b'/')
         {
             invariant(&vm, guest, INITIAL)?;
-            if word(&vm, 7_174_471)? != 0 || word(&vm, 7_174_473)? != EOF {
-                return Err("incorrect near-frame constants".to_owned());
+            if word(&vm, 7_174_471)? != 0
+                || word(&vm, 7_174_473)? != EOF
+                || word(&vm, 7_174_475)? != 7_174_610
+                || word(&vm, 7_174_481)? != 7_174_999
+            {
+                return Err(
+                    "incorrect near-frame constants or anchors".to_owned()
+                );
             }
             return Ok(vm);
         }
@@ -409,7 +415,7 @@ fn run(
 fn relocated_recurrent_capture_all_bytes_and_both_eof_landings()
 -> Result<(), String> {
     let guest = source()?;
-    if guest.source.len() != 3_360_186 {
+    if guest.source.len() != 2_560_152 {
         return Err("recurrent capture image size regressed".to_owned());
     }
     let boot = enter(&guest, BOOT_BUDGET)?;

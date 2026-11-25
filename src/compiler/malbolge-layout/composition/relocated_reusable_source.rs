@@ -145,10 +145,28 @@ fn initialize_words(
     emitter: &mut Emitter<'_>,
     words: &[(u32, u32)],
 ) -> Result<(), BuildError> {
+    initialize_words_with_anchors(emitter, &[], words)
+}
+
+fn initialize_words_with_anchors(
+    emitter: &mut Emitter<'_>,
+    near: &[(u32, u32)],
+    words: &[(u32, u32)],
+) -> Result<(), BuildError> {
     let mut plan = TapePlan::with_bounds(emitter.tape_bounds);
     let twos = plan.tape(ALL_TWOS, false)?;
     let mut destinations = Vec::new();
-    let mut prior = TWOS;
+    // Near anchors may precede the uniform marker constants, but must
+    // leave the even frame-reset cells and the bootstrap return intact.
+    let mut prior = 7_174_473;
+    for &(address, value) in near {
+        if address <= prior || address >= ONES || address.is_multiple_of(2) {
+            return Err(LAYOUT);
+        }
+        prior = address;
+        destinations.push((address, plan.tape(value, false)?));
+    }
+    prior = TWOS;
     for &(address, value) in words {
         if address <= prior || address >= emitter.tape_bounds.start {
             return Err(LAYOUT);

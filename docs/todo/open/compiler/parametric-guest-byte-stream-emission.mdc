@@ -104,21 +104,21 @@ on EOF. A separate 1,050,042-cell recurrent guard consumes every byte,
 classifies actual EOF with five dirty folds and a four-phase mixed
 instruction, then outputs byte-count parity and halts. Independent
 per-trit closure and five traced streams cover both EOF landings;
-omitted rotation, output and halt refuse. A separate 3,360,186-cell
+omitted rotation, output and halt refuse. A separate 2,560,152-cell
 image now preserves a lossless raw-input encoding through the real
 EOF dispatch and resets the same dirty slot on every byte. A bounded
 suffix-restoration scheduler prepares complete multi-cell access
 blocks; four distinct physical stores share one operand with different
 return offsets. Seven guest-initialized immutable bootstrap anchors
-and near-frame uniform constants reduce the original 6,410,016-cell
-image by 3,049,830 cells. All bytes in both orders, both EOF landings,
-independent trit closure and an omitted-output control pass. A separate 5,920,182-cell
+and a near inverse-seed anchor, uniform constants and frequency-ordered
+seeds reduce the original 6,410,016-cell image by 3,849,864 cells. All bytes in both orders, both EOF landings,
+independent trit closure and an omitted-output control pass. A separate 4,720,178-cell
 image now restores recurrent access blocks after calls, reloads the
 saved encoding with two reversible stores and recovers the original
 byte in a second dirty word. The real byte arm emits that recovered
 byte, restores both slots and takes the backedge; EOF skips reloading.
 All bytes in both orders, both EOF routes and omitted-load/echo
-controls pass. A separate 6,420,168-cell physical image now computes
+controls pass. A separate 4,920,116-cell physical image now computes
 the original checksum's low-bit projection across arbitrary recurrent
 byte/EOF dispatch: a complemented raw pointer selects the untouched
 loader parity word; even input toggles persistent state and odd input
