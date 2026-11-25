@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 3,194,934-cell
+The separate 2,348,934-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14046,7 +14046,7 @@ partitions and assigns denser partitions to cheaper access slots.
 For each destination it compares the cost of every eligible direct
 or two-hop path. The page pointers are synthesized in the guest
 before the first route write; their even reset cells remain virgin.
-The boot replay has a 3,100,000-step bound.
+The boot replay has a 2,350,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14084,8 +14084,22 @@ bootstrap to 3,237,174 steps; twelve banks of 24 pages reduce it
 to 3,152,204 steps. Skipping identity chunk operations brings it
 to 3,066,388 steps. A final phase-aligned shift of 499,140 cells
 yields the 3,194,934-cell image and 3,044,085 bootstrap steps.
-An independent trace checks the two scratch-reset stores and
-rejects omission of the second fold.
+The initial tape now materializes six single-trit masks and the
+special return-pointer pair. The guest synthesizes the remaining 21
+mask pairs by composing elementary columns without changing the high
+prefix. Target roots are synthesized after the mask bank, not by the
+initial tape. Consecutive chunk rotations reuse the scratch return.
+The seed and root schedules sort values to favor dirty scratch reuse.
+For each value, the emitter compares the actual emitted lengths of a
+two-fold column patch and a fresh reset; the shorter valid route wins.
+The 2,405,334-cell intermediate reached first input in 2,289,260 steps.
+A further phase-aligned shift by 56,400 cells trades some boot time
+for source extent: the 2,348,934-cell image reaches first input in
+2,336,549 steps.
+Independent traces check both scratch-reset stores and a patch
+starting from a previously committed root inverse, including
+preservation of the high prefix. Omission of the second reset fold,
+a dirty-patch fold or a derived mask store refuses.
 Independent replay audits all 44 directory pointers and their
 untouched reset words. Omitting the actual store for the second
 near seed page invalidates the route; a directory entry is not

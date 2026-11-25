@@ -45,6 +45,9 @@ const CHUNK_RETURN: u32 = CHUNK_SCRATCH + 4;
 const CHUNK_ANCHOR: u32 = ANCHOR_START;
 const CHUNK_BANK: u32 = 7_176_601;
 const CHUNK_RESET: u32 = 7_174_468;
+// Each elementary mask changes at most one of the three low trits.
+// The final mask is the initial scratch-return pointer.
+const ELEMENTARY_COLUMNS: [u32; 7] = [8, 17, 20, 23, 24, 25, 27];
 // The directory is between the immutable chunk-mask bank and the
 // operand tape. Its odd pointers leave each even reset word virgin.
 const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
@@ -91,6 +94,41 @@ struct SeedRouting<'directory> {
 
 type ChunkMaterialization<'seeds> =
     (u32, &'seeds BTreeMap<u32, SeedAccess>, SeedRouting<'seeds>);
+
+struct ChunkWord {
+    value: u32,
+}
+
+impl ChunkWord {
+    fn synthesize(
+        &mut self,
+        emitter: &mut Emitter<'_>,
+        value: u32,
+    ) -> Result<(), BuildError> {
+        // Both candidates append to the same physical address and leave
+        // the same scratch value in A. Measure their actual emitted
+        // walks, not just the number of masks.
+        let start = emitter.source.len();
+        let data = emitter.data;
+        let patch_result = patch_word(emitter, self.value, value);
+        let patch_end = emitter.data;
+        let patch = emitter.source.split_off(start);
+        emitter.data = data;
+        let fresh_result = chunk_word(emitter, value);
+        if patch_result.is_ok()
+            && (fresh_result.is_err()
+                || patch.len() < emitter.source.len().saturating_sub(start))
+        {
+            emitter.source.truncate(start);
+            emitter.source.extend(patch);
+            emitter.data = patch_end;
+        } else {
+            fresh_result?;
+        }
+        self.value = value;
+        Ok(())
+    }
+}
 
 pub(super) fn target_slots() -> Result<Vec<TargetSlot>, BuildError> {
     let mut slots = Vec::new();
@@ -150,12 +188,10 @@ fn read_chunk_mask(
     after_store(emitter)
 }
 
-fn apply_chunk_mask(
+fn apply_chunk_column(
     emitter: &mut Emitter<'_>,
-    part: u32,
+    column: u32,
 ) -> Result<(), BuildError> {
-    let column = profile_crazy(ALL_ONES, profile_crazy(part, ALL_TWOS, 15), 15)
-        .rem_euclid(27);
     read_chunk_mask(emitter, column)?;
     emitter.go(CHUNK_SCRATCH)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
@@ -164,6 +200,15 @@ fn apply_chunk_mask(
     emitter.walk(CHUNK_RETURN)?;
     emitter.jump(CHUNK_SCRATCH)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    Ok(())
+}
+
+fn advance_chunk(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    for _ in 0..3u32 {
+        emitter.go(CHUNK_RETURN)?;
+        emitter.jump(CHUNK_SCRATCH)?;
+        let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
+    }
     Ok(())
 }
 
@@ -180,7 +225,10 @@ fn chunk_word(
         let part = value.rem_euclid(27);
         value = value.div_euclid(27);
         if part != 13 {
-            apply_chunk_mask(emitter, part)?;
+            let column =
+                profile_crazy(ALL_ONES, profile_crazy(part, ALL_TWOS, 15), 15)
+                    .rem_euclid(27);
+            apply_chunk_column(emitter, column)?;
             uniform = false;
         }
         if uniform {
@@ -188,14 +236,60 @@ fn chunk_word(
         }
         // Three rotations expose the next chunk. Rotation of the
         // initial uniform scratch would have no effect.
-        for _ in 0..3u32 {
-            emitter.go(CHUNK_RETURN)?;
-            emitter.jump(CHUNK_SCRATCH)?;
-            let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
-        }
-        emitter.walk(CHUNK_RESET)?;
+        advance_chunk(emitter)?;
     }
+    emitter.walk(CHUNK_RESET)?;
     if value != 0 {
+        return Err(LAYOUT);
+    }
+    Ok(())
+}
+
+// A pair of column folds acts independently on each trit. For the
+// two transitions that cannot occur directly, use an intermediate
+// trit and a second mask. The remaining trits use column two,
+// which is the identity after both folds.
+fn patch_columns(mut before: u32, mut after: u32) -> [u32; 2] {
+    let mut columns = [0u32; 2];
+    let mut place = 1u32;
+    for _ in 0..3u32 {
+        let digits: [u32; 2] = match (before.rem_euclid(3), after.rem_euclid(3))
+        {
+            (0, 1) => [0, 0],
+            (0 | 1, 2) | (2, 1) => [0, 2],
+            (1, 0) => [1, 2],
+            (2, 0) => [0, 1],
+            _ => [2, 2],
+        };
+        for (column, digit) in columns.iter_mut().zip(digits) {
+            *column = column.saturating_add(digit.saturating_mul(place));
+        }
+        before = before.div_euclid(3);
+        after = after.div_euclid(3);
+        place = place.saturating_mul(3);
+    }
+    columns
+}
+
+fn patch_word(
+    emitter: &mut Emitter<'_>,
+    mut before: u32,
+    mut after: u32,
+) -> Result<(), BuildError> {
+    for _ in 0..5u32 {
+        let columns =
+            patch_columns(before.rem_euclid(27), after.rem_euclid(27));
+        for column in columns {
+            if column != 26 {
+                apply_chunk_column(emitter, column)?;
+            }
+        }
+        before = before.div_euclid(27);
+        after = after.div_euclid(27);
+        advance_chunk(emitter)?;
+    }
+    emitter.walk(CHUNK_RESET)?;
+    if before != 0 || after != 0 {
         return Err(LAYOUT);
     }
     Ok(())
@@ -375,16 +469,85 @@ fn chunk_masks() -> Result<ChunkMasks, BuildError> {
     Ok(masks)
 }
 
+fn elementary_mask(address: u32) -> bool {
+    let column = address.saturating_sub(CHUNK_BANK).div_euclid(4);
+    ELEMENTARY_COLUMNS.contains(&column)
+}
+
+// The six single-trit columns suffice to synthesize every other
+// three-trit mask, starting from a uniform high prefix. This keeps
+// the initial marker tape independent of the complete 27-entry bank.
+fn synthesize_mask_word(
+    emitter: &mut Emitter<'_>,
+    value: u32,
+) -> Result<(), BuildError> {
+    let base = if value.div_euclid(27) == ALL_ONES.div_euclid(27) {
+        ALL_ONES
+    } else if value.div_euclid(27) == ALL_TWOS.div_euclid(27) {
+        ALL_TWOS
+    } else {
+        return Err(LAYOUT);
+    };
+    reset_chunk_word(emitter, CHUNK_SCRATCH)?;
+    if base == ALL_TWOS {
+        rotate(emitter, NEAR_TWOS)?;
+        chunk_access(emitter, CHUNK_SCRATCH, LinearOpcode::CrazyData)?;
+    }
+    for mut column in patch_columns(base.rem_euclid(27), value.rem_euclid(27)) {
+        for place in [1u32, 3, 9] {
+            let digit = column.rem_euclid(3);
+            column = column.div_euclid(3);
+            if digit == 2 {
+                continue;
+            }
+            let elementary = 26u32
+                .checked_sub(
+                    2u32.checked_sub(digit)
+                        .ok_or(LAYOUT)?
+                        .checked_mul(place)
+                        .ok_or(LAYOUT)?,
+                )
+                .ok_or(LAYOUT)?;
+            if !ELEMENTARY_COLUMNS.contains(&elementary) {
+                return Err(LAYOUT);
+            }
+            apply_chunk_column(emitter, elementary)?;
+        }
+    }
+    Ok(())
+}
+
+fn initialize_chunk_masks(
+    emitter: &mut Emitter<'_>,
+    masks: &[(u32, u32)],
+) -> Result<(), BuildError> {
+    let anchors = [(CHUNK_ANCHOR, CHUNK_BANK)];
+    for &(address, value) in masks {
+        if elementary_mask(address) {
+            continue;
+        }
+        rotate(emitter, NEAR_ZERO)?;
+        store_anchored(emitter, address, &anchors)?;
+        synthesize_mask_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
+        store_anchored(emitter, address, &anchors)?;
+    }
+    Ok(())
+}
+
 fn initialize_seed_directory(
     emitter: &mut Emitter<'_>,
     extra: (u32, u32),
+    scratch: &mut ChunkWord,
 ) -> Result<SeedDirectory, BuildError> {
     let directory = seed_directory(extra)?;
     let directory_anchor = [(SEED_DIRECTORY, DIRECTORY_BANK)];
     for &(address, base) in &directory {
         rotate(emitter, NEAR_ZERO)?;
         store_anchored(emitter, address, &directory_anchor)?;
-        chunk_word(emitter, profile_crazy(ALL_ONES, previous(base)?, 15))?;
+        scratch.synthesize(
+            emitter,
+            profile_crazy(ALL_ONES, previous(base)?, 15),
+        )?;
         store_anchored(emitter, address, &directory_anchor)?;
     }
     Ok(directory)
@@ -393,6 +556,7 @@ fn initialize_seed_directory(
 fn initialize_target_pages(
     emitter: &mut Emitter<'_>,
     anchors: &[(TargetSlot, u32)],
+    scratch: &mut ChunkWord,
 ) -> Result<(), BuildError> {
     let mut pages = anchors
         .iter()
@@ -404,12 +568,15 @@ fn initialize_target_pages(
             }
         })
         .collect::<Vec<_>>();
-    pages.sort_unstable();
+    pages.sort_unstable_by_key(|&(_, _, _, base)| base);
     for (slot, bank, root, base) in pages {
         let anchor = [(root, bank)];
         rotate(emitter, NEAR_ZERO)?;
         store_anchored(emitter, slot, &anchor)?;
-        chunk_word(emitter, profile_crazy(ALL_ONES, previous(base)?, 15))?;
+        scratch.synthesize(
+            emitter,
+            profile_crazy(ALL_ONES, previous(base)?, 15),
+        )?;
         store_anchored(emitter, slot, &anchor)?;
     }
     Ok(())
@@ -451,33 +618,18 @@ fn target_roots(
     Ok(roots.into_iter().collect())
 }
 
-pub(super) fn initialize_chunk_seeds(
+fn prepare_chunk_bank(
     emitter: &mut Emitter<'_>,
-    words: &Words,
-    anchors: &[(TargetSlot, u32)],
-    extra: (u32, u32),
-) -> Result<(), BuildError> {
-    let mut near = vec![
-        (SEED_ANCHOR, previous(SEEDS)?),
-        (EXTRA_SEED_ANCHOR, previous(extra.0)?),
-        (CHUNK_ANCHOR, previous(CHUNK_BANK)?),
-        (SEED_DIRECTORY, previous(DIRECTORY_BANK)?),
-    ];
-    near.extend(target_roots(words, anchors, emitter.tape_bounds.limit)?);
-    near.sort_unstable_by_key(|&(address, _)| address);
-    if words.range(extra.0..=extra.1).next().is_some()
-        || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
-        || words.range(DIRECTORY_BANK..=DIRECTORY_END).next().is_some()
-        || extra.1 >= CHUNK_BANK
-        || DIRECTORY_END >= emitter.tape_bounds.start
-    {
-        return Err(LAYOUT);
-    }
-    let (seed_addresses, seeds) =
-        plan_seeds_with_pairs(emitter, words, (2, &[]), (Some(extra), 80))?;
+    near: &[(u32, u32)],
+) -> Result<u32, BuildError> {
     let masks = chunk_masks()?;
+    let elementary = masks
+        .iter()
+        .copied()
+        .filter(|&(address, _)| elementary_mask(address))
+        .collect::<Vec<_>>();
     let tape_end =
-        initialize_words_compact_extent(emitter, &near, &masks, true)?;
+        initialize_words_compact_extent(emitter, near, &elementary, true)?;
     if tape_end >= *TARGET_BANKS.first().ok_or(LAYOUT)? {
         return Err(LAYOUT);
     }
@@ -490,24 +642,74 @@ pub(super) fn initialize_chunk_seeds(
     reset_chunk_word(emitter, CHUNK_RETURN)?;
     read_chunk_mask(emitter, 27)?;
     chunk_access(emitter, CHUNK_RETURN, LinearOpcode::CrazyData)?;
+    initialize_chunk_masks(emitter, &masks)?;
 
+    Ok(tape_end)
+}
+
+fn initialize_chunk_roots(
+    emitter: &mut Emitter<'_>,
+    roots: SeedDirectory,
+) -> Result<ChunkWord, BuildError> {
     reset_chunk_word(emitter, FRAME)?;
-    chunk_word(emitter, profile_crazy(ALL_ONES, previous(NEAR_ONES)?, 15))?;
+    let frame_seed = profile_crazy(ALL_ONES, previous(NEAR_ONES)?, 15);
+    chunk_word(emitter, frame_seed)?;
     emitter.go(FRAME)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(CHUNK_RESET)?;
-    let directory = initialize_seed_directory(emitter, extra)?;
+    let mut scratch = ChunkWord { value: frame_seed };
+    for (address, value) in roots {
+        fast_rotate(emitter, NEAR_ZERO)?;
+        fast_go(emitter, address)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        after_store(emitter)?;
+        scratch.synthesize(emitter, profile_crazy(ALL_ONES, value, 15))?;
+        fast_go(emitter, address)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        after_store(emitter)?;
+    }
+    Ok(scratch)
+}
+
+pub(super) fn initialize_chunk_seeds(
+    emitter: &mut Emitter<'_>,
+    words: &Words,
+    anchors: &[(TargetSlot, u32)],
+    extra: (u32, u32),
+) -> Result<(), BuildError> {
+    let near = [
+        (SEED_ANCHOR, previous(SEEDS)?),
+        (EXTRA_SEED_ANCHOR, previous(extra.0)?),
+        (CHUNK_ANCHOR, previous(CHUNK_BANK)?),
+        (SEED_DIRECTORY, previous(DIRECTORY_BANK)?),
+    ];
+    let mut roots = target_roots(words, anchors, emitter.tape_bounds.limit)?;
+    roots.sort_unstable_by_key(|&(_, value)| value);
+    if words.range(extra.0..=extra.1).next().is_some()
+        || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
+        || words.range(DIRECTORY_BANK..=DIRECTORY_END).next().is_some()
+        || extra.1 >= CHUNK_BANK
+        || DIRECTORY_END >= emitter.tape_bounds.start
+    {
+        return Err(LAYOUT);
+    }
+    let (seed_addresses, mut seeds) =
+        plan_seeds_with_pairs(emitter, words, (2, &[]), (Some(extra), 80))?;
+    let tape_end = prepare_chunk_bank(emitter, &near)?;
+    let mut scratch = initialize_chunk_roots(emitter, roots)?;
+    let directory = initialize_seed_directory(emitter, extra, &mut scratch)?;
     let routing = SeedRouting {
         directory: &directory,
         extra,
     };
+    seeds.sort_unstable_by_key(|&(_, value)| value);
     for (address, value) in seeds {
         fast_rotate(emitter, NEAR_ZERO)?;
         store_seed(emitter, address, &routing)?;
-        chunk_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
+        scratch.synthesize(emitter, profile_crazy(ALL_ONES, value, 15))?;
         store_seed(emitter, address, &routing)?;
     }
-    initialize_target_pages(emitter, anchors)?;
+    initialize_target_pages(emitter, anchors, &mut scratch)?;
     materialize_chunk_words(
         emitter,
         words,

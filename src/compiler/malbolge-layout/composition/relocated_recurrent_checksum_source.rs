@@ -46,9 +46,9 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_360_001,
     start: 7_177_001,
 };
-const CODE_BASE: u32 = 3_184_808;
-const TERMINAL: u32 = 3_194_808;
-const SOURCE_CELLS: usize = 3_194_934;
+const CODE_BASE: u32 = 2_338_808;
+const TERMINAL: u32 = 2_348_808;
+const SOURCE_CELLS: usize = 2_348_934;
 const BYTE_ROUTE: u32 = 7_194_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
 const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];

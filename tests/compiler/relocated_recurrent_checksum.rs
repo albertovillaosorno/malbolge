@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 3_100_000;
+const BOOT_BUDGET: usize = 2_350_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -842,7 +842,7 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
         (&[5, 0, 129], 34_685),
     ];
     let guest = source()?;
-    if guest.capture.source.len() != 3_194_934 {
+    if guest.capture.source.len() != 2_348_934 {
         return Err("unexpected recurrent source extent".to_owned());
     }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
@@ -991,6 +991,119 @@ fn relocated_recurrent_checksum_omitted_chunk_reset_refuses()
     let modified = omit_site(&guest, site)?;
     if audit_chunk_reset(&modified).is_ok() {
         return Err("accepted omitted second chunk reset fold".to_owned());
+    }
+    Ok(())
+}
+
+fn check_patch_prefix(acc: u32, before: u32, after: u32) -> Result<(), String> {
+    if acc != EOF || after.div_euclid(27) != before.div_euclid(27) {
+        return Err("dirty chunk patch changed its prefix".to_owned());
+    }
+    Ok(())
+}
+
+// Observe a patch that starts from a previous root's committed
+// inverse, not from the all-one scratch reset. A pair of mask folds
+// changes only the low three trits and leaves the high prefix intact.
+fn audit_chunk_reuse(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<u32, String> {
+    let vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    find_dirty_patch(vm)
+}
+
+fn find_dirty_patch(mut vm: ProfileMachine) -> Result<u32, String> {
+    let scratch = 7_174_441;
+    let mut prior = None;
+    let mut first: Option<u32> = None;
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        let data = registers.data_pointer;
+        let opcode = decode_profile_instruction(
+            word(&vm, registers.code_pointer)?,
+            registers.code_pointer,
+        );
+        if opcode == Some(b'p')
+            && (7_174_491..7_174_601).contains(&data)
+            && !data.is_multiple_of(2)
+        {
+            let old = word(&vm, data)?;
+            let new = independent_crazy(old, registers.accumulator);
+            check_store(&step(&mut vm)?, data, old, new)?;
+            if old == ONES && (7_174_999..7_302_300).contains(&new) {
+                prior = Some(word(&vm, scratch)?);
+                first = None;
+            }
+            continue;
+        }
+        let Some(old) = prior
+            .filter(|_| data == scratch && matches!(opcode, Some(b'p' | b'*')))
+        else {
+            let _: ProfileStepTrace = step(&mut vm)?;
+            continue;
+        };
+        if word(&vm, scratch)? != old {
+            return Err("untracked scratch mutation".to_owned());
+        }
+        if opcode == Some(b'*') {
+            let new = rotate_right(old)?;
+            check_store(&step(&mut vm)?, scratch, old, new)?;
+            prior = Some(new);
+            continue;
+        }
+        let acc = registers.accumulator;
+        let new = independent_crazy(old, acc);
+        check_store(&step(&mut vm)?, scratch, old, new)?;
+        if let Some(before) = first {
+            check_patch_prefix(acc, before, new)?;
+            if new != old {
+                return Ok(registers.code_pointer);
+            }
+            prior = None;
+            first = None;
+        } else if (EOF.saturating_sub(26)..EOF).contains(&acc) {
+            first = Some(old);
+            prior = Some(new);
+        } else {
+            // This candidate used a fresh reset instead.
+            prior = None;
+        }
+    }
+    Err("missing previous-word chunk patch".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_dirty_patch_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let site = audit_chunk_reuse(&guest)?;
+    let modified = omit_site(&guest, site)?;
+    if let Ok(mutated) = boot(&modified)
+        && check_target_directory(&mutated).is_ok()
+        && check_materialized_tables(&mutated).is_ok()
+    {
+        return Err("accepted omitted dirty chunk patch".to_owned());
+    }
+    Ok(())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_derived_chunk_mask_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    // Column zero is not an elementary single-trit column.
+    let site =
+        materialization_site(&guest, (7_176_603, EOF.saturating_sub(26)))?;
+    let modified = omit_site(&guest, site)?;
+    if let Ok(mutated) = boot(&modified)
+        && check_chunk_mask_bank(&mutated).is_ok()
+    {
+        return Err("accepted omitted derived chunk mask".to_owned());
     }
     Ok(())
 }

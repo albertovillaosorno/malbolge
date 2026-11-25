@@ -156,7 +156,7 @@ five-bit witness with 32 states, 1,024 joint transition pointers and
 a four-rotation EOF decoder. Independent replay covers all 8,192
 state/raw-byte pairs, all 64 state/EOF combinations and the same
 eight omitted effects; the bootstrap bound is 5,500,000 instructions.
-A separate 3,194,934-cell split-state recurrent witness now computes
+A separate 2,348,934-cell split-state recurrent witness now computes
 the full byte. Its low record supplies both carry (zero, one or two)
 and the next nibble; its high transition consumes the actual raw
 parity and carry. Two rotated scratch reloads commit the state, and
@@ -184,6 +184,15 @@ partitions. Omitting identity chunk folds and rotations of uniform
 scratch, then shifting code by 499,140 cells, cuts the bootstrap to
 3,044,085 steps under a 3,100,000-step bound. All 28 immutable chunk
 mask pairs and the expanded target directory are audited.
+The initial marker tape now prepares six elementary single-trit masks
+and the scratch return pair; the guest derives the other 21 pairs.
+Target roots use the chunk synthesizer, and ordered seeds reuse dirty
+scratch when patching is shorter than fresh synthesis. Consecutive
+rotations reuse the return pointer. With an additional phase-aligned
+shift of 846,000 cells, the image reaches first input in 2,336,549
+steps under a 2,350,000-step bound. A slightly larger intermediate
+image boots faster (2,289,260 steps); the smaller extent is retained.
+Independent omitted dirty-patch and derived-mask stores refuse.
 Independent VM replay covers all 256 low and 1,280 reachable high
 factored edges, all 512 state/EOF combinations, and empty input.
 The exact byte arithmetic visit journal and all 65,536 combinations
