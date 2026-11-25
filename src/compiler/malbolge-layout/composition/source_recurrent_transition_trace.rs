@@ -463,6 +463,10 @@ impl TransitionTrace {
         self.terminal.receipt().map(|_receipt| ())
     }
 
+    pub(super) fn initial_entry(&self) -> Result<[usize; 2], Error> {
+        self.control.initial_entry()
+    }
+
     pub(in super::super) fn new(
         probe: &SourceRecurrentTransitionProbe<'_>,
     ) -> Result<Self, Error> {
@@ -508,7 +512,7 @@ impl TransitionTrace {
         {
             return Err(Error::GuestTransitionMismatch);
         }
-        self.control.observe(trace, projected_event)?;
+        self.control.observe(trace, index, projected_event)?;
         self.terminal.observe(trace, index, projected_event)?;
         if let Some(event) = projected_event {
             if let Some(pending) = self.pending.take() {

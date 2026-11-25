@@ -38,6 +38,7 @@ const MAX_PREPARATIONS: usize = 2_048;
 
 type Envelopes = BTreeMap<u32, Envelope>;
 type Fetched = (u8, usize);
+type IndexedTrace = (usize, ProfileStepTrace);
 pub(super) type ControlReceipt = (usize, usize, usize);
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -160,6 +161,7 @@ struct Plan {
     main_entry: u32,
     main_limit: u32,
     main_root: u32,
+    source_extent: u32,
     terminal: u32,
 }
 
@@ -214,6 +216,8 @@ impl Plan {
             main_entry: route.main_entry,
             main_limit: eof_first,
             main_root: route.main_route,
+            source_extent: u32::try_from(guard.io.physical_source.len())
+                .map_err(|_error| INVALID)?,
             terminal: probe.terminal_address,
         })
     }
@@ -368,25 +372,54 @@ impl Execution {
     fn restored(&self) -> bool {
         self.cells == self.envelope.cells
     }
+
+    fn verify_initial_entry(
+        &mut self,
+        indirect: &ProfileStepTrace,
+        entry: &ProfileStepTrace,
+        extent: u32,
+    ) -> Result<(), Error> {
+        let before = indirect.before.registers;
+        let after = indirect.after.registers;
+        let target = self.envelope.start.checked_sub(1).ok_or(MISMATCH)?;
+        let fetched = indirect.fetched_cell.ok_or(MISMATCH)?;
+        if indirect.decoded != Some(b'i')
+            || decode_profile_instruction(fetched, before.code_pointer)
+                != Some(b'i')
+            || before.code_pointer >= extent
+            || before.data_pointer != self.cursor
+            || indirect.result != Ok(StepOutcome::Continued)
+            || jump_value(indirect)? != self.envelope.start
+            || after.code_pointer != self.envelope.start
+            || after.data_pointer != self.next_data
+            || indirect.after != entry.before
+        {
+            return Err(MISMATCH);
+        }
+        let cell = indirect.memory_reads.encryption.ok_or(MISMATCH)?.value;
+        let _predecessor = encrypted(indirect, target, cell)?;
+        if self.normal(entry)?.is_some() {
+            return Err(MISMATCH);
+        }
+        Ok(())
+    }
 }
 
 pub(super) struct ControlTrace {
     active: Option<Execution>,
     calls: usize,
     eof: bool,
+    initial_entry: Option<[usize; 2]>,
     phase: Phase,
     plan: Plan,
     position: usize,
+    prelude: [Option<IndexedTrace>; 2],
     preparations: usize,
     steps: usize,
 }
 
 impl ControlTrace {
-    fn activate(
-        &mut self,
-        cursor: u32,
-        first: bool,
-    ) -> Result<Execution, Error> {
+    fn activate(&mut self, cursor: u32) -> Result<Execution, Error> {
         let call = self.plan.call(self.phase, self.position)?;
         if self.phase == Phase::Main
             && self.position == 0
@@ -402,11 +435,44 @@ impl ControlTrace {
             .ok_or(INVALID)?;
         self.position = self.position.saturating_add(1);
         self.calls = self.calls.saturating_add(1);
-        let mut active = Execution::new(envelope, call, cursor);
-        if first {
+        Ok(Execution::new(envelope, call, cursor))
+    }
+
+    fn begin_input(
+        &mut self,
+        trace: &ProfileStepTrace,
+        index: usize,
+    ) -> Result<(), Error> {
+        let mut active = self.activate(self.plan.main_entry)?;
+        if index == 0 {
+            // Internal checkpoint forks start with the input itself. A full
+            // source-loaded proof must separately require the entry receipt.
             active.first_input()?;
+        } else {
+            let [Some((indirect_index, indirect)), Some((entry_index, entry))] =
+                self.prelude
+            else {
+                return Err(MISMATCH);
+            };
+            active.verify_initial_entry(
+                &indirect,
+                &entry,
+                self.plan.source_extent,
+            )?;
+            if indirect_index.checked_add(1) != Some(entry_index)
+                || entry_index.checked_add(1) != Some(index)
+                || entry.after != trace.before
+            {
+                return Err(MISMATCH);
+            }
+            self.initial_entry = Some([indirect_index, entry_index]);
         }
-        Ok(active)
+        self.active = Some(active);
+        Ok(())
+    }
+
+    pub(super) fn initial_entry(&self) -> Result<[usize; 2], Error> {
+        self.initial_entry.ok_or(MISMATCH)
     }
 
     fn leave(
@@ -439,7 +505,7 @@ impl ControlTrace {
         if !active.restored() {
             return Err(MISMATCH);
         }
-        let next = self.activate(cursor, false)?;
+        let next = self.activate(cursor)?;
         if target.checked_add(1) != Some(next.envelope.start) {
             return Err(MISMATCH);
         }
@@ -454,9 +520,11 @@ impl ControlTrace {
             active: None,
             calls: 0,
             eof: false,
+            initial_entry: None,
             phase: Phase::Main,
             plan: Plan::new(probe)?,
             position: 0,
+            prelude: [None; 2],
             preparations: 0,
             steps: 0,
         })
@@ -465,6 +533,7 @@ impl ControlTrace {
     pub(super) fn observe(
         &mut self,
         trace: &ProfileStepTrace,
+        index: usize,
         projected_event: Option<ProjectedIo>,
     ) -> Result<(), Error> {
         if let Some(event) = projected_event
@@ -472,10 +541,12 @@ impl ControlTrace {
         {
             self.eof = input == TraceInput::EndOfInput;
             if self.steps == 0 {
-                self.active = Some(self.activate(self.plan.main_entry, true)?);
+                self.begin_input(trace, index)?;
             }
         }
         if self.steps == 0 && self.active.is_none() {
+            let [_, previous] = self.prelude;
+            self.prelude = [previous, Some((index, *trace))];
             return Ok(());
         }
         self.steps = self.steps.saturating_add(1);

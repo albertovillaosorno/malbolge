@@ -163,6 +163,8 @@ pub struct SourceRecurrentTerminalCheckpoint {
 pub struct SourceRecurrentTransitionProof {
     /// Actual active envelope calls, including the initial physical input.
     pub control_calls: usize,
+    /// Actual indirect and data-jump indices entering the first input.
+    pub initial_entry_indices: [usize; 2],
     /// Signed/unsigned bindings and one complete I/O and halt receipt.
     pub loop_proof: SourceRecurrentLoopProof,
     /// All authenticated instructions from the first input through halt.
@@ -614,20 +616,25 @@ fn finish_transition(
     }
     let (control_calls, preparation_jumps, post_input_steps) =
         transition.control_receipt()?;
+    let initial_entry_indices = transition.initial_entry()?;
     let first = loop_proof
         .checkpoints
         .first()
         .ok_or(Error::GuestTransitionMismatch)?;
-    if post_input_steps
-        != loop_proof
-            .io
-            .guest_steps
-            .saturating_sub(first.guard.input_index)
+    let [indirect, entry] = initial_entry_indices;
+    if indirect.checked_add(1) != Some(entry)
+        || entry.checked_add(1) != Some(first.guard.input_index)
+        || post_input_steps
+            != loop_proof
+                .io
+                .guest_steps
+                .saturating_sub(first.guard.input_index)
     {
         return Err(Error::GuestTransitionMismatch);
     }
     Ok(SourceRecurrentTransitionProof {
         control_calls,
+        initial_entry_indices,
         loop_proof,
         post_input_steps,
         preparation_jumps,

@@ -14384,3 +14384,19 @@ an audit of the bootstrap, not a certificate of unvisited tape
 words or code, and not complete SSA storage or publication authority.
 The original 100,000-step source-C gate remains fail-closed.
 Evidence: `tests/compiler/source_recurrent_transition.rs`.
+
+A full source-loaded transition proof additionally requires the two
+actual steps immediately before the first read. The indirect jump
+must read the declared main entry, encrypt its envelope predecessor
+and enter the input envelope. The following data jump must use the
+original graphical cell, select the declared input word and commit
+its own encryption before the input executes. Both observed indices
+are recorded and must immediately precede the first read; exact
+register and I/O observations must agree across both step boundaries.
+The code-restoration tracker therefore starts from the actual entry
+effect rather than assuming the dirty first cell. Omitting the
+indirect step, corrupting its pointer operand or omitting the actual
+entry encryption delta refuses. The 512 internal bootstrap forks can
+still exercise post-input behavior but cannot issue the complete
+initial-entry receipt. Earlier bootstrap initialization, all SSA
+storage and the original publication ceiling remain unresolved.

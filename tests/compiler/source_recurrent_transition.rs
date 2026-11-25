@@ -36,7 +36,7 @@ use super::super::source_recurrent_io_tests::{
 };
 use super::super::source_recurrent_state::source_recurrent_state_tests;
 use super::super::{
-    ReplayJournal, SourceProjection, verify_source_recurrent_loop,
+    ProjectedIo, ReplayJournal, SourceProjection, verify_source_recurrent_loop,
 };
 use super::{
     Error, GuardPlan, ParityPlan, ProjectionPlans, SourceRecurrentLoopProbe,
@@ -46,6 +46,8 @@ use super::{
     admit_probe, project_function_with_plans,
     verify_source_recurrent_transition,
 };
+
+type IndexedEntry = (usize, [ProfileStepTrace; 3]);
 
 fn proposal<'source>(
     wire: &'source [u8],
@@ -102,7 +104,9 @@ fn check_control_counts(
         .ok_or("missing first input")?
         .guard
         .input_index;
-    if proof.control_calls != bytes.saturating_mul(65).saturating_add(9)
+    if proof.initial_entry_indices
+        != [first_input.saturating_sub(2), first_input.saturating_sub(1)]
+        || proof.control_calls != bytes.saturating_mul(65).saturating_add(9)
         || proof.preparation_jumps == 0
         || proof.preparation_jumps >= proof.post_input_steps
         || proof.post_input_steps
@@ -231,7 +235,8 @@ fn verify_terminal_fork(
     let (calls, preparations, steps) = transition
         .control_receipt()
         .map_err(|error| format!("control receipt: {error:?}"))?;
-    if calls != stream.len().saturating_mul(65).saturating_add(9)
+    if transition.initial_entry() != Err(Error::GuestTransitionMismatch)
+        || calls != stream.len().saturating_mul(65).saturating_add(9)
         || preparations == 0
         || steps != replay.io.guest_steps
         || transition.checkpoints.len() != stream.len()
@@ -413,6 +418,89 @@ fn check_control_mutations(
     refuse_control_trace(probe, projected, traces, (index, wrong_operand))
 }
 
+fn first_entry_trace(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<IndexedEntry, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        vec![255],
+    )
+    .map_err(|error| error.to_string())?;
+    let mut last = [None; 3];
+    for index in 0..1_950_001usize {
+        if vm
+            .step_traced(&mut |trace| {
+                let [_, earlier, recent] = last;
+                last = [earlier, recent, Some(*trace)];
+            })
+            .map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("bootstrap terminated before input".to_owned());
+        }
+        if vm.input_consumed() == 1 {
+            let [Some(indirect), Some(entry), Some(input)] = last else {
+                return Err("incomplete entry trace".to_owned());
+            };
+            return Ok((index, [indirect, entry, input]));
+        }
+    }
+    Err("first input trace budget exhausted".to_owned())
+}
+
+fn observe_first_entry(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    event: ProjectedIo,
+    (index, [indirect, entry, input]): IndexedEntry,
+    omit_indirect: bool,
+) -> Result<[usize; 2], Error> {
+    let mut audit = TransitionTrace::new(probe)?;
+    if !omit_indirect {
+        audit.observe(&indirect, index.saturating_sub(2), None)?;
+    }
+    audit.observe(&entry, index.saturating_sub(1), None)?;
+    audit.observe(&input, index, Some(event))?;
+    audit.initial_entry()
+}
+
+fn check_initial_entry_mutations(
+    guest: &RelocatedRecurrentChecksumSource,
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+) -> Result<(), String> {
+    let first = *projected.events.first().ok_or("missing projected input")?;
+    let (index, [indirect, entry, input]) = first_entry_trace(guest)?;
+    let actual = (index, [indirect, entry, input]);
+    if observe_first_entry(probe, first, actual, false)
+        != Ok([index.saturating_sub(2), index.saturating_sub(1)])
+    {
+        return Err("actual first entry refused".to_owned());
+    }
+    if observe_first_entry(probe, first, actual, true)
+        != Err(Error::GuestTransitionMismatch)
+    {
+        return Err("missing initial indirect jump accepted".to_owned());
+    }
+    let mut wrong = indirect;
+    let read = wrong
+        .memory_reads
+        .data
+        .as_mut()
+        .ok_or("missing first-entry pointer")?;
+    read.value = read.value.saturating_add(1);
+    let mut unencrypted = entry;
+    unencrypted.memory_delta.encryption = None;
+    for traces in [[wrong, entry, input], [indirect, unencrypted, input]] {
+        if observe_first_entry(probe, first, (index, traces), false)
+            != Err(Error::GuestTransitionMismatch)
+        {
+            return Err("corrupt first entry accepted".to_owned());
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn source_recurrent_transition_rejects_control_trace_mutations()
 -> Result<(), String> {
@@ -457,7 +545,8 @@ fn source_recurrent_transition_rejects_control_trace_mutations()
     let _proof = journal
         .finish(outcome, &projected, &vm)
         .map_err(|error| format!("unmodified control: {error:?}"))?;
-    check_control_mutations(&probe, &projected, &traces)
+    check_control_mutations(&probe, &projected, &traces)?;
+    check_initial_entry_mutations(&guest, &probe, &projected)
 }
 
 #[test]
