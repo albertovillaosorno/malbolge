@@ -211,10 +211,19 @@ All 65,536 source state/byte transitions and 256 one-byte EOF paths
 agree with the independent byte model. Missing, additional, reordered
 and wrong physical I/O refuse. This experimental three-million-step
 envelope does not authorize publication or attest physical SSA stores.
+The same replay now also checks the selected unsigned loop-header
+phi's independently evaluated incoming byte at every real input,
+including true EOF. Both encoded physical state words require actual
+arithmetic stores in each interval, with recorded sites and indices.
+All five frozen full-image replays and 65,536 two-byte source paths
+pass. Forged state bindings, loader-only coincidence and omitted
+bootstrap stores refuse. This does not bind all original SSA cells,
+normalize signed input storage, or prove full physical control.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:
 `tests/compiler/relocated_recurrent_checksum.rs`,
 `tests/compiler/source_recurrent_io.rs`,
+`tests/compiler/source_recurrent_state.rs`,
 `tests/compiler/relocated_recurrent_nibble.rs`,
 `tests/compiler/relocated_recurrent_mod4.rs`,
 `tests/compiler/relocated_recurrent_indexed.rs`,

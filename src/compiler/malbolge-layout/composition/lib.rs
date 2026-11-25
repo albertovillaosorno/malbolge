@@ -287,7 +287,9 @@ pub use source_input_trace::source_recurrent_io::{
     MAX_RECURRENT_IO_SOURCE_CELLS, MAX_RECURRENT_IO_STEPS,
     SourceRecurrentIoEffect, SourceRecurrentIoError,
     SourceRecurrentIoObservation, SourceRecurrentIoProbe,
-    SourceRecurrentIoProof, verify_source_recurrent_io,
+    SourceRecurrentIoProof, SourceRecurrentStateCheckpoint,
+    SourceRecurrentStateProbe, SourceRecurrentStateProof,
+    verify_source_recurrent_io, verify_source_recurrent_state,
 };
 pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,

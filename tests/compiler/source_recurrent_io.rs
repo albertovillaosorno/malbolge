@@ -35,10 +35,10 @@ use super::{
 };
 
 const WIRE: &str = include_str!("typed-ir/golden/mutable-eof-checksum.hex");
-const VECTORS: [&[u8]; 5] =
+pub(super) const VECTORS: [&[u8]; 5] =
     [&[], &[0], &[255], &[1, 0, 128, 254], &[5, 0, 129]];
 
-fn checksum_wire() -> Result<Vec<u8>, String> {
+pub(super) fn checksum_wire() -> Result<Vec<u8>, String> {
     let hex = WIRE
         .trim_end()
         .strip_prefix("malbolge-typed-ir-v1:")
@@ -57,7 +57,7 @@ fn checksum_wire() -> Result<Vec<u8>, String> {
         .collect()
 }
 
-const fn checksum(state: u8, byte: u8) -> u8 {
+pub(super) const fn checksum(state: u8, byte: u8) -> u8 {
     let result = if byte & 1 == 0 {
         state.wrapping_add(byte)
     } else {
@@ -124,12 +124,12 @@ fn source_recurrent_io_all_source_state_transitions() -> Result<(), String> {
     };
     for first in u8::MIN..=u8::MAX {
         let prior = checksum(0, first);
-        let eof = project_function(function, &[first])
+        let eof = project_function(function, &[first], None)
             .map_err(|error| format!("source EOF after {first}: {error:?}"))?;
         check_projection(&eof, &[first], prior)?;
         for second in u8::MIN..=u8::MAX {
             let stream = [first, second];
-            let projected = project_function(function, &stream)
+            let projected = project_function(function, &stream, None)
                 .map_err(|error| format!("source {stream:?}: {error:?}"))?;
             check_projection(&projected, &stream, checksum(prior, second))?;
         }

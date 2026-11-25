@@ -14136,3 +14136,21 @@ observational evidence, not an independently verified physical SSA frame
 or a proof of unrestricted source equivalence. The strict source-site
 checker and the 100,000-step publication limit remain unchanged.
 Evidence: `tests/compiler/source_recurrent_io.rs`.
+
+The same full-image replay can additionally authenticate the unsigned
+loop-header phi through its canonical entry and backedge predecessor
+values, each defined before its signed read. A proposed injective
+low/high nibble encoding must match both actual persistent words at
+every physical read, including EOF. Both words must have a real
+arithmetic store since the preceding read (or initial load); the
+receipt records the store instruction addresses and trace indices.
+The five frozen full-image runs match the source phi at each read.
+All 65,536 two-byte source paths independently agree on all three
+checkpoints (initial, second read and EOF). Wrong phi selection,
+aliased state cells, noninjective or wrong encodings, matching virgin
+loader words, and omission of either actual bootstrap store refuse.
+This is a finite witness for one selected carried scalar, not an
+authentication of the complete original SSA frame, the source signed
+input representation, or every physical operation and control edge.
+The publication budget and compiler refusal are unchanged. Evidence:
+`tests/compiler/source_recurrent_state.rs`.

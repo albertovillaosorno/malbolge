@@ -30,19 +30,27 @@
 //! must actually perform precisely the same ordered I/O and halt. This is
 //! not a physical SSA/control certificate or a compiler publication gate.
 
+#[path = "source_recurrent_state.rs"]
+mod source_recurrent_state;
+
 use std::collections::BTreeMap;
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
     current_profile,
 };
+use source_recurrent_state::{SourceCheckpointValue, StatePlan, StateTrace};
+pub use source_recurrent_state::{
+    SourceRecurrentStateCheckpoint, SourceRecurrentStateProbe,
+    SourceRecurrentStateProof, verify_source_recurrent_state,
+};
 
 use super::{
     MAX_SOURCE_INPUT_CFG_SEARCH_STATES, SourceInputWalkState,
-    TernaryCfgFunction, TernaryCfgTerminator, TernaryOperation,
-    known_source_binary, known_source_cast, known_source_shift,
-    known_source_threshold, lower_canonical_dynamic_cfg,
-    source_successor_state,
+    TernaryCfgFunction, TernaryCfgPlan, TernaryCfgScalarKind,
+    TernaryCfgTerminator, TernaryOperation, known_source_binary,
+    known_source_cast, known_source_shift, known_source_threshold,
+    lower_canonical_dynamic_cfg, source_successor_state,
 };
 
 /// Separate experimental envelope, not the P2 publication resource limit.
@@ -120,6 +128,8 @@ pub enum SourceRecurrentIoError {
     GuestBudgetExhausted,
     /// Missing, additional, reordered or different physical I/O.
     GuestIoMismatch,
+    /// A carried state word differs from the independently evaluated source.
+    GuestStateMismatch,
     /// Guest halt did not correspond to the source's void return.
     GuestTerminationMismatch,
     /// Canonical typed source failed independent admission.
@@ -128,6 +138,10 @@ pub enum SourceRecurrentIoError {
     InvalidGuestExecution,
     /// Invalid resource bound, non-graphical source or excessive input.
     InvalidProbeBound,
+    /// The proposed phi, input sites or split-state representation is invalid.
+    InvalidStateBinding,
+    /// A recurrent state word lacked a physical arithmetic store.
+    MissingGuestStateStore,
     /// Source evaluation or event journal exhausted its separate finite limit.
     SourceBudgetExhausted,
     /// Source operation, phi, branch or return is not fully modeled.
@@ -143,6 +157,26 @@ struct ProjectedIo {
     block: u32,
     effect: Effect,
     ordinal: u32,
+    state: Option<SourceCheckpointValue>,
+}
+
+struct ProjectionJournal<'plan> {
+    events: Vec<ProjectedIo>,
+    state_plan: Option<&'plan StatePlan>,
+}
+
+struct ReplayJournal {
+    failed: Option<Error>,
+    last_code: Option<u32>,
+    observations: Vec<SourceRecurrentIoObservation>,
+    source_sha256: [u8; 32],
+    state: Option<StateTrace>,
+    trace_index: usize,
+}
+
+struct ReplayProof {
+    io: SourceRecurrentIoProof,
+    state: Option<StateTrace>,
 }
 
 struct SourceProjection {
@@ -151,6 +185,94 @@ struct SourceProjection {
     function: u32,
     return_block: u32,
     steps: usize,
+}
+
+impl ReplayJournal {
+    fn finish(
+        self,
+        outcome: RunOutcome,
+        projected: &SourceProjection,
+        vm: &ProfileMachine,
+    ) -> Result<ReplayProof, Error> {
+        if let Some(error) = self.failed {
+            return Err(error);
+        }
+        let guest_steps = match outcome {
+            RunOutcome::BudgetExhausted { .. } => {
+                return Err(Error::GuestBudgetExhausted);
+            },
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            } => steps,
+            RunOutcome::Terminated { .. } => {
+                return Err(Error::GuestTerminationMismatch);
+            },
+        };
+        if guest_steps != self.trace_index
+            || self.observations.len() != projected.events.len()
+            || vm.input_consumed() != projected.bytes_consumed
+        {
+            return Err(Error::GuestIoMismatch);
+        }
+        if let Some(audit) = self.state.as_ref() {
+            audit.finish(vm)?;
+        }
+        Ok(ReplayProof {
+            io: SourceRecurrentIoProof {
+                bytes_consumed: projected.bytes_consumed,
+                guest_halt_address: self
+                    .last_code
+                    .ok_or(Error::GuestTerminationMismatch)?,
+                guest_steps,
+                observations: self.observations,
+                source_return_block: projected.return_block,
+                source_sha256: self.source_sha256,
+                source_steps: projected.steps,
+            },
+            state: self.state,
+        })
+    }
+
+    const fn new(state: Option<StateTrace>, source_sha256: [u8; 32]) -> Self {
+        Self {
+            failed: None,
+            last_code: None,
+            observations: Vec::new(),
+            source_sha256,
+            state,
+            trace_index: 0,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        step: &ProfileStepTrace,
+        projected: &SourceProjection,
+    ) {
+        if self.failed.is_none() {
+            self.failed = self.reconcile(step, projected).err();
+        }
+        self.last_code = Some(step.before.registers.code_pointer);
+        self.trace_index = self.trace_index.saturating_add(1);
+    }
+
+    fn reconcile(
+        &mut self,
+        step: &ProfileStepTrace,
+        projected: &SourceProjection,
+    ) -> Result<(), Error> {
+        let event = reconcile_effect(
+            step,
+            self.trace_index,
+            projected,
+            &mut self.observations,
+        )?;
+        if let Some(audit) = self.state.as_mut() {
+            audit.observe(step, self.trace_index, event)?;
+        }
+        Ok(())
+    }
 }
 
 // Unlike the conservative source-path feasibility walker, this checker
@@ -242,17 +364,23 @@ fn project_reached_operation(
     state: &mut SourceInputWalkState,
     operation: &TernaryOperation,
     input: &[u8],
-    events: &mut Vec<ProjectedIo>,
+    journal: &mut ProjectionJournal<'_>,
 ) -> Result<(), Error> {
+    let checkpoint = journal
+        .state_plan
+        .map(|plan| plan.checkpoint(state, operation))
+        .transpose()?
+        .flatten();
     if let Some(effect) = project_operation(state, operation, input)? {
-        if events.len() >= MAX_IO_EVENTS {
+        if journal.events.len() >= MAX_IO_EVENTS {
             return Err(Error::SourceBudgetExhausted);
         }
-        events.push(ProjectedIo {
+        journal.events.push(ProjectedIo {
             block: state.block,
             effect,
             ordinal: u32::try_from(state.operation)
                 .map_err(|_error| Error::UnsupportedSourceExecution)?,
+            state: checkpoint,
         });
     }
     state.operation = state.operation.saturating_add(1);
@@ -262,9 +390,13 @@ fn project_reached_operation(
 fn project_function(
     function: &TernaryCfgFunction,
     input: &[u8],
+    state_plan: Option<&StatePlan>,
 ) -> Result<SourceProjection, Error> {
     let mut state = SourceInputWalkState::entry(function.entry);
-    let mut events = Vec::new();
+    let mut journal = ProjectionJournal {
+        events: Vec::new(),
+        state_plan,
+    };
     for step in 1..=MAX_SOURCE_INPUT_CFG_SEARCH_STATES {
         let block = usize::try_from(state.block)
             .ok()
@@ -283,7 +415,7 @@ fn project_function(
                 &mut state,
                 operation,
                 input,
-                &mut events,
+                &mut journal,
             )?;
         } else if let Some(target) = next_target(&state, block.terminator)? {
             // Shared source semantics take every phi input from the old
@@ -293,7 +425,7 @@ fn project_function(
         } else {
             return Ok(SourceProjection {
                 bytes_consumed: state.consumed,
-                events,
+                events: journal.events,
                 function: function.id,
                 return_block: block.id,
                 steps: step,
@@ -341,9 +473,9 @@ fn reconcile_effect(
     trace_index: usize,
     projected: &SourceProjection,
     observations: &mut Vec<SourceRecurrentIoObservation>,
-) -> Result<(), Error> {
+) -> Result<Option<ProjectedIo>, Error> {
     let Some((effect, raw_accumulator)) = physical_effect(step)? else {
-        return Ok(());
+        return Ok(None);
     };
     let expected = projected
         .events
@@ -359,69 +491,50 @@ fn reconcile_effect(
         raw_accumulator,
         trace_index,
     });
-    Ok(())
+    Ok(Some(*expected))
 }
 
 fn replay_guest(
     probe: SourceRecurrentIoProbe<'_>,
     projected: &SourceProjection,
     source_sha256: [u8; 32],
-) -> Result<SourceRecurrentIoProof, Error> {
+    state_probe: Option<&SourceRecurrentStateProbe<'_>>,
+) -> Result<ReplayProof, Error> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         probe.physical_source,
         probe.input.to_vec(),
     )
     .map_err(|_error| Error::InvalidGuestExecution)?;
-    let mut observations = Vec::new();
-    let mut failed = None;
-    let mut trace_index = 0usize;
-    let mut last_code = None;
+    let state = state_probe
+        .map(|proposal| StateTrace::new(proposal, &vm))
+        .transpose()?;
+    let mut journal = ReplayJournal::new(state, source_sha256);
     let outcome = vm
         .run_traced(probe.step_budget, &mut |step| {
-            if failed.is_none() {
-                failed = reconcile_effect(
-                    step,
-                    trace_index,
-                    projected,
-                    &mut observations,
-                )
-                .err();
-            }
-            last_code = Some(step.before.registers.code_pointer);
-            trace_index = trace_index.saturating_add(1);
+            journal.observe(step, projected);
         })
         .map_err(|_error| Error::InvalidGuestExecution)?;
-    if let Some(error) = failed {
-        return Err(error);
-    }
-    let guest_steps = match outcome {
-        RunOutcome::BudgetExhausted { .. } => {
-            return Err(Error::GuestBudgetExhausted);
-        },
-        RunOutcome::Terminated {
-            reason: Termination::HaltInstruction,
-            steps,
-        } => steps,
-        RunOutcome::Terminated { .. } => {
-            return Err(Error::GuestTerminationMismatch);
-        },
-    };
-    if guest_steps != trace_index
-        || observations.len() != projected.events.len()
-        || vm.input_consumed() != projected.bytes_consumed
+    journal.finish(outcome, projected, &vm)
+}
+
+fn admit_probe(
+    probe: SourceRecurrentIoProbe<'_>,
+) -> Result<TernaryCfgPlan, Error> {
+    if probe.step_budget == 0
+        || probe.step_budget > MAX_RECURRENT_IO_STEPS
+        || probe.physical_source.len() > MAX_RECURRENT_IO_SOURCE_CELLS
+        || probe.physical_source.is_empty()
+        || probe
+            .physical_source
+            .iter()
+            .any(|byte| !(33..=126).contains(byte))
+        || probe.input.len() > MAX_IO_EVENTS
     {
-        return Err(Error::GuestIoMismatch);
+        return Err(Error::InvalidProbeBound);
     }
-    Ok(SourceRecurrentIoProof {
-        bytes_consumed: projected.bytes_consumed,
-        guest_halt_address: last_code.ok_or(Error::GuestTerminationMismatch)?,
-        guest_steps,
-        observations,
-        source_return_block: projected.return_block,
-        source_sha256,
-        source_steps: projected.steps,
-    })
+    lower_canonical_dynamic_cfg(probe.canonical)
+        .map_err(|_error| Error::InvalidCanonicalSource)
 }
 
 /// Compare one deterministic source-CFG path against a fresh normative guest.
@@ -441,25 +554,13 @@ fn replay_guest(
 pub fn verify_source_recurrent_io(
     probe: SourceRecurrentIoProbe<'_>,
 ) -> Result<SourceRecurrentIoProof, SourceRecurrentIoError> {
-    if probe.step_budget == 0
-        || probe.step_budget > MAX_RECURRENT_IO_STEPS
-        || probe.physical_source.len() > MAX_RECURRENT_IO_SOURCE_CELLS
-        || probe.physical_source.is_empty()
-        || probe
-            .physical_source
-            .iter()
-            .any(|byte| !(33..=126).contains(byte))
-        || probe.input.len() > MAX_IO_EVENTS
-    {
-        return Err(Error::InvalidProbeBound);
-    }
-    let cfg = lower_canonical_dynamic_cfg(probe.canonical)
-        .map_err(|_error| Error::InvalidCanonicalSource)?;
+    let cfg = admit_probe(probe)?;
     let [function] = cfg.functions.as_slice() else {
         return Err(Error::UnsupportedSourceExecution);
     };
-    let projected = project_function(function, probe.input)?;
-    replay_guest(probe, &projected, cfg.source_sha256)
+    let projected = project_function(function, probe.input, None)?;
+    replay_guest(probe, &projected, cfg.source_sha256, None)
+        .map(|proof| proof.io)
 }
 
 #[cfg(test)]

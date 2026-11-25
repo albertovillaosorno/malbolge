@@ -50,7 +50,8 @@ use super::typed_cfg_adapter::state_relocation::{
 };
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 use super::typed_cfg_adapter::ternary::{
-    TernaryCfgFunction, TernaryCfgTerminator, TernaryOperation,
+    TernaryCfgFunction, TernaryCfgPlan, TernaryCfgScalarKind, TernaryCfgTerminator,
+    TernaryOperation,
 };
 
 #[path = "source_recurrent_io.rs"]
