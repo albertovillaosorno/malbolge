@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 5_300_000;
+const BOOT_BUDGET: usize = 4_000_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -736,6 +736,40 @@ fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
     Ok(())
 }
 
+// The target pages point at distinct bases within the recurrent data
+// plan, not at their own bank or the bootstrap scratch space.
+fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
+    let mut targets = BTreeSet::new();
+    for (root, bank) in [(7_174_491u32, 7_300_001u32), (7_174_493, 7_300_201)] {
+        if word(vm, root)? != bank.checked_sub(1).ok_or("target root")? {
+            return Err("incorrect target directory root".to_owned());
+        }
+        for offset in 0..48u32 {
+            let slot = plus(bank, mul(offset, 2)?)?;
+            let target = plus(word(vm, slot)?, 1)?;
+            if !(7_175_000..7_244_000).contains(&target)
+                || !targets.insert(target)
+                || word(vm, plus(slot, 1)?)? != 7_174_416
+            {
+                return Err(format!("incorrect target directory M{slot}"));
+            }
+        }
+    }
+    for root in (7_174_495..7_174_601).step_by(2) {
+        let target = plus(word(vm, root)?, 1)?;
+        if !(7_175_000..7_244_000).contains(&target)
+            || !targets.insert(target)
+            || word(vm, plus(root, 1)?)? != 7_174_416
+        {
+            return Err(format!("incorrect direct target M{root}"));
+        }
+    }
+    if targets.len() != 149 {
+        return Err("missing target directory partition".to_owned());
+    }
+    Ok(())
+}
+
 #[test]
 fn relocated_recurrent_checksum_all_factored_edges_and_eof()
 -> Result<(), String> {
@@ -743,6 +777,7 @@ fn relocated_recurrent_checksum_all_factored_edges_and_eof()
     let initial = boot(&guest)?;
     check_materialized_tables(&initial)?;
     check_seed_directory(&initial)?;
+    check_target_directory(&initial)?;
     let stream = census()?;
     run(&initial, &guest, &stream)?;
     run(&initial, &guest, &[])?;
@@ -769,11 +804,12 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
         (&[5, 0, 129], 34_685),
     ];
     let guest = source()?;
-    if guest.capture.source.len() != 5_360_694 {
+    if guest.capture.source.len() != 4_091_694 {
         return Err("unexpected recurrent source extent".to_owned());
     }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
     check_seed_directory(&initial)?;
+    check_target_directory(&initial)?;
     // This is a physical witness, not yet source-C publication.
     if bootstrap_steps <= PUBLICATION_BUDGET {
         return Err("publication budget evidence must be revisited".to_owned());
@@ -861,6 +897,30 @@ fn materialization_site(
         }
     }
     Err("missing materialized table store".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_target_page_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let initial = boot(&guest)?;
+    check_target_directory(&initial)?;
+    let page = 7_300_001;
+    let site = materialization_site(&guest, (page, word(&initial, page)?))?;
+    let modified = omit_site(&guest, site)?;
+    if let Ok(mutated) = boot(&modified) {
+        if check_target_directory(&mutated).is_ok() {
+            return Err("accepted omitted target page".to_owned());
+        }
+        if check_materialized_tables(&mutated).is_ok()
+            && run(&mutated, &modified, &[0, 255]).is_ok()
+        {
+            return Err(
+                "target page mutation did not affect a used route".to_owned()
+            );
+        }
+    }
+    Ok(())
 }
 
 #[test]

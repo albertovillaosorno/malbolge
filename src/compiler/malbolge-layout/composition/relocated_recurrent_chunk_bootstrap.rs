@@ -47,13 +47,37 @@ const CHUNK_BANK: u32 = 7_176_601;
 const CHUNK_RESET: u32 = 7_174_468;
 // The directory is between the immutable chunk-mask bank and the
 // operand tape. Its odd pointers leave each even reset word virgin.
-pub(super) const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
+const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 32;
 const DIRECTORY_END: u32 = 7_176_900;
+const TARGET_ROOTS: [u32; 2] = [7_174_491, 7_174_493];
+const TARGET_BANKS: [u32; 2] = [7_300_001, 7_300_201];
+const TARGET_PAGE_COUNT: u32 = 48;
+const TARGET_DIRECT_START: u32 = 7_174_495;
 
 type ChunkMasks = Vec<(u32, u32)>;
 type SeedDirectory = Vec<(u32, u32)>;
+
+#[derive(Clone, Copy)]
+pub(super) enum TargetSlot {
+    Direct(u32),
+    Page { bank: u32, root: u32, slot: u32 },
+}
+
+impl TargetSlot {
+    fn cost(self) -> u64 {
+        match self {
+            Self::Direct(anchor) => u64::from(anchor),
+            Self::Page { bank, root, slot } => u64::from(root)
+                .saturating_add(u64::from(slot.saturating_sub(bank)))
+                .saturating_add(1),
+        }
+    }
+}
+
+pub(super) type TargetAnchors = Vec<(TargetSlot, u32)>;
+
 struct SeedRouting<'directory> {
     directory: &'directory [(u32, u32)],
     extra: (u32, u32),
@@ -61,6 +85,26 @@ struct SeedRouting<'directory> {
 
 type ChunkMaterialization<'seeds> =
     (u32, &'seeds BTreeMap<u32, SeedAccess>, SeedRouting<'seeds>);
+
+pub(super) fn target_slots() -> Result<Vec<TargetSlot>, BuildError> {
+    let mut slots = Vec::new();
+    for root in (TARGET_DIRECT_START..ANCHOR_END).step_by(2) {
+        slots.push(TargetSlot::Direct(root));
+    }
+    for (root, bank) in TARGET_ROOTS.into_iter().zip(TARGET_BANKS) {
+        for offset in 0..TARGET_PAGE_COUNT {
+            slots.push(TargetSlot::Page {
+                bank,
+                root,
+                slot: bank
+                    .checked_add(offset.checked_mul(2).ok_or(LAYOUT)?)
+                    .ok_or(LAYOUT)?,
+            });
+        }
+    }
+    slots.sort_by_key(|slot| slot.cost());
+    Ok(slots)
+}
 
 fn chunk_access(
     emitter: &mut Emitter<'_>,
@@ -154,20 +198,38 @@ fn fast_rotate(
     Ok(())
 }
 
+pub(super) fn go_target(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    anchors: &[(TargetSlot, u32)],
+) -> Result<(), BuildError> {
+    let (path, base) = anchors
+        .iter()
+        .copied()
+        .filter(|&(_, base)| base <= address)
+        .min_by_key(|&(slot, base)| {
+            slot.cost()
+                .saturating_add(u64::from(address.saturating_sub(base)))
+        })
+        .ok_or(LAYOUT)?;
+    match path {
+        TargetSlot::Direct(anchor) => fast_go(emitter, anchor)?,
+        TargetSlot::Page { bank, root, slot } => {
+            fast_go(emitter, root)?;
+            emitter.jump(bank)?;
+            emitter.walk(slot)?;
+        },
+    }
+    emitter.jump(base)?;
+    emitter.walk(address)
+}
+
 fn fast_store(
     emitter: &mut Emitter<'_>,
     address: u32,
-    anchors: &[(u32, u32)],
+    anchors: &[(TargetSlot, u32)],
 ) -> Result<(), BuildError> {
-    let (anchor, base) = anchors
-        .iter()
-        .copied()
-        .rev()
-        .find(|&(_, base)| base <= address)
-        .ok_or(LAYOUT)?;
-    fast_go(emitter, anchor)?;
-    emitter.jump(base)?;
-    emitter.walk(address)?;
+    go_target(emitter, address, anchors)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     after_store(emitter)
 }
@@ -296,10 +358,71 @@ fn initialize_seed_directory(
     Ok(directory)
 }
 
+fn initialize_target_pages(
+    emitter: &mut Emitter<'_>,
+    anchors: &[(TargetSlot, u32)],
+) -> Result<(), BuildError> {
+    let mut pages = anchors
+        .iter()
+        .filter_map(|&(path, base)| {
+            if let TargetSlot::Page { bank, root, slot } = path {
+                Some((slot, bank, root, base))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    pages.sort_unstable();
+    for (slot, bank, root, base) in pages {
+        let anchor = [(root, bank)];
+        rotate(emitter, NEAR_ZERO)?;
+        store_anchored(emitter, slot, &anchor)?;
+        chunk_word(emitter, profile_crazy(ALL_ONES, previous(base)?, 15))?;
+        store_anchored(emitter, slot, &anchor)?;
+    }
+    Ok(())
+}
+
+fn target_roots(
+    words: &Words,
+    anchors: &[(TargetSlot, u32)],
+    limit: u32,
+) -> Result<SeedDirectory, BuildError> {
+    let mut roots = BTreeMap::new();
+    for &(path, base) in anchors {
+        if !words.contains_key(&base) {
+            return Err(LAYOUT);
+        }
+        let (root, landing) = match path {
+            TargetSlot::Direct(root) => (root, base),
+            TargetSlot::Page { bank, root, slot } => {
+                let reset = slot.checked_add(1).ok_or(LAYOUT)?;
+                if reset >= limit
+                    || slot.is_multiple_of(2)
+                    || words.contains_key(&slot)
+                    || words.contains_key(&reset)
+                {
+                    return Err(LAYOUT);
+                }
+                (root, bank)
+            },
+        };
+        if root <= SEED_DIRECTORY
+            || root >= ANCHOR_END
+            || roots
+                .insert(root, previous(landing)?)
+                .is_some_and(|old| old != landing.saturating_sub(1))
+        {
+            return Err(LAYOUT);
+        }
+    }
+    Ok(roots.into_iter().collect())
+}
+
 pub(super) fn initialize_chunk_seeds(
     emitter: &mut Emitter<'_>,
     words: &Words,
-    anchors: &[(u32, u32)],
+    anchors: &[(TargetSlot, u32)],
     extra: (u32, u32),
 ) -> Result<(), BuildError> {
     let mut near = vec![
@@ -308,12 +431,7 @@ pub(super) fn initialize_chunk_seeds(
         (CHUNK_ANCHOR, previous(CHUNK_BANK)?),
         (SEED_DIRECTORY, previous(DIRECTORY_BANK)?),
     ];
-    for &(anchor, base) in anchors {
-        if anchor <= SEED_DIRECTORY || anchor >= ANCHOR_END {
-            return Err(LAYOUT);
-        }
-        near.push((anchor, previous(base)?));
-    }
+    near.extend(target_roots(words, anchors, emitter.tape_bounds.limit)?);
     near.sort_unstable_by_key(|&(address, _)| address);
     if words.range(extra.0..=extra.1).next().is_some()
         || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
@@ -328,6 +446,9 @@ pub(super) fn initialize_chunk_seeds(
     let masks = chunk_masks()?;
     let tape_end =
         initialize_words_compact_extent(emitter, &near, &masks, true)?;
+    if tape_end >= *TARGET_BANKS.first().ok_or(LAYOUT)? {
+        return Err(LAYOUT);
+    }
     prepare_near_constants(emitter)?;
     rotate(emitter, NEAR_ZERO)?;
     crazy(emitter, NEAR_ONES)?;
@@ -346,6 +467,7 @@ pub(super) fn initialize_chunk_seeds(
         store_anchored(emitter, address, &seed_anchors)?;
     }
     let directory = initialize_seed_directory(emitter, extra)?;
+    initialize_target_pages(emitter, anchors)?;
     reset_chunk_word(emitter, FRAME)?;
     chunk_word(emitter, profile_crazy(ALL_ONES, previous(NEAR_ONES)?, 15))?;
     emitter.go(FRAME)?;
@@ -365,7 +487,7 @@ pub(super) fn initialize_chunk_seeds(
 fn materialize_chunk_words(
     emitter: &mut Emitter<'_>,
     words: &Words,
-    anchors: &[(u32, u32)],
+    anchors: &[(TargetSlot, u32)],
     (tape_end, seed_addresses, routing): ChunkMaterialization<'_>,
 ) -> Result<(), BuildError> {
     for (&address, &value) in words {

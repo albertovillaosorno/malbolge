@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 5,360,694-cell
+The separate 4,091,694-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14035,7 +14035,14 @@ frame-reset word virgin.
 The near root M7174489 selects the directory; a page pointer selects
 a 32-cell section of either inverse-seed bank. The emitter compares
 the direct and two-hop linear walk costs before choosing either
-physical path. The boot replay has a 5,300,000-step bound.
+physical path. Two additional target directories at M7300001 and
+M7300201 supply 96 odd page pointers. Together with 53 direct
+anchors, the planner splits the destination ranges into 149
+partitions and assigns denser partitions to cheaper access slots.
+For each destination it compares the cost of every eligible direct
+or two-hop path. The page pointers are synthesized in the guest
+before the first route write; their even reset cells remain virgin.
+The boot replay has a 4,000,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14061,11 +14068,17 @@ The 6,150,294-cell image previously reached its first input in
 5,973,677 instructions (originally 6,347,795). The directory alone
 reduces that to 5,159,114; shifting the code phase by 789,600 cells
 preserves the decoder and loader phases and gives the present
-5,360,694-cell image with 5,238,250 bootstrap instructions.
+5,360,694-cell image with 5,238,250 bootstrap instructions. Adding
+the target directories cuts this to 3,911,304; a further phase-aligned
+shift of 1,269,000 cells produces the current 4,091,694-cell image
+with 3,906,625 bootstrap instructions.
 Independent replay audits all 44 directory pointers and their
 untouched reset words. Omitting the actual store for the second
 near seed page invalidates the route; a directory entry is not
-merely an assumed initialized word. The five original C23 vectors
+merely an assumed initialized word. A second audit authenticates
+all 149 distinct target partitions, their two near roots and the
+untouched adjacent reset words. Omitting a selected target page
+store also refuses. The five original C23 vectors
 also run on this physical guest. Starting at its first input, the empty, NUL, high-byte,
 mixed and truncated vectors halt in 446, 11,859, 11,859, 46,098 and
 34,685 instructions respectively. A fresh normative VM exhausts the

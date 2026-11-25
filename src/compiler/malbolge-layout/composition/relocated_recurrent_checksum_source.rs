@@ -30,26 +30,25 @@ use super::super::super::super::LinearOpcode;
 use super::super::super::{BuildError, Emitter, LAYOUT, TapeBounds};
 use super::super::relocated_recurrent_access::AccessBlock;
 use super::relocated_recurrent_chunk_bootstrap::{
-    SEED_DIRECTORY, initialize_chunk_seeds,
+    TargetAnchors, go_target, initialize_chunk_seeds, target_slots,
 };
 use super::relocated_recurrent_mod4_source::{
     LOOP_RETURN, Mod4Blocks, seed_address,
 };
 use super::relocated_recurrent_reload_source::main_route;
 use super::{
-    ALL_ONES, ALL_TWOS, ANCHOR_END, BYTE, BYTE_ROUTE_POINTER, Blocks, CAPTURE,
-    CONSTANTS, EOF, INITIAL, MAIN_ROUTE, RelocatedRecurrentCaptureSource,
-    Route, STATES, Words, bootstrap, code, go_anchored, immutable_seed_prefix,
-    insert, previous,
+    ALL_ONES, ALL_TWOS, BYTE, BYTE_ROUTE_POINTER, Blocks, CAPTURE, CONSTANTS,
+    EOF, INITIAL, MAIN_ROUTE, RelocatedRecurrentCaptureSource, Route, STATES,
+    Words, bootstrap, code, immutable_seed_prefix, insert, previous,
 };
 
 const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_360_001,
     start: 7_177_001,
 };
-const CODE_BASE: u32 = 5_350_568;
-const TERMINAL: u32 = 5_360_568;
-const SOURCE_CELLS: usize = 5_360_694;
+const CODE_BASE: u32 = 4_081_568;
+const TERMINAL: u32 = 4_091_568;
+const SOURCE_CELLS: usize = 4_091_694;
 const BYTE_ROUTE: u32 = 7_194_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
 const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];
@@ -118,7 +117,6 @@ pub struct RelocatedRecurrentChecksumSource {
 
 type AnchorSplit = (u64, usize);
 type LookupSites = [[u32; 2]; 5];
-type RouteAnchors = Vec<(u32, u32)>;
 
 fn plus(left: u32, right: u32) -> Result<u32, BuildError> {
     left.checked_add(right).ok_or(LAYOUT)
@@ -606,16 +604,11 @@ fn finish_byte_route(
 
 // Split the most expensive linear walk at each iteration. This keeps
 // the finite set of near-frame anchors useful across sparse table rows.
-fn route_anchors(words: &Words) -> Result<RouteAnchors, BuildError> {
+fn route_anchors(words: &Words) -> Result<TargetAnchors, BuildError> {
     let addresses = words.keys().copied().collect::<Vec<_>>();
     let mut cuts = vec![0usize, addresses.len()];
-    let count = usize::try_from(
-        ANCHOR_END
-            .checked_sub(SEED_DIRECTORY + 2)
-            .ok_or(LAYOUT)?
-            .div_euclid(2),
-    )
-    .map_err(|_error| LAYOUT)?;
+    let slots = target_slots()?;
+    let count = slots.len();
     for _ in 1..count {
         let mut best = (0u64, 0usize);
         for endpoints in cuts.windows(2) {
@@ -646,17 +639,10 @@ fn route_anchors(words: &Words) -> Result<RouteAnchors, BuildError> {
         ));
     }
     partitions.sort_unstable_by_key(|&(size, base)| (Reverse(size), base));
-    let mut anchors = Vec::new();
-    for (index, (_, base)) in partitions.into_iter().enumerate() {
-        anchors.push((
-            plus(
-                SEED_DIRECTORY + 2,
-                times(u32::try_from(index).map_err(|_error| LAYOUT)?, 2)?,
-            )?,
-            base,
-        ));
-    }
-    anchors.sort_unstable_by_key(|&(_, base)| base);
+    let anchors = slots
+        .into_iter()
+        .zip(partitions.into_iter().map(|(_, base)| base))
+        .collect();
     Ok(anchors)
 }
 
@@ -796,7 +782,7 @@ pub fn build_relocated_recurrent_checksum_source(
         &anchors,
         (7_175_601, 7_176_600),
     )?;
-    go_anchored(&mut emitter, entry, &anchors)?;
+    go_target(&mut emitter, entry, &anchors)?;
     let _: u32 = emitter.append_indirect()?;
     for block in blocks
         .capture
