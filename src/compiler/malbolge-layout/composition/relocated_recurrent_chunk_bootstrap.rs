@@ -151,6 +151,8 @@ enum ChunkSeedAccess {
 
 type ChunkSeedMap = BTreeMap<u32, ChunkSeedAccess>;
 type ChunkSeedPlan = (ChunkSeedMap, Vec<(u32, u32)>);
+type ClusterSweep<'targets> = (&'targets [u32], &'targets mut BTreeSet<u32>);
+type ClusterProtection<'targets> = (&'targets BTreeSet<u32>, (u32, u32));
 type ChunkMaterialization<'seeds> = (
     &'seeds ChunkSeedMap,
     SeedRouting<'seeds>,
@@ -1364,12 +1366,87 @@ fn needs_normalization(address: u32, inverse: u32, value: u32) -> bool {
     profile_crazy(virgin, inverse, 15) != value
 }
 
+// Nearby odd targets can share one zero reload and one anchor route.
+// Virgin words contain only zero/one trits, so alternating crazy stores
+// leave every other target normalized. The other targets become zero and
+// can participate in another sweep before their ordinary normalization.
+// Never touch even targets in this pass: they may be live reset cells.
+fn normalize_odd_clusters(
+    emitter: &mut Emitter<'_>,
+    words: &Words,
+    anchors: &[(TargetSlot, u32)],
+    protection: ClusterProtection<'_>,
+) -> Result<BTreeSet<u32>, BuildError> {
+    let mut candidates = words
+        .iter()
+        .filter_map(|(&address, &value)| {
+            (!address.is_multiple_of(2)
+                && !protection.0.contains(&address)
+                && needs_normalization(
+                    address,
+                    profile_crazy(ALL_ONES, value, 15),
+                    value,
+                ))
+            .then_some(address)
+        })
+        .collect::<Vec<_>>();
+    let mut normalized = BTreeSet::new();
+    for _ in 0..3u32 {
+        candidates = normalize_odd_sweep(
+            emitter,
+            anchors,
+            protection,
+            (&candidates, &mut normalized),
+        )?;
+    }
+    Ok(normalized)
+}
+
+fn normalize_odd_sweep(
+    emitter: &mut Emitter<'_>,
+    anchors: &[(TargetSlot, u32)],
+    (direct, extra): ClusterProtection<'_>,
+    (candidates, normalized): ClusterSweep<'_>,
+) -> Result<Vec<u32>, BuildError> {
+    let mut zeroed = Vec::new();
+    for cluster in
+        candidates.chunk_by(|&left, &right| right.saturating_sub(left) <= 16)
+    {
+        if cluster.len() < 3 {
+            continue;
+        }
+        let first = *cluster.first().ok_or(LAYOUT)?;
+        let last = *cluster.last().ok_or(LAYOUT)?;
+        fast_rotate(emitter, NEAR_ZERO)?;
+        go_target(emitter, first, anchors)?;
+        for (index, &address) in cluster.iter().enumerate() {
+            emitter.walk(address)?;
+            let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+            if index.is_multiple_of(2) {
+                let _inserted = normalized.insert(address);
+            } else {
+                zeroed.push(address);
+            }
+        }
+        let reset =
+            target_reset(last, direct, extra, emitter.tape_bounds.limit)?;
+        emitter.walk(reset)?;
+    }
+    Ok(zeroed)
+}
+
 fn materialize_chunk_words(
     emitter: &mut Emitter<'_>,
     words: &Words,
     anchors: &[(TargetSlot, u32)],
     (seed_addresses, routing, direct): ChunkMaterialization<'_>,
 ) -> Result<(), BuildError> {
+    let pre_normalized = normalize_odd_clusters(
+        emitter,
+        words,
+        anchors,
+        (direct, routing.extra),
+    )?;
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.limit).contains(&address) {
             return Err(LAYOUT);
@@ -1384,7 +1461,8 @@ fn materialize_chunk_words(
             emitter.tape_bounds.limit,
         )?;
         let inverse = profile_crazy(ALL_ONES, value, 15);
-        let normalized = needs_normalization(address, inverse, value);
+        let normalized = needs_normalization(address, inverse, value)
+            && !pre_normalized.contains(&address);
         if normalized {
             fast_rotate(emitter, NEAR_ZERO)?;
             fast_store(emitter, address, anchors, reset)?;

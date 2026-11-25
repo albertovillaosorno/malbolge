@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_455_000;
+const BOOT_BUDGET: usize = 1_340_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -65,6 +65,118 @@ type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
 type DirectTargetReceipt = (usize, [u32; 2]);
 type ShortcutReceipt = ([u32; 3], usize);
+
+#[derive(Clone, Copy)]
+struct ClusterVisit {
+    accumulator: u32,
+    address: u32,
+    old: u32,
+    site: u32,
+}
+
+#[derive(Default)]
+struct OddClusterAudit {
+    commits: BTreeSet<u32>,
+    groups: usize,
+    normalized: BTreeSet<u32>,
+    ones_site: Option<u32>,
+    run: Vec<ClusterVisit>,
+    visits: usize,
+    zero_site: Option<u32>,
+    zeroed: BTreeSet<u32>,
+}
+
+impl OddClusterAudit {
+    fn finish(mut self, vm: &ProfileMachine) -> Result<[u32; 2], String> {
+        self.flush()?;
+        check_materialized_tables(vm)?;
+        if self.groups != 270
+            || self.visits != 4_081
+            || self.zeroed.len() != 499
+            || self.normalized.len() != 2_101
+            || self.commits != self.normalized
+        {
+            return Err(
+                "missing clustered normalization or final commit".to_owned()
+            );
+        }
+        Ok([
+            self.ones_site.ok_or("missing clustered one store")?,
+            self.zero_site.ok_or("missing clustered zero store")?,
+        ])
+    }
+
+    fn flush(&mut self) -> Result<(), String> {
+        if self.run.len() < 2 {
+            self.run.clear();
+            return Ok(());
+        }
+        if self.run.len() < 3 {
+            return Err("incomplete normalization cluster".to_owned());
+        }
+        let mut previous = None;
+        for (index, visit) in self.run.drain(..).enumerate() {
+            if visit.address.is_multiple_of(2)
+                || previous.is_some_and(|last: u32| {
+                    visit.address <= last
+                        || visit.address.saturating_sub(last) > 16
+                })
+                || self.normalized.contains(&visit.address)
+                || visit.old
+                    != if self.zeroed.contains(&visit.address) {
+                        0
+                    } else {
+                        37
+                    }
+            {
+                return Err("invalid normalization cluster operand".to_owned());
+            }
+            previous = Some(visit.address);
+            if index.is_multiple_of(2) && visit.accumulator == 0 {
+                let _inserted = self.normalized.insert(visit.address);
+                let _removed = self.zeroed.remove(&visit.address);
+                let _site = self.ones_site.get_or_insert(visit.site);
+            } else if !index.is_multiple_of(2) && visit.accumulator == ONES {
+                let _inserted = self.zeroed.insert(visit.address);
+                let _site = self.zero_site.get_or_insert(visit.site);
+            } else {
+                return Err("nonalternating normalization cluster".to_owned());
+            }
+            self.visits = self.visits.saturating_add(1);
+        }
+        self.groups = self.groups.saturating_add(1);
+        Ok(())
+    }
+
+    fn store(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let trace = step(vm)?;
+        let address = trace.before.registers.data_pointer;
+        let accumulator = trace.before.registers.accumulator;
+        let old = trace
+            .memory_reads
+            .data
+            .ok_or("missing cluster operand")?
+            .value;
+        let new = independent_crazy(old, accumulator);
+        check_store(&trace, address, old, new)?;
+        if matches!(old, 0 | 37) && matches!(accumulator, 0 | ONES) {
+            self.run.push(ClusterVisit {
+                accumulator,
+                address,
+                old,
+                site: trace.before.registers.code_pointer,
+            });
+        } else {
+            self.flush()?;
+            if self.normalized.contains(&address)
+                && (old != ONES || !self.commits.insert(address))
+            {
+                return Err("incorrect clustered target commit".to_owned());
+            }
+        }
+        Ok(())
+    }
+}
 
 // The new scratch-to-constants root is installed before its first use.
 // Observe every actual selection and require its adjacent reset to stay virgin.
@@ -1783,6 +1895,62 @@ fn relocated_recurrent_checksum_omitted_chunk_page_refuses()
         let modified = omit_site(&guest, site)?;
         if audit_chunk_pages(&modified).is_ok() {
             return Err("accepted omitted chunk page effect".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn audit_odd_clusters(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<[u32; 2], String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = OddClusterAudit::default();
+    let mut shared = false;
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        let opcode = decode_profile_instruction(
+            word(&vm, registers.code_pointer)?,
+            registers.code_pointer,
+        );
+        if opcode == Some(b'p') && seed_return_address(address) {
+            shared = true;
+        }
+        if shared && opcode == Some(b'p') && materialized_target(address) {
+            audit.store(&mut vm)?;
+            continue;
+        }
+        if opcode != Some(b'o') {
+            audit.flush()?;
+        } else if !audit.run.is_empty() {
+            routing(&step(&mut vm)?, u32::MAX)?;
+            continue;
+        }
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature bootstrap termination".to_owned());
+        }
+    }
+    Err("missing clustered first input".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_odd_cluster_stores_refuse()
+-> Result<(), String> {
+    let guest = source()?;
+    for site in audit_odd_clusters(&guest)? {
+        let modified = omit_site(&guest, site)?;
+        if audit_odd_clusters(&modified).is_ok() {
+            return Err("accepted omitted cluster normalization".to_owned());
         }
     }
     Ok(())

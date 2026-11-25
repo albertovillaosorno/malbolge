@@ -14564,3 +14564,19 @@ either store or the first jump refuses. The unchanged 2,318,854-cell
 image reaches first input in 1,450,391 steps, saving 27,204. The
 physical regression ceiling is now 1,455,000 steps. The original
 100,000-step source-C publication limit remains unchanged.
+
+The shared target pass now pre-normalizes clusters of at least three
+nearby odd targets, using a maximum gap of sixteen cells. With a zero
+accumulator, the first virgin zero/one-trit word becomes all ones;
+the next becomes zero, alternating throughout the forward walk. Up
+to three sweeps revisit the zeroed subset. No even target is changed
+by these sweeps, so all live even resets remain available. Ordinary
+seed reloads then commit the already normalized targets; remaining
+zeroed targets take the ordinary normalization path.
+Independent VM replay checks 270 clusters, 4,081 arithmetic visits,
+2,101 pre-normalized targets and their final commits, and 499 targets
+left zeroed by the sweeps. Both omitted cluster store controls refuse.
+The same 2,318,854-cell image reaches first input in 1,335,757 steps,
+saving 114,634; its physical ceiling is 1,340,000 steps. All 19
+physical checksum and 31 source-recurrent tests pass. The separate
+100,000-step source-C publication limit remains unchanged.

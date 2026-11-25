@@ -298,6 +298,10 @@ All 17 physical and 31 source-recurrent tests pass.
 A new scratch-local pointer jumps directly to the immutable constants;
 1,313 independently traced jumps and three omitted-effect controls
 pass. First input now takes 1,450,391 steps in the same physical image.
+Three forward normalization sweeps preserve all even reset cells;
+270 independently traced clusters and 2,101 final commits save another
+114,634 steps. First input now takes 1,335,757 steps. Both omitted-store
+controls, all 19 physical checksum and 31 source-recurrent tests pass.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.
