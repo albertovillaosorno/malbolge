@@ -14615,3 +14615,58 @@ routes, checks 8,734 actual minimum-cost target selections, including the
 final entry, and rejects omitted root and page-selection jumps. The
 changed directory initialization uses 1,323 scratch-to-constants jumps.
 The 100,000-step source-C publication limit remains unchanged.
+
+Five phase-aligned smaller source geometries were tested against the five
+frozen vectors. All passed those vectors but exceeded the existing
+1,195,000-step bootstrap ceiling:
+
+| Source cells | First input steps |
+| ---: | ---: |
+| 1,331,854 | 1,196,425 |
+| 1,303,654 | 1,197,444 |
+| 1,275,454 | 1,204,440 |
+| 1,247,254 | 1,203,464 |
+| 1,219,054 | 1,200,187 |
+
+These candidates shift the code and extent by multiples of 282 cells.
+None was adopted under the unchanged physical regression constraint.
+
+The twelve target-directory banks now normalize their odd slots in
+shrinking forward sweeps before the ordinary inverse-word commits.
+The untouched adjacent even cells remain valid reset predecessors.
+Independent trace replay checks all 552 normalization visits (including
+264 intermediate zero writes), 288 final normalization states and 288
+commits. Omitted first normalization and zeroing stores refuse, as do
+the existing route selection omissions. The same 2,318,854-cell guest
+reaches first input in 1,169,398 steps, saving 24,120 over the preceding
+layout. The physical ceiling is 1,171,000 steps; all 20 physical checksum
+and 31 source-recurrent tests pass. The original C23 publication gate
+passes via explicit refusal. Its ceiling remains 100,000 steps.
+
+The source-bound transition proof now audits initial indexed-table
+materialization from the normative loaded machine, not the emitter's word
+plan. It independently derives 2,048 reachable selector words and 402
+immutable seed, record-link and continuation words from the admitted
+transition geometry and nibble encodings. All 2,450 required table words
+must have actual crazy-store evidence before the first input; each of the
+256 unreachable odd-carry-two high-table slots must remain untouched.
+The verifier checks the tracked word, arithmetic result, physical read and
+write deltas, code encryption and register movement for every store.
+
+A separate static walk of the actual immutable route tapes derives all five
+record continuations and 4,716 required main, dispatch bridge and byte-route
+words. The walk verifies each active call's entry and operand, the selected
+ordinary return slot, the main entry and both bridge/backedge destinations.
+Each restoration jump must fetch only an inert suffix and encrypt the
+whole envelope back to its original state. Skipped inert operands are not
+counted as required words. The walk uses the actual final VM memory, whose
+selected route and table cells have been checked unchanged since initial
+entry. Every required word needs a real pre-input store, including the
+124 record return pointers. Six independent omitted-store controls (a
+high selector, a raw seed, a low-record link, a record return pointer,
+and unused main and bridge preparation pointers) preserve empty-input I/O
+but refuse the stronger transition proof. All 32 source-recurrent tests,
+20 physical checksum tests and three C23 pipeline tests pass. This receipt
+still does not attest every terminal contribution, the entire bootstrap,
+or complete source-frame placement. The 100,000-step publication ceiling
+is unchanged.

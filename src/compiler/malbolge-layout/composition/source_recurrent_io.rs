@@ -65,8 +65,7 @@ use source_recurrent_transition::{
 pub use source_recurrent_transition::{
     SourceRecurrentRouteProbe, SourceRecurrentTerminalCheckpoint,
     SourceRecurrentTransitionCheckpoint, SourceRecurrentTransitionProbe,
-    SourceRecurrentTransitionProof,
-    verify_source_recurrent_transition,
+    SourceRecurrentTransitionProof, verify_source_recurrent_transition,
 };
 
 use super::{
@@ -245,7 +244,7 @@ struct SourceProjection {
 
 impl ReplayJournal {
     fn finish(
-        self,
+        mut self,
         outcome: RunOutcome,
         projected: &SourceProjection,
         vm: &ProfileMachine,
@@ -277,8 +276,8 @@ impl ReplayJournal {
         if let Some(audit) = self.state.as_ref() {
             audit.finish(vm)?;
         }
-        if let Some(audit) = self.transition.as_ref() {
-            audit.finish()?;
+        if let Some(audit) = self.transition.as_mut() {
+            audit.finish(vm)?;
         }
         Ok(ReplayProof {
             guard: self.guard,
@@ -627,7 +626,10 @@ fn replay_guest(
         .map(|proposal| StateTrace::new(proposal, &vm))
         .transpose()?;
     let guard = audits.guard.map(GuardTrace::new).transpose()?;
-    let transition = audits.transition.map(TransitionTrace::new).transpose()?;
+    let transition = audits
+        .transition
+        .map(|proposal| TransitionTrace::with_bootstrap(proposal, &vm))
+        .transpose()?;
     let mut journal =
         ReplayJournal::new(state, guard, source_sha256, transition);
     let outcome = vm

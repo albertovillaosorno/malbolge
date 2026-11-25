@@ -23,6 +23,8 @@
 
 //! Replay the physical indexed effects of a selected source transition.
 
+#[path = "source_recurrent_bootstrap_trace.rs"]
+mod source_recurrent_bootstrap_trace;
 #[path = "source_recurrent_commit_trace.rs"]
 mod source_recurrent_commit_trace;
 #[path = "source_recurrent_control_trace.rs"]
@@ -35,9 +37,10 @@ mod source_recurrent_terminal_trace;
 use std::collections::BTreeMap;
 
 use malbolge::{
-    ProfileStepTrace, TraceInput, current_profile, decode_profile_instruction,
-    profile_crazy,
+    ProfileMachine, ProfileStepTrace, TraceInput, current_profile,
+    decode_profile_instruction, profile_crazy,
 };
+use source_recurrent_bootstrap_trace::{BootstrapReceipt, BootstrapTableTrace};
 use source_recurrent_commit_trace::{CommitGeometry, CommitTrace};
 use source_recurrent_control_trace::{ControlReceipt, ControlTrace};
 use source_recurrent_route_trace::{RouteGeometry, RouteTrace};
@@ -441,6 +444,7 @@ impl PendingTransition {
 }
 
 pub(in super::super) struct TransitionTrace {
+    bootstrap: Option<BootstrapTableTrace>,
     pub(super) checkpoints: Vec<SourceRecurrentTransitionCheckpoint>,
     control: ControlTrace,
     geometry: Geometry,
@@ -451,15 +455,32 @@ pub(in super::super) struct TransitionTrace {
 }
 
 impl TransitionTrace {
+    pub(super) fn bootstrap_receipt(&self) -> Result<BootstrapReceipt, Error> {
+        self.bootstrap
+            .as_ref()
+            .ok_or(Error::GuestTransitionMismatch)?
+            .receipt()
+    }
+
     pub(super) fn control_receipt(&self) -> Result<ControlReceipt, Error> {
         self.control.receipt()
     }
 
-    pub(in super::super) fn finish(&self) -> Result<(), Error> {
+    pub(in super::super) fn finish(
+        &mut self,
+        vm: &ProfileMachine,
+    ) -> Result<(), Error> {
         if self.pending.is_some() {
             return Err(Error::GuestTransitionMismatch);
         }
         let _control = self.control.receipt()?;
+        if let Some(bootstrap) = self.bootstrap.as_mut() {
+            let route = self.control.bootstrap_route(
+                vm,
+                self.geometry.lookup_sites.map(|[site, _]| site),
+            )?;
+            bootstrap.finish(vm, &route)?;
+        }
         self.terminal.receipt().map(|_receipt| ())
     }
 
@@ -471,6 +492,7 @@ impl TransitionTrace {
         probe: &SourceRecurrentTransitionProbe<'_>,
     ) -> Result<Self, Error> {
         Ok(Self {
+            bootstrap: None,
             checkpoints: Vec::new(),
             control: ControlTrace::new(probe)?,
             geometry: Geometry::new(probe)?,
@@ -490,9 +512,12 @@ impl TransitionTrace {
         index: usize,
         projected_event: Option<ProjectedIo>,
     ) -> Result<(), Error> {
-        if projected_event
-            .is_some_and(|event| matches!(event.effect, Effect::Input(_)))
-        {
+        let input = projected_event
+            .is_some_and(|event| matches!(event.effect, Effect::Input(_)));
+        if let Some(bootstrap) = self.bootstrap.as_mut() {
+            bootstrap.observe(trace, index, input && !self.started)?;
+        }
+        if input {
             self.started = true;
         }
         if self.started
@@ -531,6 +556,22 @@ impl TransitionTrace {
             pending.observe(&self.geometry, trace, index)?;
         }
         Ok(())
+    }
+
+    pub(in super::super) fn with_bootstrap(
+        probe: &SourceRecurrentTransitionProbe<'_>,
+        vm: &ProfileMachine,
+    ) -> Result<Self, Error> {
+        let mut audit = Self::new(probe)?;
+        audit.bootstrap = Some(BootstrapTableTrace::new(
+            &audit.geometry,
+            vm,
+            audit.source_extent,
+            audit.control.bootstrap_addresses(
+                audit.geometry.lookup_sites.map(|[site, _]| site),
+            )?,
+        )?);
+        Ok(audit)
     }
 }
 

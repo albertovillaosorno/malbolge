@@ -1,0 +1,492 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - Apache-2.0
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+// Boundary-Contract:
+// - Owns:
+//   - Initial materialization of finite factored transition data.
+// - Must-Not:
+//   - Trust the builder's word plan or authorize source publication.
+// - Allows:
+//   - Inputs: independently admitted geometry and real VM observations.
+//   - Outputs: required table/seed stores and untouched unreachable slots.
+//   - Side effects: none.
+// - Split-When:
+//   - Multiple independent transition-table representations are supported.
+// - Merge-When:
+//   - General source-frame verification owns bootstrap data admission.
+
+use std::collections::BTreeMap;
+
+use malbolge::{
+    ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
+    decode_profile_instruction, encrypt_profile_cell, profile_crazy,
+};
+
+use super::source_recurrent_control_trace::BootstrapRoute;
+use super::{Error, Geometry, high_selector, inverse_rotation, record};
+
+#[derive(Clone, Copy)]
+enum Expected {
+    Continuation(usize),
+    Exact(u32),
+    Prefix(u32),
+    RouteCandidate,
+    Untouched,
+}
+
+impl Expected {
+    fn matches(self, value: u32) -> bool {
+        match self {
+            Self::Exact(expected) => value == expected,
+            Self::Prefix(seed) => {
+                let ones = current_profile().eof_word().div_euclid(2);
+                crazy(value, ones) == value && crazy(seed, value) == seed
+            },
+            Self::Continuation(_) | Self::RouteCandidate | Self::Untouched => {
+                true
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Cell {
+    expected: Expected,
+    last_store: Option<usize>,
+    value: u32,
+}
+
+impl Cell {
+    fn observe(
+        &mut self,
+        trace: &ProfileStepTrace,
+        index: usize,
+        initialized: bool,
+    ) -> Result<(), Error> {
+        if matches!(self.expected, Expected::Untouched)
+            || trace.decoded != Some(b'p')
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        let value = crazy(self.value, trace.before.registers.accumulator);
+        verify_store(trace, self.value, value)?;
+        if initialized {
+            if self.value != value {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        } else {
+            self.last_store = Some(index);
+            self.value = value;
+        }
+        Ok(())
+    }
+}
+
+type TablePlan = BTreeMap<u32, Expected>;
+// (table words, route words, unreachable slots, last materializing step).
+pub(super) type BootstrapReceipt = (usize, usize, usize, usize);
+
+pub(super) struct BootstrapTableTrace {
+    cells: BTreeMap<u32, Cell>,
+    first_input: Option<usize>,
+    receipt: Option<BootstrapReceipt>,
+    source_extent: u32,
+}
+
+impl BootstrapTableTrace {
+    fn complete(&self, index: usize) -> Result<BootstrapReceipt, Error> {
+        let mut materialized = 0usize;
+        let mut unreachable = 0usize;
+        let mut last = 0usize;
+        for cell in self.cells.values() {
+            if matches!(cell.expected, Expected::RouteCandidate) {
+                continue;
+            }
+            if matches!(cell.expected, Expected::Untouched) {
+                unreachable = unreachable.saturating_add(1);
+                continue;
+            }
+            let store = cell
+                .last_store
+                .filter(|store| *store < index)
+                .ok_or(Error::GuestTransitionMismatch)?;
+            if !cell.expected.matches(cell.value) {
+                return Err(Error::GuestTransitionMismatch);
+            }
+            materialized = materialized.saturating_add(1);
+            last = last.max(store);
+        }
+        Ok((materialized, 0, unreachable, last))
+    }
+
+    pub(super) fn finish(
+        &mut self,
+        vm: &ProfileMachine,
+        route: &BootstrapRoute,
+    ) -> Result<(), Error> {
+        let (tables, _, unreachable, mut last) = self.receipt()?;
+        let input = self.first_input.ok_or(Error::GuestTransitionMismatch)?;
+        for (&address, cell) in &self.cells {
+            if vm
+                .memory_word(address)
+                .map_err(|_error| Error::GuestTransitionMismatch)?
+                != cell.value
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+            if let Expected::Continuation(slot) = cell.expected
+                && route.continuations.get(slot) != Some(&cell.value)
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        }
+        for (&address, &value) in &route.words {
+            let cell = self
+                .cells
+                .get(&address)
+                .ok_or(Error::GuestTransitionMismatch)?;
+            if !matches!(cell.expected, Expected::RouteCandidate)
+                || cell.value != value
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+            let store = cell
+                .last_store
+                .filter(|store| *store < input)
+                .ok_or(Error::GuestTransitionMismatch)?;
+            last = last.max(store);
+        }
+        self.receipt = Some((tables, route.words.len(), unreachable, last));
+        Ok(())
+    }
+
+    pub(super) fn new(
+        geometry: &Geometry,
+        vm: &ProfileMachine,
+        source_extent: u32,
+        route_addresses: Vec<u32>,
+    ) -> Result<Self, Error> {
+        let mut plan = BTreeMap::new();
+        raw_tables(geometry, &mut plan)?;
+        low_table(geometry, &mut plan)?;
+        high_table(geometry, &mut plan)?;
+        for address in route_addresses {
+            if address < source_extent {
+                return Err(Error::InvalidTransitionBinding);
+            }
+            insert(&mut plan, address, Expected::RouteCandidate)?;
+        }
+        let mut cells = BTreeMap::new();
+        for (address, expected) in plan {
+            let value = vm
+                .memory_word(address)
+                .map_err(|_error| Error::InvalidTransitionBinding)?;
+            let _previous = cells.insert(address, Cell {
+                expected,
+                last_store: None,
+                value,
+            });
+        }
+        Ok(Self {
+            cells,
+            first_input: None,
+            receipt: None,
+            source_extent,
+        })
+    }
+
+    pub(super) fn observe(
+        &mut self,
+        trace: &ProfileStepTrace,
+        index: usize,
+        first_input: bool,
+    ) -> Result<(), Error> {
+        if first_input && self.receipt.is_none() {
+            self.receipt = Some(self.complete(index)?);
+            self.first_input = Some(index);
+        }
+        if trace
+            .memory_reads
+            .fetch
+            .into_iter()
+            .chain(trace.memory_reads.encryption)
+            .any(|read| {
+                read.address >= self.source_extent
+                    && self.cells.contains_key(&read.address)
+            })
+            || trace.memory_delta.encryption.is_some_and(|write| {
+                write.address >= self.source_extent
+                    && self.cells.contains_key(&write.address)
+            })
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        if let Some(read) = trace.memory_reads.data
+            && let Some(cell) = self.cells.get(&read.address)
+            && read.value != cell.value
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        let address = trace.before.registers.data_pointer;
+        if let Some(write) = trace.memory_delta.data
+            && write.address != address
+            && self.cells.contains_key(&write.address)
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        if matches!(trace.decoded, Some(b'p' | b'*'))
+            && let Some(cell) = self.cells.get_mut(&address)
+        {
+            if trace.before.registers.code_pointer >= self.source_extent {
+                return Err(Error::GuestTransitionMismatch);
+            }
+            cell.observe(trace, index, self.receipt.is_some())?;
+        } else if trace
+            .memory_delta
+            .data
+            .is_some_and(|write| self.cells.contains_key(&write.address))
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        Ok(())
+    }
+
+    pub(super) fn receipt(&self) -> Result<BootstrapReceipt, Error> {
+        self.receipt.ok_or(Error::GuestTransitionMismatch)
+    }
+}
+
+fn crazy(data: u32, accumulator: u32) -> u32 {
+    profile_crazy(data, accumulator, current_profile().word_trits())
+}
+
+fn insert(
+    plan: &mut TablePlan,
+    address: u32,
+    expected: Expected,
+) -> Result<(), Error> {
+    if plan.insert(address, expected).is_some() {
+        return Err(Error::InvalidTransitionBinding);
+    }
+    Ok(())
+}
+
+fn pointer(
+    plan: &mut TablePlan,
+    address: u32,
+    landing: u32,
+) -> Result<(), Error> {
+    insert(
+        plan,
+        address,
+        Expected::Exact(
+            landing
+                .checked_sub(1)
+                .ok_or(Error::InvalidTransitionBinding)?,
+        ),
+    )
+}
+
+fn pair(
+    plan: &mut TablePlan,
+    address: u32,
+    value: u32,
+    slot: usize,
+) -> Result<(), Error> {
+    insert(plan, address, Expected::Prefix(value))?;
+    insert(plan, address.saturating_add(1), Expected::Exact(value))?;
+    insert(
+        plan,
+        address.saturating_add(2),
+        Expected::Continuation(slot),
+    )
+}
+
+fn raw_tables(geometry: &Geometry, plan: &mut TablePlan) -> Result<(), Error> {
+    let [raw_low, _, raw_high, high] = geometry.tables;
+    let [low_seed, _, high_seed, _] = geometry.seeds;
+    for raw in 0..256u32 {
+        let low_index = raw & 15;
+        let high_index = (raw >> 4u32).saturating_mul(2) | (raw & 1);
+        for (table, seed, index) in [
+            (raw_low, low_seed, low_index),
+            (raw_high, high_seed, high_index),
+        ] {
+            pointer(
+                plan,
+                table.saturating_add(729).saturating_sub(raw),
+                record(seed, index),
+            )?;
+        }
+    }
+    let twos = current_profile().eof_word();
+    let ones = twos.div_euclid(2);
+    for low in 0..16u32 {
+        pair(
+            plan,
+            record(low_seed, low),
+            crazy(crazy(ones, low), twos),
+            0,
+        )?;
+    }
+    for high_index in 0..32u32 {
+        pair(
+            plan,
+            record(high_seed, high_index),
+            high_selector(
+                high_index.div_euclid(2),
+                high_index.rem_euclid(2),
+                high,
+            ),
+            2,
+        )?;
+    }
+    Ok(())
+}
+
+fn low_table(geometry: &Geometry, plan: &mut TablePlan) -> Result<(), Error> {
+    let [_, table, _, _] = geometry.tables;
+    let [_, seed, _, _] = geometry.seeds;
+    let [encoding, _] = geometry.encoding;
+    for state in 0..16u32 {
+        for raw in 0..16u32 {
+            let update = (if raw.is_multiple_of(2) {
+                state.saturating_add(raw)
+            } else {
+                state ^ raw
+            })
+            .saturating_add(3);
+            let address = table
+                .saturating_add(state.saturating_add(1).saturating_mul(27))
+                .saturating_sub(raw);
+            pointer(plan, address, record(seed, update))?;
+        }
+    }
+    let twos = current_profile().eof_word();
+    for update in 3..=32u32 {
+        let address = record(seed, update);
+        let carry = match update.div_euclid(16) {
+            0 => twos.saturating_sub(81),
+            1 => twos,
+            2 => twos.saturating_sub(162),
+            _ => return Err(Error::InvalidTransitionBinding),
+        };
+        let mask = encoding
+            .get(
+                usize::try_from(update & 15)
+                    .map_err(|_error| Error::InvalidTransitionBinding)?,
+            )
+            .copied()
+            .ok_or(Error::InvalidTransitionBinding)?;
+        pointer(plan, address, address.saturating_add(4))?;
+        pair(plan, address.saturating_add(1), carry, 1)?;
+        pair(plan, address.saturating_add(4), inverse_rotation(mask), 4)?;
+    }
+    Ok(())
+}
+
+fn high_table(geometry: &Geometry, plan: &mut TablePlan) -> Result<(), Error> {
+    let [_, _, _, table] = geometry.tables;
+    let [_, _, _, seed] = geometry.seeds;
+    let [_, encoding] = geometry.encoding;
+    for state in 0..16u32 {
+        for raw in 0..16u32 {
+            high_edges(plan, (table, seed), (state, raw))?;
+        }
+        let mask = encoding
+            .get(
+                usize::try_from(state)
+                    .map_err(|_error| Error::InvalidTransitionBinding)?,
+            )
+            .copied()
+            .ok_or(Error::InvalidTransitionBinding)?;
+        pair(plan, record(seed, state), inverse_rotation(mask), 3)?;
+    }
+    Ok(())
+}
+
+fn high_edges(
+    plan: &mut TablePlan,
+    (table, seed): (u32, u32),
+    (state, raw): (u32, u32),
+) -> Result<(), Error> {
+    for parity in 0..2u32 {
+        for carry in 0..3u32 {
+            let address = table
+                .saturating_add(487)
+                .saturating_add(state.saturating_mul(729))
+                .saturating_add(carry.saturating_mul(81))
+                .saturating_add(parity.saturating_mul(27))
+                .saturating_add(raw);
+            if parity == 1 && carry == 2 {
+                insert(plan, address, Expected::Untouched)?;
+                continue;
+            }
+            let next = (if parity == 0 {
+                state.saturating_add(raw)
+            } else {
+                state ^ raw
+            })
+            .saturating_add(carry)
+                & 15;
+            pointer(plan, address, record(seed, next))?;
+        }
+    }
+    Ok(())
+}
+
+fn verify_store(
+    trace: &ProfileStepTrace,
+    old: u32,
+    value: u32,
+) -> Result<(), Error> {
+    let before = trace.before.registers;
+    let after = trace.after.registers;
+    let site = before.code_pointer;
+    let address = before.data_pointer;
+    let cell = trace.fetched_cell.ok_or(Error::GuestTransitionMismatch)?;
+    let encrypted =
+        encrypt_profile_cell(cell).ok_or(Error::GuestTransitionMismatch)?;
+    if trace.profile != current_profile()
+        || trace.result != Ok(StepOutcome::Continued)
+        || decode_profile_instruction(cell, site) != Some(b'p')
+        || trace
+            .memory_reads
+            .fetch
+            .map(|read| (read.address, read.value))
+            != Some((site, cell))
+        || trace
+            .memory_reads
+            .encryption
+            .map(|read| (read.address, read.value))
+            != Some((site, cell))
+        || trace
+            .memory_delta
+            .encryption
+            .map(|write| (write.address, write.before, write.after))
+            != (cell != encrypted).then_some((site, cell, encrypted))
+        || trace
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value))
+            != Some((address, old))
+        || trace
+            .memory_delta
+            .data
+            .map(|write| (write.address, write.before, write.after))
+            != (old != value).then_some((address, old, value))
+        || after.accumulator != value
+        || address.checked_add(1) != Some(after.data_pointer)
+        || site.checked_add(1) != Some(after.code_pointer)
+        || trace.input.is_some()
+        || trace.output.is_some()
+    {
+        return Err(Error::GuestTransitionMismatch);
+    }
+    Ok(())
+}

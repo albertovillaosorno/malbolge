@@ -914,16 +914,44 @@ fn initialize_target_pages(
             }
         })
         .collect::<Vec<_>>();
+    // Each bank consists of odd virgin cells separated by untouched
+    // even reset cells. Alternating stores from A=0 normalize every
+    // other slot, leaving zeros for a strictly smaller next sweep.
+    for (root, bank) in TARGET_ROOTS.into_iter().zip(TARGET_BANKS) {
+        let mut pending = pages
+            .iter()
+            .filter_map(|&(slot, page, _, _)| (page == bank).then_some(slot))
+            .collect::<Vec<_>>();
+        pending.sort_unstable();
+        normalize_page_bank(emitter, (root, bank), pending)?;
+    }
     pages.sort_unstable_by_key(|&(_, _, _, base)| base);
     for (slot, bank, root, base) in pages {
         let anchor = [(root, bank)];
-        rotate(emitter, NEAR_ZERO)?;
-        store_anchored(emitter, slot, &anchor)?;
         scratch.synthesize(
             emitter,
             profile_crazy(ALL_ONES, previous(base)?, 15),
         )?;
         store_anchored(emitter, slot, &anchor)?;
+    }
+    Ok(())
+}
+
+fn normalize_page_bank(
+    emitter: &mut Emitter<'_>,
+    (root, bank): (u32, u32),
+    mut pending: Vec<u32>,
+) -> Result<(), BuildError> {
+    while !pending.is_empty() {
+        rotate(emitter, NEAR_ZERO)?;
+        emitter.go(root)?;
+        emitter.jump(bank)?;
+        for &slot in &pending {
+            emitter.walk(slot)?;
+            let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        }
+        after_store(emitter)?;
+        pending = pending.into_iter().skip(1).step_by(2).collect();
     }
     Ok(())
 }

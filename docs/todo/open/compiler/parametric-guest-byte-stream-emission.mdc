@@ -310,6 +310,21 @@ Two bounded target-anchor refinement passes reduce this to 1,193,518
 steps, with 8,734 independently checked minimum-cost physical routes.
 All 20 physical checksum tests pass. The same source extent and
 100,000-step publication ceiling remain.
+Five phase-aligned smaller geometries passed the frozen vectors but
+exceeded the physical bootstrap ceiling and were not adopted. Shrinking
+target-directory bank sweeps now independently verify 552 normalization
+visits and 288 commits, reaching first input in 1,169,398 steps. All 20
+physical checksum and 31 source-recurrent tests pass under the tightened
+physical regression ceiling of 1,171,000 steps.
+The source-bound transition proof now independently checks 2,450 table,
+seed, link and continuation stores, 256 untouched unreachable slots and
+4,716 required main, bridge and byte-route words before first input.
+A static walk of the actual immutable tape validates exact call operands,
+return slots, destinations and inert-suffix encryption restoration. Six
+unused-store omissions preserve empty I/O but refuse the proof. All 32
+source-recurrent, 20 physical checksum and three C23 pipeline tests pass.
+Terminal contribution and other bootstrap storage remain outside this
+receipt.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

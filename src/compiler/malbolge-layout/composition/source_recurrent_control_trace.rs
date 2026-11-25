@@ -21,13 +21,17 @@
 
 //! Check all post-bootstrap active calls and inert encryption transfers.
 
+#[path = "source_recurrent_control_bootstrap.rs"]
+mod source_recurrent_control_bootstrap;
+
 use core::iter::{once, repeat_n};
 use std::collections::BTreeMap;
 
 use malbolge::{
-    ProfileStepTrace, StepOutcome, TraceInput, decode_profile_instruction,
-    encrypt_profile_cell,
+    ProfileMachine, ProfileStepTrace, StepOutcome, TraceInput,
+    decode_profile_instruction, encrypt_profile_cell,
 };
+pub(super) use source_recurrent_control_bootstrap::BootstrapRoute;
 
 use super::super::{Effect, Error, ProjectedIo};
 use super::SourceRecurrentTransitionProbe;
@@ -469,6 +473,25 @@ impl ControlTrace {
         }
         self.active = Some(active);
         Ok(())
+    }
+
+    pub(super) fn bootstrap_addresses(
+        &self,
+        lookup: [u32; 5],
+    ) -> Result<Vec<u32>, Error> {
+        source_recurrent_control_bootstrap::bootstrap_addresses(
+            &self.plan, lookup,
+        )
+    }
+
+    pub(super) fn bootstrap_route(
+        &self,
+        vm: &ProfileMachine,
+        lookup: [u32; 5],
+    ) -> Result<BootstrapRoute, Error> {
+        source_recurrent_control_bootstrap::bootstrap_route(
+            &self.plan, vm, lookup,
+        )
     }
 
     pub(super) fn initial_entry(&self) -> Result<[usize; 2], Error> {

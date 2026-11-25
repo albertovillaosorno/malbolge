@@ -161,6 +161,15 @@ pub struct SourceRecurrentTerminalCheckpoint {
 /// Finite paired loop proof with the ordered factored byte transitions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceRecurrentTransitionProof {
+    /// Required immutable main, bridge and byte-route words materialized by
+    /// real guest stores.
+    pub bootstrap_route_words: usize,
+    /// Last actual initialization store to any required table or route word.
+    pub bootstrap_table_last_store_index: usize,
+    /// Required table and seed words materialized by real guest stores.
+    pub bootstrap_table_words: usize,
+    /// Impossible odd-byte carry-two slots left untouched.
+    pub bootstrap_unreachable_words: usize,
     /// Actual active envelope calls, including the initial physical input.
     pub control_calls: usize,
     /// Actual indirect and data-jump indices entering the first input.
@@ -620,12 +629,19 @@ fn finish_transition(
     let (control_calls, preparation_jumps, post_input_steps) =
         transition.control_receipt()?;
     let initial_entry_indices = transition.initial_entry()?;
+    let (
+        bootstrap_table_words,
+        bootstrap_route_words,
+        bootstrap_unreachable_words,
+        bootstrap_table_last_store_index,
+    ) = transition.bootstrap_receipt()?;
     let first = loop_proof
         .checkpoints
         .first()
         .ok_or(Error::GuestTransitionMismatch)?;
     let [indirect, entry] = initial_entry_indices;
-    if indirect.checked_add(1) != Some(entry)
+    if bootstrap_table_last_store_index >= indirect
+        || indirect.checked_add(1) != Some(entry)
         || entry.checked_add(1) != Some(first.guard.input_index)
         || post_input_steps
             != loop_proof
@@ -636,6 +652,10 @@ fn finish_transition(
         return Err(Error::GuestTransitionMismatch);
     }
     Ok(SourceRecurrentTransitionProof {
+        bootstrap_route_words,
+        bootstrap_table_last_store_index,
+        bootstrap_table_words,
+        bootstrap_unreachable_words,
         control_calls,
         initial_entry_indices,
         initial_normalization_indices,
@@ -657,7 +677,7 @@ fn finish_transition(
 /// mutated or out-of-order indexed effects, raw-pointer preparation and
 /// restoration, scratch transfers, dirty resets, invalid envelope calls or
 /// preparation transfers, expanded-memory code execution and incorrect
-/// carried-state commits.
+/// carried-state commits or missing/incorrect bootstrap table materialization.
 pub fn verify_source_recurrent_transition(
     probe: &SourceRecurrentTransitionProbe<'_>,
 ) -> Result<SourceRecurrentTransitionProof, Error> {

@@ -127,8 +127,12 @@ fn check_control_counts(
     {
         return Err("wrong initial state order".to_owned());
     }
-    if proof.initial_entry_indices
-        != [first_input.saturating_sub(2), first_input.saturating_sub(1)]
+    if proof.bootstrap_table_words != 2_450
+        || proof.bootstrap_route_words != 4_716
+        || proof.bootstrap_unreachable_words != 256
+        || proof.bootstrap_table_last_store_index >= first_input
+        || proof.initial_entry_indices
+            != [first_input.saturating_sub(2), first_input.saturating_sub(1)]
         || proof.control_calls != bytes.saturating_mul(65).saturating_add(9)
         || proof.preparation_jumps == 0
         || proof.preparation_jumps >= proof.post_input_steps
@@ -138,7 +142,8 @@ fn check_control_counts(
         || proof.loop_proof.checkpoints.len() != bytes.saturating_add(1)
     {
         return Err(format!(
-            "wrong counts: calls={}, preparations={}, steps={}",
+            "wrong counts: route={}, calls={}, preparations={}, steps={}",
+            proof.bootstrap_route_words,
             proof.control_calls,
             proof.preparation_jumps,
             proof.post_input_steps
@@ -926,6 +931,80 @@ fn source_recurrent_transition_rejects_missing_restore_seed()
     let refusal = verify_source_recurrent_transition(&mutated_probe);
     if refusal != Err(Error::GuestTransitionMismatch) {
         return Err(format!("missing restore seed: {refusal:?}"));
+    }
+    Ok(())
+}
+
+fn omitted_table_store(
+    guest: &RelocatedRecurrentChecksumSource,
+    wire: &[u8],
+    target: (u32, u32),
+) -> Result<(), String> {
+    let site = materialization_site(guest, target)?;
+    let noop = (33u8..=126)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), site) == Some(b'o')
+        })
+        .ok_or("no noop encoding")?;
+    let mut mutated = guest.clone();
+    *mutated
+        .capture
+        .source
+        .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
+        .ok_or("missing table store")? = noop;
+    let probe = proposal(wire, &[], &mutated)?;
+    let _loop_only = verify_source_recurrent_loop(&probe.loop_probe)
+        .map_err(|error| format!("empty control: {target:?}: {error:?}"))?;
+    if verify_source_recurrent_transition(&probe)
+        != Err(Error::GuestTransitionMismatch)
+    {
+        return Err(format!("unvisited table store accepted: {target:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_unvisited_table_store()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[], &guest)?;
+    let profile = current_profile();
+    let twos = profile.eof_word();
+    let ones = twos.div_euclid(2);
+    let raw_seed = profile_crazy(
+        profile_crazy(ones, 15, profile.word_trits()),
+        twos,
+        profile.word_trits(),
+    );
+    let low_link = probe.seeds[1].saturating_add(24);
+    let unused_return = probe.seeds[0].saturating_add(122);
+    let boot = terminal_boot(&guest)?;
+    let continuation = boot
+        .memory_word(unused_return)
+        .map_err(|error| error.to_string())?;
+    let unused_main = probe.route.main_route;
+    let main_target = boot
+        .memory_word(unused_main)
+        .map_err(|error| error.to_string())?;
+    let unused_bridge = probe.loop_probe.guard.byte_landing;
+    let bridge_target = boot
+        .memory_word(unused_bridge)
+        .map_err(|error| error.to_string())?;
+    // None of these independent record effects is used on empty input.
+    for target in [
+        (
+            probe.tables[3].saturating_add(487),
+            probe.seeds[3].saturating_sub(1),
+        ),
+        (probe.seeds[0].saturating_add(121), raw_seed),
+        (low_link, low_link.saturating_add(3)),
+        (unused_return, continuation),
+        (unused_main, main_target),
+        (unused_bridge, bridge_target),
+    ] {
+        omitted_table_store(&guest, &wire, target)?;
     }
     Ok(())
 }

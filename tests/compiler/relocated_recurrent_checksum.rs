@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_195_000;
+const BOOT_BUDGET: usize = 1_171_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -90,10 +90,15 @@ impl TargetRoute {
 struct TargetRouteAudit {
     entries: usize,
     installed: BTreeSet<u32>,
+    normalization_site: Option<u32>,
+    normalization_visits: usize,
+    normalized: BTreeSet<u32>,
     page_site: Option<u32>,
     pending: Option<TargetRouteProgress>,
     root_site: Option<u32>,
     selections: usize,
+    zero_site: Option<u32>,
+    zeroed: BTreeSet<u32>,
 }
 
 impl TargetRouteAudit {
@@ -123,8 +128,12 @@ impl TargetRouteAudit {
         Ok(())
     }
 
-    fn finish(self) -> Result<[u32; 2], String> {
+    fn finish(self) -> Result<[u32; 4], String> {
         if self.entries != 1
+            || self.installed.len() != 288
+            || self.normalized.len() != 288
+            || !self.zeroed.is_empty()
+            || self.normalization_visits != 552
             || self.selections != 8_734
             || self.pending.is_some()
         {
@@ -136,6 +145,9 @@ impl TargetRouteAudit {
         Ok([
             self.root_site.ok_or("missing target root selection")?,
             self.page_site.ok_or("missing target page selection")?,
+            self.normalization_site
+                .ok_or("missing page normalization")?,
+            self.zero_site.ok_or("missing page zeroing")?,
         ])
     }
 
@@ -145,14 +157,63 @@ impl TargetRouteAudit {
         routes: &[TargetRoute],
         (address, opcode): (u32, Option<u8>),
     ) -> Result<(), String> {
-        advance_boot(vm)?;
-        if opcode == Some(b'p')
-            && let Some(route) =
-                routes.iter().find(|route| route.slot == Some(address))
-            && word(vm, address)?.checked_add(1) == Some(route.base)
-        {
-            let _inserted = self.installed.insert(address);
+        if opcode != Some(b'p') {
+            return advance_boot(vm);
         }
+        let Some(route) =
+            routes.iter().find(|route| route.slot == Some(address))
+        else {
+            return advance_boot(vm);
+        };
+        let trace = step(vm)?;
+        let acc = trace.before.registers.accumulator;
+        if !self.normalized.contains(&address) {
+            return self.normalize(&trace, address, acc);
+        }
+        let expected = route.base.checked_sub(1).ok_or("page base")?;
+        if self.normalized.len() != 288
+            || acc != independent_crazy(ONES, expected)
+            || !self.installed.insert(address)
+        {
+            return Err("invalid target page commit".to_owned());
+        }
+        check_store(&trace, address, ONES, expected)
+    }
+
+    fn normalize(
+        &mut self,
+        trace: &ProfileStepTrace,
+        address: u32,
+        acc: u32,
+    ) -> Result<(), String> {
+        if !self.installed.is_empty() {
+            return Err("late target page normalization".to_owned());
+        }
+        let old = if self.zeroed.contains(&address) {
+            0
+        } else {
+            37
+        };
+        let site = trace.before.registers.code_pointer;
+        match acc {
+            0 => {
+                check_store(trace, address, old, ONES)?;
+                let _removed = self.zeroed.remove(&address);
+                let _added = self.normalized.insert(address);
+                let _site = self.normalization_site.get_or_insert(site);
+            },
+            ONES => {
+                check_store(trace, address, old, 0)?;
+                let _added = self.zeroed.insert(address);
+                let _site = self.zero_site.get_or_insert(site);
+            },
+            _ => {
+                return Err(
+                    "wrong target page normalization producer".to_owned()
+                );
+            },
+        }
+        self.normalization_visits = self.normalization_visits.saturating_add(1);
         Ok(())
     }
 
@@ -1684,7 +1745,7 @@ fn advance_boot(vm: &mut ProfileMachine) -> Result<(), String> {
 fn audit_target_routes(
     guest: &RelocatedRecurrentChecksumSource,
     routes: &[TargetRoute],
-) -> Result<[u32; 2], String> {
+) -> Result<[u32; 4], String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         &guest.capture.source,
