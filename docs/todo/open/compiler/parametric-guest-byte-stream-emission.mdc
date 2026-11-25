@@ -104,9 +104,16 @@ on EOF. A separate 1,050,042-cell recurrent guard consumes every byte,
 classifies actual EOF with five dirty folds and a four-phase mixed
 instruction, then outputs byte-count parity and halts. Independent
 per-trit closure and five traced streams cover both EOF landings;
-omitted rotation, output and halt refuse. Raw input preservation,
-recurrent checksum arithmetic and complete source-frame routing remain
-open. Evidence: `tests/compiler/relocated_reusable_guard.rs`,
+omitted rotation, output and halt refuse. A separate 6,410,016-cell
+image now preserves a lossless raw-input encoding through the real
+EOF dispatch and resets the same dirty slot on every byte. A bounded
+suffix-restoration scheduler prepares complete multi-cell access
+blocks; four distinct physical stores share one operand with different
+return offsets. All bytes in both orders, both EOF landings, independent
+trit closure and an omitted-output control pass. Guest recovery of the
+raw accumulator for arithmetic, recurrent checksum arithmetic and
+complete source-frame routing remain open. Evidence:
+`tests/compiler/relocated_recurrent_capture.rs`, `tests/compiler/relocated_reusable_guard.rs`,
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

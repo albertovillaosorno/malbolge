@@ -22,6 +22,8 @@
 // - Summary:
 //   - Authenticate every transfer in the recurrent four-operation kernel.
 
+#[path = "relocated_recurrent_capture.rs"]
+mod relocated_recurrent_capture;
 #[path = "relocated_reusable_guard.rs"]
 mod relocated_reusable_guard;
 

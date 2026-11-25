@@ -13687,3 +13687,60 @@ a complete recurrent length-parity witness, not the original
 input-dependent checksum. Preserving the raw input through dispatch,
 recurrent checksum arithmetic and independent source-frame admission
 remain open.
+
+
+### Recurrent lossless input capture and dirty reset
+
+A separate 6,410,016-cell candidate uses multi-cell recurrent access
+blocks to preserve a raw input across real EOF dispatch. Its bootstrap
+does not consume input. The larger image bypasses the covered virgin
+return word M4782982 using the existing M122 bootstrap return pointer;
+the other virgin classifier word M6554440 remains outside the source.
+The bootstrap materializes route operands and immutable inverse seeds
+with guest crazy and rotate instructions, not a host memory overlay.
+
+At C6400159 a real input supplies a byte or EOF. The first C6400238
+crazy writes M7175000, initially all ones, swapping trits zero and one
+and preserving two. The inverse is the same digitwise operation, so
+the saved word contains every raw input trit. Six further calls to the
+same physical crazy site mutate M7175010, M7175012, M7175014, M7175016,
+M7175018 and M7175020. They use the encoded input: trits 6 and 7 are one
+for bytes and two for EOF. The initial words are 5832, 5103, 0,
+14329224, 728 and 13122. The resulting class is M7180650 on every byte,
+M7178463 on odd EOF and M7179921 on even EOF. C6400741 relocates D
+through the actual class word without overwriting the capture.
+
+A recurrent access envelope begins with a data relocation, then zero
+or more inert cells, its active operation, optional inert cells and a
+return relocation. Its adjacent indirect dispatcher is never encrypted
+by fetching: an indirect jump encrypts its target instead. The bounded
+scheduler starts from the once-executed graphical phase of each
+envelope, restores its cells from left to right, and recursively
+advances any active suffix cell before jumping over that suffix.
+Every restoration transfer encrypts its target and the inert suffix
+without an unwanted semantic effect. An analogous initial schedule
+primes the envelopes to their once-executed phases. The scheduler
+refuses envelopes above eight cells and routes above 2048 restoration
+jumps; a failed phase restoration refuses rather than assuming an
+arbitrary recurrent schedule.
+
+The byte continuation uses a second relocation to the local reset
+route. It rotates three immutable uniform words to load all ones, all
+twos and zero. C6400366, C6400460 and C6400554 then apply those constants
+to the same dirty M7175000. Their one-, two- and three-cell suffixes
+select different neighboring return operands, avoiding a conflicting
+return pointer at a fixed data location. The last fold restores all
+ones for the next input. EOF leaves the captured all-two word intact
+and reaches C6410000, C6410001 and C6410002 for actual length parity
+rotation, output and halt.
+
+The independent replay verifies the captured encoding against the
+scalar trit truth table, all six mutable classifier stores, both
+dispatches, each reset constant and store, and the actual intervening
+routing and encryption effects. Empty, one-byte, two-byte, ascending
+256-byte and descending 257-byte streams cover both EOF landings.
+Finite per-trit closure covers every encoded input history outside the
+two parity trits and both reachable high-trit states. Omitting the
+terminal output refuses; the historical profile also refuses. This
+is a bounded physical witness, not source-frame admission, an actual
+guest reload of the captured byte, or the original C checksum.

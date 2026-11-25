@@ -22,10 +22,17 @@
 // - Summary:
 //   - Reprime two-cycle instruction cells by actual indirect transfers.
 
+#[path = "relocated_recurrent_access.rs"]
+mod relocated_recurrent_access;
+#[path = "relocated_recurrent_capture_source.rs"]
+mod relocated_recurrent_capture_source;
 #[path = "relocated_reusable_guard_source.rs"]
 mod relocated_reusable_guard_source;
 
 use malbolge::{ProfileDescriptor, encrypt_profile_cell};
+pub use relocated_recurrent_capture_source::{
+    RelocatedRecurrentCaptureSource, build_relocated_recurrent_capture_source,
+};
 pub use relocated_reusable_guard_source::{
     RelocatedReusableGuardSource, build_relocated_reusable_guard_source,
 };
