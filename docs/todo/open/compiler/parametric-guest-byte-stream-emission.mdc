@@ -112,7 +112,7 @@ blocks; four distinct physical stores share one operand with different
 return offsets. Seven guest-initialized immutable bootstrap anchors
 reduce the original 6,410,016-cell image by 2,899,806 cells. All bytes
 in both orders, both EOF landings, independent
-trit closure and an omitted-output control pass. A separate 6,450,060-cell
+trit closure and an omitted-output control pass. A separate 6,220,230-cell
 image now restores recurrent access blocks after calls, reloads the
 saved encoding with two reversible stores and recovers the original
 byte in a second dirty word. The real byte arm emits that recovered

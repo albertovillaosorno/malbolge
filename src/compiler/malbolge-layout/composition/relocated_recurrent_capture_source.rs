@@ -349,9 +349,9 @@ fn crazy(emitter: &mut Emitter<'_>, address: u32) -> Result<(), BuildError> {
 }
 
 // Keep one immutable inverse seed per distinct route value. The target
-// words are still virgin and have no trit two. A zero fold prepares
-// their all-one baseline; two folds with all twos load the seed without
-// changing it, and a final crazy stores the desired route word.
+// words are still virgin and have no trit two. Prepare an all-one
+// baseline only when the inverse seed cannot write the virgin word
+// directly. Two folds with all twos load the seed without changing it.
 fn initialize(
     emitter: &mut Emitter<'_>,
     words: &Words,
@@ -386,8 +386,19 @@ fn initialize(
         if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
             return Err(LAYOUT);
         }
-        rotate(emitter, ZERO)?;
-        store_anchored(emitter, address, anchors)?;
+        // The fixed loader tail expands to these alternating words.
+        // `finish` checks both phases at the frame before returning.
+        let virgin = if address.is_multiple_of(2) {
+            7_174_416
+        } else {
+            37
+        };
+        let trits = emitter.profile.word_trits();
+        let inverse = profile_crazy(ALL_ONES, value, trits);
+        if profile_crazy(virgin, inverse, trits) != value {
+            rotate(emitter, ZERO)?;
+            store_anchored(emitter, address, anchors)?;
+        }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
         for _ in 0..2u8 {
             rotate(emitter, TWOS)?;
