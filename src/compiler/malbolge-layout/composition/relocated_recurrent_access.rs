@@ -101,6 +101,38 @@ impl AccessBlock {
         Ok(())
     }
 
+    fn from_operations(
+        profile: &ProfileDescriptor,
+        start: u32,
+        (before, after): (u32, u32),
+        operations: &[LinearOpcode],
+    ) -> Result<Self, BuildError> {
+        use super::super::super::unique_graphical_cell;
+        if operations.len() > MAX_CELLS {
+            return Err(LAYOUT);
+        }
+        let mut cells = Vec::new();
+        for (offset, &operation) in operations.iter().enumerate() {
+            let position = usize::try_from(start)
+                .ok()
+                .and_then(|value| value.checked_add(offset))
+                .ok_or(LAYOUT)?;
+            let cell = if operation == LinearOpcode::NoOperation {
+                canonical_noop_cell(profile, position)?
+            } else {
+                unique_graphical_cell(profile, operation, position)
+                    .map_err(|_error| LAYOUT)?
+            };
+            cells.push(cell);
+        }
+        Ok(Self {
+            after,
+            before,
+            cells,
+            start,
+        })
+    }
+
     pub(super) fn new(
         profile: &ProfileDescriptor,
         start: u32,
@@ -131,53 +163,7 @@ impl AccessBlock {
         if return_to_route {
             operations.push(LinearOpcode::RelocateDataPointer);
         }
-        Self::from_operations(profile, start, before, after, &operations)
-    }
-
-    pub(super) fn selector(
-        profile: &ProfileDescriptor,
-        start: u32,
-    ) -> Result<Self, BuildError> {
-        Self::from_operations(
-            profile,
-            start,
-            0,
-            2,
-            &[LinearOpcode::RelocateDataPointer; 4],
-        )
-    }
-
-    fn from_operations(
-        profile: &ProfileDescriptor,
-        start: u32,
-        before: u32,
-        after: u32,
-        operations: &[LinearOpcode],
-    ) -> Result<Self, BuildError> {
-        use super::super::super::unique_graphical_cell;
-        if operations.len() > MAX_CELLS {
-            return Err(LAYOUT);
-        }
-        let mut cells = Vec::new();
-        for (offset, &operation) in operations.iter().enumerate() {
-            let position = usize::try_from(start)
-                .ok()
-                .and_then(|value| value.checked_add(offset))
-                .ok_or(LAYOUT)?;
-            let cell = if operation == LinearOpcode::NoOperation {
-                canonical_noop_cell(profile, position)?
-            } else {
-                unique_graphical_cell(profile, operation, position)
-                    .map_err(|_error| LAYOUT)?
-            };
-            cells.push(cell);
-        }
-        Ok(Self {
-            after,
-            before,
-            cells,
-            start,
-        })
+        Self::from_operations(profile, start, (before, after), &operations)
     }
 
     pub(super) fn operation_site(&self) -> Result<u32, BuildError> {
@@ -243,6 +229,18 @@ impl AccessBlock {
             self.prepare_jump(state, index, jumps)?;
         }
         Err(LAYOUT)
+    }
+
+    pub(super) fn selector(
+        profile: &ProfileDescriptor,
+        start: u32,
+    ) -> Result<Self, BuildError> {
+        Self::from_operations(
+            profile,
+            start,
+            (0, 2),
+            &[LinearOpcode::RelocateDataPointer; 4],
+        )
     }
 }
 

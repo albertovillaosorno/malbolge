@@ -115,6 +115,8 @@ pub struct RelocatedRecurrentCaptureSource {
 }
 
 type Words = BTreeMap<u32, u32>;
+type WordPairs = [(u32, u32)];
+type SeedPlan = (Words, Vec<(u32, u32)>);
 
 struct Route<'words> {
     cursor: u32,
@@ -381,48 +383,16 @@ fn initialize(
     anchors: &[(u32, u32)],
     stride: u32,
 ) -> Result<(), BuildError> {
-    initialize_with_dispatch(emitter, words, anchors, stride, &[])
+    initialize_with_dispatch(emitter, words, anchors, (stride, &[]))
 }
 
 fn initialize_with_dispatch(
     emitter: &mut Emitter<'_>,
     words: &Words,
     anchors: &[(u32, u32)],
-    stride: u32,
-    dispatch: &[(u32, u32)],
+    (stride, dispatch): (u32, &WordPairs),
 ) -> Result<(), BuildError> {
-    let mut frequency = BTreeMap::<u32, usize>::new();
-    for value in words
-        .values()
-        .copied()
-        .chain(dispatch.iter().map(|&(_, value)| value))
-    {
-        let count = frequency.entry(value).or_default();
-        *count = count.checked_add(1).ok_or(LAYOUT)?;
-    }
-    let mut values = frequency.into_iter().collect::<Vec<_>>();
-    // Each value is loaded twice per target. Assign the shortest walks
-    // to the most frequently loaded seeds, with a stable numeric tie.
-    values.sort_unstable_by_key(|&(value, count)| (Reverse(count), value));
-    let mut seed_addresses = BTreeMap::new();
-    let mut seeds = Vec::new();
-    for (index, (value, _)) in values.into_iter().enumerate() {
-        let address = SEEDS
-            .checked_add(
-                u32::try_from(index)
-                    .map_err(|_error| LAYOUT)?
-                    .checked_mul(stride)
-                    .ok_or(LAYOUT)?,
-            )
-            .ok_or(LAYOUT)?;
-        if address >= SEED_END {
-            return Err(LAYOUT);
-        }
-        let inverse =
-            profile_crazy(ALL_ONES, value, emitter.profile.word_trits());
-        seeds.push((address, inverse));
-        let _: Option<u32> = seed_addresses.insert(value, address);
-    }
+    let (seed_addresses, seeds) = plan_seeds(emitter, words, stride, dispatch)?;
     let mut near = vec![(SEED_ANCHOR, previous(SEEDS)?)];
     for &(anchor, base) in anchors {
         if !(ANCHOR_START..ANCHOR_END).contains(&anchor) {
@@ -463,6 +433,47 @@ fn initialize_with_dispatch(
         store_dispatch(emitter, address)?;
     }
     Ok(())
+}
+
+fn plan_seeds(
+    emitter: &Emitter<'_>,
+    words: &Words,
+    stride: u32,
+    dispatch: &[(u32, u32)],
+) -> Result<SeedPlan, BuildError> {
+    let mut frequency = BTreeMap::<u32, usize>::new();
+    for value in words
+        .values()
+        .copied()
+        .chain(dispatch.iter().map(|&(_, value)| value))
+    {
+        let count = frequency.entry(value).or_default();
+        *count = count.checked_add(1).ok_or(LAYOUT)?;
+    }
+    let mut values = frequency.into_iter().collect::<Vec<_>>();
+    // Each value is loaded twice per target. Assign the shortest walks
+    // to the most frequently loaded seeds, with a stable numeric tie.
+    values.sort_unstable_by_key(|&(value, count)| (Reverse(count), value));
+    let mut seed_addresses = BTreeMap::new();
+    let mut seeds = Vec::new();
+    for (index, (value, _)) in values.into_iter().enumerate() {
+        let address = SEEDS
+            .checked_add(
+                u32::try_from(index)
+                    .map_err(|_error| LAYOUT)?
+                    .checked_mul(stride)
+                    .ok_or(LAYOUT)?,
+            )
+            .ok_or(LAYOUT)?;
+        if address >= SEED_END {
+            return Err(LAYOUT);
+        }
+        let inverse =
+            profile_crazy(ALL_ONES, value, emitter.profile.word_trits());
+        seeds.push((address, inverse));
+        let _: Option<u32> = seed_addresses.insert(value, address);
+    }
+    Ok((seed_addresses, seeds))
 }
 
 // The near pointer skips the gap between the frame and the inverse seed

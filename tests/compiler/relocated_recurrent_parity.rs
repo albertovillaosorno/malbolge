@@ -48,8 +48,7 @@ fn source() -> Result<RelocatedRecurrentParitySource, String> {
 fn parity_byte(
     vm: &mut ProfileMachine,
     guest: &RelocatedRecurrentParitySource,
-    byte: u8,
-    encoded: u32,
+    (byte, encoded): (u8, u32),
     parity: &mut u32,
 ) -> Result<(), String> {
     let base = &guest.capture;
@@ -63,43 +62,8 @@ fn parity_byte(
     if pointer != EOF.checked_sub(u32::from(byte)).ok_or("complement")? {
         return Err("wrong complemented input pointer".to_owned());
     }
-    let lookup = if byte == 0 {
-        0
-    } else {
-        plus(pointer, 1)?
-    };
     let odd = byte & 1 != 0;
-    let loader_word = if odd {
-        7_174_416
-    } else {
-        37
-    };
-    let dispatch = if odd {
-        7_174_417
-    } else {
-        38
-    };
-    let route = if odd {
-        7_181_799
-    } else {
-        7_181_819
-    };
-    for (site, (address, value)) in guest.selector.into_iter().zip([
-        (guest.pointer, pointer),
-        (lookup, loader_word),
-        (dispatch, route),
-    ]) {
-        let trace = effect(vm, base, site, b'j')?;
-        if trace
-            .memory_reads
-            .data
-            .map(|read| (read.address, read.value))
-            != Some((address, value))
-        {
-            return Err(format!("wrong parity route: {trace:?}"));
-        }
-        routing(&trace, base.branch)?;
-    }
+    parity_route(vm, guest, byte, pointer)?;
     if !odd {
         let load = effect(vm, base, base.rotate, b'*')?;
         check_store(&load, 7_175_052, EOF, EOF)?;
@@ -132,6 +96,53 @@ fn parity_byte(
     Ok(())
 }
 
+fn parity_route(
+    vm: &mut ProfileMachine,
+    guest: &RelocatedRecurrentParitySource,
+    byte: u8,
+    pointer: u32,
+) -> Result<(), String> {
+    let base = &guest.capture;
+    let odd = byte & 1 != 0;
+    let lookup = if byte == 0 {
+        0
+    } else {
+        plus(pointer, 1)?
+    };
+    let loader_word = if odd {
+        7_174_416
+    } else {
+        37
+    };
+    let dispatch = if odd {
+        7_174_417
+    } else {
+        38
+    };
+    let route = if odd {
+        7_181_799
+    } else {
+        7_181_819
+    };
+    for (site, (address, value)) in guest.selector.into_iter().zip([
+        (guest.pointer, pointer),
+        (lookup, loader_word),
+        (dispatch, route),
+    ]) {
+        let trace = effect(vm, base, site, b'j')?;
+        if trace
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value))
+            != Some((address, value))
+        {
+            return Err(format!("wrong parity route: {trace:?}"));
+        }
+        routing(&trace, base.branch)?;
+    }
+    Ok(())
+}
+
 // The source-level checksum oracle computes all eight bits, then the test
 // compares the independently executed guest's single-bit projection.
 fn checksum(stream: &[u8]) -> u8 {
@@ -152,7 +163,7 @@ fn run_parity(
 ) -> Result<(), String> {
     let mut vm = boot
         .fork_with_input(stream.to_vec())
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     let base = &guest.capture;
     let mut classifier = INITIAL;
     let mut parity = 334_080;
@@ -174,7 +185,7 @@ fn run_parity(
             &mut classifier,
             (TraceInput::Byte(byte), BYTE),
         )?;
-        parity_byte(&mut vm, guest, byte, encoded, &mut parity)?;
+        parity_byte(&mut vm, guest, (byte, encoded), &mut parity)?;
     }
     let class = if stream.len() & 1 == 1 {
         EOF_ODD
@@ -193,15 +204,25 @@ fn run_parity(
     {
         return Err("EOF mutated byte arm state".to_owned());
     }
+    check_terminal(&mut vm, guest, stream, parity)
+}
+
+fn check_terminal(
+    vm: &mut ProfileMachine,
+    guest: &RelocatedRecurrentParitySource,
+    stream: &[u8],
+    parity: u32,
+) -> Result<(), String> {
+    let base = &guest.capture;
     let expected = checksum(stream) & 1;
     let rotated = if expected == 0 {
         111_360
     } else {
         154_113
     };
-    let load = effect(&mut vm, base, prev(base.output)?, b'*')?;
+    let load = effect(vm, base, prev(base.output)?, b'*')?;
     check_store(&load, guest.state, parity, rotated)?;
-    let output = effect(&mut vm, base, base.output, b'<')?;
+    let output = effect(vm, base, base.output, b'<')?;
     if output.output != Some(expected)
         || output.input.is_some()
         || output.memory_delta.data.is_some()
@@ -211,7 +232,7 @@ fn run_parity(
     let mut record = None;
     let outcome = vm
         .step_traced(&mut |entry| record = Some(*entry))
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     let trace = record.ok_or("missing halt trace")?;
     if outcome != StepOutcome::Terminated(Termination::HaltInstruction)
         || trace.before.registers.code_pointer != base.halt
@@ -273,7 +294,7 @@ fn relocated_recurrent_parity_omitted_effects_refuse() -> Result<(), String> {
         *modified
             .capture
             .source
-            .get_mut(usize::try_from(site).map_err(|e| e.to_string())?)
+            .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
             .ok_or("missing selector")? = noop;
         let boot = enter(&modified.capture, BOOT_BUDGET)?;
         if run_parity(&boot, &modified, &[0, 255]).is_ok() {

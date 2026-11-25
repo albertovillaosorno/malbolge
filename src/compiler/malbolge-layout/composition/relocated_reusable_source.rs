@@ -181,10 +181,19 @@ fn initialize_words_with_anchors(
     let mut anchor_tapes = Vec::new();
     if !near.is_empty() {
         let start = plan.bounds.start;
-        let slots = plan.next_slot.checked_sub(start).ok_or(LAYOUT)? / 4;
+        let slots = plan
+            .next_slot
+            .checked_sub(start)
+            .ok_or(LAYOUT)?
+            .checked_div(4)
+            .ok_or(LAYOUT)?;
         for (index, address) in TAPE_ANCHORS.into_iter().enumerate() {
-            let index = u32::try_from(index).map_err(|_error| LAYOUT)?;
-            let offset = (slots.checked_mul(index).ok_or(LAYOUT)? / 4)
+            let slot_index = u32::try_from(index).map_err(|_error| LAYOUT)?;
+            let offset = slots
+                .checked_mul(slot_index)
+                .ok_or(LAYOUT)?
+                .checked_div(4)
+                .ok_or(LAYOUT)?
                 .checked_mul(4)
                 .ok_or(LAYOUT)?;
             let base = start.checked_add(offset).ok_or(LAYOUT)?;
@@ -220,7 +229,8 @@ fn store_planned_word(
             .rev()
             .find(|(_, base)| base <= first)
     });
-    let _: u32 = emitter.store_tape_with_anchor(tape, address, ZERO, anchor)?;
+    let _: u32 =
+        emitter.store_tape_with_anchor(tape, address, (ZERO, anchor))?;
     after_store(emitter)
 }
 

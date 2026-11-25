@@ -25,7 +25,7 @@
 use malbolge::ProfileDescriptor;
 
 use super::super::super::super::LinearOpcode;
-use super::super::super::{BuildError, FRAME, LAYOUT, TapeBounds};
+use super::super::super::{BuildError, Emitter, FRAME, LAYOUT, TapeBounds};
 use super::super::relocated_recurrent_access::AccessBlock;
 use super::relocated_recurrent_reload_source::{anchors, main_route, reset};
 use super::{
@@ -197,6 +197,7 @@ fn parity_routes(
 }
 
 /// Construct a guest whose even-byte arm alone mutates recurrent state.
+///
 /// The output on EOF is the low bit of the original checksum recurrence:
 /// both XOR and addition have the same low bit; adding three flips it.
 /// This is a one-bit projection, not a full-byte checksum.
@@ -213,11 +214,16 @@ pub fn build_relocated_recurrent_parity_source(
     byte_route(&blocks, &mut words)?;
     parity_routes(&blocks, &mut words)?;
     let anchors = anchors(&words)?;
-    initialize_with_dispatch(&mut emitter, &words, &anchors, 2, &[
-        (0, 37),
-        (38, previous(EVEN_ROUTE)?),
-        (FRAME, previous(ODD_ROUTE)?),
-    ])?;
+    initialize_with_dispatch(
+        &mut emitter,
+        &words,
+        &anchors,
+        (2, &[
+            (0, 37),
+            (38, previous(EVEN_ROUTE)?),
+            (FRAME, previous(ODD_ROUTE)?),
+        ]),
+    )?;
     go_anchored(&mut emitter, entry, &anchors)?;
     let _: u32 = emitter.append_indirect()?;
     for block in blocks
@@ -228,12 +234,7 @@ pub fn build_relocated_recurrent_parity_source(
     {
         block.emit(&mut emitter)?;
     }
-    emitter
-        .pad_to_entry(usize::try_from(TERMINAL).map_err(|_error| LAYOUT)?, 0)?;
-    let _: u32 = emitter.append(LinearOpcode::RelocateDataPointer)?;
-    let _: u32 = emitter.append(LinearOpcode::RotateData)?;
-    let output = emitter.append(LinearOpcode::OutputByte)?;
-    let halt = emitter.append(LinearOpcode::Halt)?;
+    let (output, halt) = emit_terminal(&mut emitter)?;
     let [first, second, third] = &blocks.capture.reset;
     let selector = blocks.selector.operation_site()?;
     Ok(RelocatedRecurrentParitySource {
@@ -262,4 +263,14 @@ pub fn build_relocated_recurrent_parity_source(
         ],
         state: PARITY_STATE,
     })
+}
+
+fn emit_terminal(emitter: &mut Emitter<'_>) -> Result<(u32, u32), BuildError> {
+    emitter
+        .pad_to_entry(usize::try_from(TERMINAL).map_err(|_error| LAYOUT)?, 0)?;
+    let _: u32 = emitter.append(LinearOpcode::RelocateDataPointer)?;
+    let _: u32 = emitter.append(LinearOpcode::RotateData)?;
+    let output = emitter.append(LinearOpcode::OutputByte)?;
+    let halt = emitter.append(LinearOpcode::Halt)?;
+    Ok((output, halt))
 }

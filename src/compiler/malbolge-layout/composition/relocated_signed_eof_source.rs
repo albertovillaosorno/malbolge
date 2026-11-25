@@ -135,6 +135,7 @@ pub struct RelocatedSignedEofBranchSource {
 }
 
 type BuildError = ZeroCellSourceError;
+type TapeAnchor = Option<(u32, u32)>;
 
 #[derive(Clone, Copy)]
 enum Operand {
@@ -447,15 +448,14 @@ impl Emitter<'_> {
         target: u32,
         baseline: u32,
     ) -> Result<u32, BuildError> {
-        self.store_tape_with_anchor(tape, target, baseline, None)
+        self.store_tape_with_anchor(tape, target, (baseline, None))
     }
 
     fn store_tape_with_anchor(
         &mut self,
         tape: &[u32],
         target: u32,
-        baseline: u32,
-        anchor: Option<(u32, u32)>,
+        (baseline, anchor): (u32, TapeAnchor),
     ) -> Result<u32, BuildError> {
         self.go(baseline)?;
         let _: u32 = self.linear(LinearOpcode::RotateData)?;

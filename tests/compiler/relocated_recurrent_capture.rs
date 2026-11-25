@@ -71,33 +71,7 @@ fn enter(
                 == Some(b'/')
         {
             invariant(&vm, guest, INITIAL)?;
-            if word(&vm, 7_174_471)? != 0
-                || word(&vm, 7_174_473)? != EOF
-                || word(&vm, 7_174_483)? != 7_174_610
-                || word(&vm, 7_174_487)? != 7_174_999
-            {
-                return Err(
-                    "incorrect near-frame constants or anchors".to_owned()
-                );
-            }
-            let first = word(&vm, 7_174_475)?;
-            if ![7_183_000, 7_186_000].contains(&first) {
-                return Err("incorrect first tape anchor".to_owned());
-            }
-            let mut prior = first;
-            for address in [7_174_477, 7_174_479, 7_174_481] {
-                let next = word(&vm, address)?;
-                if next <= prior
-                    || next >= 7_280_001
-                    || !next
-                        .checked_sub(prior)
-                        .ok_or("tape anchor order")?
-                        .is_multiple_of(4)
-                {
-                    return Err("incorrect aligned tape anchor".to_owned());
-                }
-                prior = next;
-            }
+            check_bootstrap_anchors(&vm)?;
             return Ok(vm);
         }
         let trace = step(&mut vm)?;
@@ -106,6 +80,35 @@ fn enter(
         }
     }
     Err("missing first recurrent capture".to_owned())
+}
+
+fn check_bootstrap_anchors(vm: &ProfileMachine) -> Result<(), String> {
+    if word(vm, 7_174_471)? != 0
+        || word(vm, 7_174_473)? != EOF
+        || word(vm, 7_174_483)? != 7_174_610
+        || word(vm, 7_174_487)? != 7_174_999
+    {
+        return Err("incorrect near-frame constants or anchors".to_owned());
+    }
+    let first = word(vm, 7_174_475)?;
+    if ![7_183_000, 7_186_000].contains(&first) {
+        return Err("incorrect first tape anchor".to_owned());
+    }
+    let mut prior = first;
+    for address in [7_174_477, 7_174_479, 7_174_481] {
+        let next = word(vm, address)?;
+        if next <= prior
+            || next >= 7_280_001
+            || !next
+                .checked_sub(prior)
+                .ok_or("tape anchor order")?
+                .is_multiple_of(4)
+        {
+            return Err("incorrect aligned tape anchor".to_owned());
+        }
+        prior = next;
+    }
+    Ok(())
 }
 
 fn invariant(
