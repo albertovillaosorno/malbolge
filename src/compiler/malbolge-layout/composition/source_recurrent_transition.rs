@@ -47,10 +47,14 @@ pub struct SourceRecurrentTransitionProbe<'source> {
     pub lookup: [[u32; 2]; 5],
     /// Same signed guard and unsigned carried-state replay.
     pub loop_probe: SourceRecurrentLoopProbe<'source>,
+    /// Expanded scratch word used by both EOF contribution stores.
+    pub output_scratch: u32,
     /// Record banks in raw-low, low, raw-high and high order.
     pub seeds: [u32; 4],
     /// Index tables in raw-low, low, raw-high and high order.
     pub tables: [u32; 4],
+    /// First instruction of the straight-line EOF output routine.
+    pub terminal_address: u32,
 }
 
 /// Actual source and physical effects for one successful byte.
@@ -86,14 +90,35 @@ pub struct SourceRecurrentTransitionCheckpoint {
     pub source_target: u32,
 }
 
+/// The actual selected EOF terminal route and final output.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceRecurrentTerminalCheckpoint {
+    /// Final source byte observed at the EOF checkpoint.
+    pub byte: u8,
+    /// Actual halt trace index.
+    pub halt_index: usize,
+    /// High and low contribution table read addresses.
+    pub lookup_addresses: [u32; 2],
+    /// Exact accumulator used by the real output instruction.
+    pub output_word: u32,
+    /// Actual trace indices of both scratch stores in execution order.
+    pub scratch_indices: [usize; 2],
+    /// First terminal instruction trace index.
+    pub terminal_index: usize,
+}
+
 /// Finite paired loop proof with the ordered factored byte transitions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceRecurrentTransitionProof {
     /// Signed/unsigned bindings and one complete I/O and halt receipt.
     pub loop_proof: SourceRecurrentLoopProof,
+    /// Final signed EOF, output scratch and actual termination witness.
+    pub terminal: SourceRecurrentTerminalCheckpoint,
     /// One actual transition for each successful input; no transition at EOF.
     pub transitions: Vec<SourceRecurrentTransitionCheckpoint>,
 }
+
+type BranchTargets = (u32, u32);
 
 #[derive(Clone, Copy)]
 pub(super) struct SourceTransitionValue {
@@ -166,7 +191,7 @@ impl ParityPlan {
                 validate_source_transition(value, next)?;
             }
         }
-        Ok(())
+        validate_terminal_events(events)
     }
 
     fn new(
@@ -175,21 +200,10 @@ impl ParityPlan {
         signed_phi: u32,
     ) -> Result<Self, Error> {
         let header = block(function, loop_probe.guard.source_header)?;
-        let TernaryCfgTerminator::Branch { true_target, .. } =
-            header.terminator
-        else {
-            return Err(Error::InvalidTransitionBinding);
-        };
+        let (exit, true_target) = branch_targets(header)?;
         let parity = block(function, true_target)?;
         let condition = parity_condition(function, parity, signed_phi)?;
-        let TernaryCfgTerminator::Branch {
-            false_target,
-            true_target: odd,
-            ..
-        } = parity.terminator
-        else {
-            return Err(Error::InvalidTransitionBinding);
-        };
+        let (false_target, odd) = branch_targets(parity)?;
         let unsigned_phi = loop_probe.state.phi_result;
         let add = source_arm(
             block(function, false_target)?,
@@ -199,10 +213,8 @@ impl ParityPlan {
         )?;
         let xor =
             source_arm(block(function, odd)?, signed_phi, unsigned_phi, true)?;
-        if add.merge != xor.merge || add.block == xor.block {
-            return Err(Error::InvalidTransitionBinding);
-        }
         validate_backedge(function, header, unsigned_phi, [add, xor])?;
+        validate_terminal_source(block(function, exit)?, unsigned_phi)?;
         Ok(Self {
             add,
             block: parity.id,
@@ -271,6 +283,18 @@ fn block(
         .iter()
         .find(|candidate| candidate.id == id)
         .ok_or(Error::InvalidTransitionBinding)
+}
+
+fn branch_targets(block: &TernaryCfgBlock) -> Result<BranchTargets, Error> {
+    let TernaryCfgTerminator::Branch {
+        false_target,
+        true_target,
+        ..
+    } = block.terminator
+    else {
+        return Err(Error::InvalidTransitionBinding);
+    };
+    Ok((false_target, true_target))
 }
 
 fn literal(
@@ -388,6 +412,9 @@ fn validate_backedge(
     unsigned_phi: u32,
     [add, xor]: [Arm; 2],
 ) -> Result<(), Error> {
+    if add.merge != xor.merge || add.block == xor.block {
+        return Err(Error::InvalidTransitionBinding);
+    }
     let backedge = block(function, add.merge)?;
     let [merged] = backedge.phis.as_slice() else {
         return Err(Error::InvalidTransitionBinding);
@@ -426,6 +453,49 @@ fn validate_backedge(
             phi.result == unsigned_phi
                 && phi.incoming.contains(&(backedge.id, *update))
         })
+    {
+        return Err(Error::InvalidTransitionBinding);
+    }
+    Ok(())
+}
+
+fn validate_terminal_events(events: &[ProjectedIo]) -> Result<(), Error> {
+    let [.., eof, output] = events else {
+        return Err(Error::InvalidTransitionBinding);
+    };
+    if eof.effect != Effect::Input(TraceInput::EndOfInput)
+        || eof.state.map(|state| Effect::Output(state.value))
+            != Some(output.effect)
+        || events
+            .iter()
+            .take(events.len().saturating_sub(2))
+            .any(|event| {
+                !matches!(event.effect, Effect::Input(TraceInput::Byte(_)))
+            })
+    {
+        return Err(Error::InvalidTransitionBinding);
+    }
+    Ok(())
+}
+
+fn validate_terminal_source(
+    exit: &TernaryCfgBlock,
+    phi: u32,
+) -> Result<(), Error> {
+    let [
+        TernaryOperation::TruncateU32ToU8 { value, result, .. },
+        TernaryOperation::ByteOutput { value: output, .. },
+    ] = exit.operations.as_slice()
+    else {
+        return Err(Error::InvalidTransitionBinding);
+    };
+    if *value != phi
+        || result != output
+        || !exit.phis.is_empty()
+        || !matches!(
+            exit.terminator,
+            TernaryCfgTerminator::Return(TernaryOperation::ReturnVoid { .. })
+        )
     {
         return Err(Error::InvalidTransitionBinding);
     }
@@ -511,8 +581,20 @@ pub fn verify_source_recurrent_transition(
         word_addresses: loop_probe.state.words,
     };
     verify_pairs(&loop_proof, &transition.checkpoints)?;
+    let terminal = transition.terminal.receipt()?;
+    let eof = loop_proof
+        .checkpoints
+        .last()
+        .ok_or(Error::GuestTransitionMismatch)?;
+    if terminal.terminal_index <= eof.guard.guard_index
+        || terminal.byte != eof.state.value
+        || terminal.halt_index.saturating_add(1) != loop_proof.io.guest_steps
+    {
+        return Err(Error::GuestTransitionMismatch);
+    }
     Ok(SourceRecurrentTransitionProof {
         loop_proof,
+        terminal,
         transitions: transition.checkpoints,
     })
 }

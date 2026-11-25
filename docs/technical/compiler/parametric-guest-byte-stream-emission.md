@@ -14236,3 +14236,12 @@ an attestation of all intermediate SSA storage, all physical control
 edges or any unexecuted table entry; publication remains refused
 under the original 100,000-step ceiling.
 Evidence: `tests/compiler/source_recurrent_transition.rs`.
+
+The terminal extension binds the canonical EOF block's truncation of
+the carried unsigned phi, sole byte output and void return to the
+final physical EOF checkpoint. It requires all 33 contiguous terminal
+instructions, both state-selected contribution table addresses, both
+scratch crazy stores, the actual full output accumulator and halt.
+The five complete frozen traces pass; an aliased EOF scratch refuses.
+This remains a finite witness, not a compact execution or general
+source-frame certificate.

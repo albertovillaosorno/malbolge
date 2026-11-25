@@ -23,12 +23,16 @@
 
 //! Replay the physical indexed effects of a selected source transition.
 
+#[path = "source_recurrent_terminal_trace.rs"]
+mod source_recurrent_terminal_trace;
+
 use std::collections::BTreeMap;
 
 use malbolge::{
     ProfileStepTrace, TraceInput, current_profile, decode_profile_instruction,
     profile_crazy,
 };
+use source_recurrent_terminal_trace::TerminalTrace;
 
 use super::super::{Effect, Error, ProjectedIo};
 use super::{
@@ -392,6 +396,7 @@ pub(in super::super) struct TransitionTrace {
     pub(super) checkpoints: Vec<SourceRecurrentTransitionCheckpoint>,
     geometry: Geometry,
     pending: Option<PendingTransition>,
+    pub(super) terminal: TerminalTrace,
 }
 
 impl TransitionTrace {
@@ -399,7 +404,7 @@ impl TransitionTrace {
         if self.pending.is_some() {
             return Err(Error::GuestTransitionMismatch);
         }
-        Ok(())
+        self.terminal.receipt().map(|_receipt| ())
     }
 
     pub(in super::super) fn new(
@@ -409,6 +414,7 @@ impl TransitionTrace {
             checkpoints: Vec::new(),
             geometry: Geometry::new(probe)?,
             pending: None,
+            terminal: TerminalTrace::new(probe)?,
         })
     }
 
@@ -418,6 +424,7 @@ impl TransitionTrace {
         index: usize,
         projected_event: Option<ProjectedIo>,
     ) -> Result<(), Error> {
+        self.terminal.observe(trace, index, projected_event)?;
         if let Some(event) = projected_event {
             if let Some(pending) = self.pending.take() {
                 self.checkpoints.push(pending.finish(event, index)?);
@@ -445,7 +452,7 @@ fn validate_data_geometry(
     let [raw_low_seed, low_seed, raw_high_seed, high_seed] = probe.seeds;
     let ranges = [
         (raw_low.saturating_add(474), raw_low.saturating_add(729)),
-        (low.saturating_add(12), low.saturating_add(432)),
+        (low.saturating_add(5), low.saturating_add(432)),
         (raw_high.saturating_add(474), raw_high.saturating_add(729)),
         (high.saturating_add(487), high.saturating_add(11_626)),
         (raw_low_seed, raw_low_seed.saturating_add(127)),
@@ -467,7 +474,7 @@ fn validate_data_geometry(
         .into_iter()
         .chain(guard.classifier_words)
         .chain(guard.eof_landings)
-        .chain([guard.capture_word, guard.byte_landing]);
+        .chain([guard.capture_word, guard.byte_landing, probe.output_scratch]);
     for (index, (start, end)) in ranges.iter().copied().enumerate() {
         if usize::try_from(start)
             .map_or(true, |address| address < source_length)

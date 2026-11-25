@@ -291,7 +291,7 @@ pub use source_input_trace::source_recurrent_io::{
     SourceRecurrentIoProof, SourceRecurrentLoopCheckpoint,
     SourceRecurrentLoopProbe, SourceRecurrentLoopProof,
     SourceRecurrentStateCheckpoint, SourceRecurrentStateProbe,
-    SourceRecurrentStateProof, SourceRecurrentTransitionCheckpoint,
+    SourceRecurrentStateProof, SourceRecurrentTerminalCheckpoint, SourceRecurrentTransitionCheckpoint,
     SourceRecurrentTransitionProbe, SourceRecurrentTransitionProof,
     verify_source_recurrent_guard, verify_source_recurrent_io,
     verify_source_recurrent_loop, verify_source_recurrent_state,

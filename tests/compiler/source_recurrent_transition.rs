@@ -52,8 +52,10 @@ fn proposal<'source>(
             guard: source_recurrent_guard_tests::proposal(wire, stream, guest),
             state: source_recurrent_state_tests::proposal(wire, stream, guest)?,
         },
+        output_scratch: 7_180_900,
         seeds: [7_211_000, 7_243_100, 7_211_200, 7_243_400],
         tables: [7_208_352, 7_242_615, 7_209_081, 7_223_661],
+        terminal_address: guest.terminal,
     })
 }
 
@@ -101,6 +103,11 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
             }
             prior = next;
         }
+        if proof.terminal.byte != prior
+            || proof.terminal.output_word.rem_euclid(256) != u32::from(prior)
+        {
+            return Err("wrong terminal receipt".to_owned());
+        }
     }
     Ok(())
 }
@@ -112,6 +119,21 @@ fn source_recurrent_transition_rejects_wrong_lookup_geometry()
     let guest = build_relocated_recurrent_checksum_source(current_profile())
         .map_err(|error| format!("guest: {error:?}"))?;
     let mut probe = proposal(&wire, &[255], &guest)?;
+    let bad_scratch = SourceRecurrentTransitionProbe {
+        output_scratch: probe
+            .loop_probe
+            .state
+            .words
+            .first()
+            .copied()
+            .ok_or("missing state word")?,
+        ..probe
+    };
+    if verify_source_recurrent_transition(&bad_scratch)
+        != Err(Error::InvalidTransitionBinding)
+    {
+        return Err("aliased EOF scratch accepted".to_owned());
+    }
     let [raw_low, low, raw_high, high] = probe.tables;
     probe.tables = [raw_low.saturating_add(1), low, raw_high, high];
     if verify_source_recurrent_transition(&probe)

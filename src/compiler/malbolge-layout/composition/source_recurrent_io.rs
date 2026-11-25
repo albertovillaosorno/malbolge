@@ -63,8 +63,9 @@ use source_recurrent_transition::{
     ParityPlan, SourceTransitionValue, TransitionTrace,
 };
 pub use source_recurrent_transition::{
-    SourceRecurrentTransitionCheckpoint, SourceRecurrentTransitionProbe,
-    SourceRecurrentTransitionProof, verify_source_recurrent_transition,
+    SourceRecurrentTerminalCheckpoint, SourceRecurrentTransitionCheckpoint,
+    SourceRecurrentTransitionProbe, SourceRecurrentTransitionProof,
+    verify_source_recurrent_transition,
 };
 
 use super::{
