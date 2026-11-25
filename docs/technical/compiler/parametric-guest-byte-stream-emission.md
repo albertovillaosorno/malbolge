@@ -14449,3 +14449,18 @@ The same frozen image reaches first input in 1,668,673 steps (38,217
 fewer), with a 1,675,000-step physical regression bound. All 14 physical
 checksum and 13 source-transition tests pass. The strict source-C
 publication limit and fail-closed behavior remain unchanged.
+
+The unpaired seed bank now distinguishes shared reversible reads from
+single-rotation consumption. For a target value occurring exactly once
+in the complete physical word plan, the bank initializes the inverse
+rotation of its required accumulator instead of the accumulator itself.
+A real `*` recovers that accumulator without the two all-two folds and
+without restoring the retired seed. The independent bootstrap trace
+authenticates 254 such rotations, their consecutive data-route/target
+effects, absence of seed reuse, and uniqueness of each committed value
+among the final materialized targets. Omitting one actual rotation is
+refused by the census. The same 2,318,854-cell image reaches first input
+in 1,660,583 steps (8,090 fewer); the physical regression ceiling is
+1,665,000 steps. The 15 physical checksum and 13 source-transition
+tests pass. The original 100,000-step source-C publication gate remains
+unchanged.

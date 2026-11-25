@@ -22,7 +22,7 @@
 // - Summary:
 //   - Synthesize inverse seeds in five reusable three-trit chunks.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::profile_crazy;
 
@@ -132,8 +132,15 @@ struct SeedRouting<'directory> {
     extra: (u32, u32),
 }
 
-type ChunkMaterialization<'seeds> =
-    (&'seeds BTreeMap<u32, SeedAccess>, SeedRouting<'seeds>);
+#[derive(Clone, Copy)]
+enum ChunkSeedAccess {
+    Shared(SeedAccess),
+    SingleRotation(u32),
+}
+
+type ChunkSeedMap = BTreeMap<u32, ChunkSeedAccess>;
+type ChunkSeedPlan = (ChunkSeedMap, Vec<(u32, u32)>);
+type ChunkMaterialization<'seeds> = (&'seeds ChunkSeedMap, SeedRouting<'seeds>);
 
 struct ChunkWord {
     value: u32,
@@ -534,8 +541,8 @@ fn go_seed(
 fn reorder_seed_group(
     entries: &mut [(u32, u32)],
     routing: &SeedRouting<'_>,
-    plan: &mut SeedPlan,
-    paired: bool,
+    plan: &mut ChunkSeedPlan,
+    (paired, single_use): (bool, &BTreeSet<u32>),
 ) -> Result<(), BuildError> {
     entries.sort_unstable_by_key(|&(address, _)| address);
     let mut slots = entries
@@ -551,10 +558,22 @@ fn reorder_seed_group(
             plan.1.push((address, immutable_seed_prefix(inverse, 15)?));
             plan.1
                 .push((address.checked_add(2).ok_or(LAYOUT)?, inverse));
-            SeedAccess::ImmutablePair(address)
+            ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(address))
+        } else if single_use.contains(&value) {
+            // A value used by exactly one target needs no restored
+            // inverse seed: one rotation recovers its accumulator.
+            let initial = inverse
+                .rem_euclid(4_782_969)
+                .checked_mul(3)
+                .and_then(|part| {
+                    part.checked_add(inverse.div_euclid(4_782_969))
+                })
+                .ok_or(LAYOUT)?;
+            plan.1.push((address, initial));
+            ChunkSeedAccess::SingleRotation(address)
         } else {
             plan.1.push((address, inverse));
-            SeedAccess::Reversible(address)
+            ChunkSeedAccess::Shared(SeedAccess::Reversible(address))
         };
         let _old = plan.0.insert(value, access);
     }
@@ -562,12 +581,13 @@ fn reorder_seed_group(
 }
 
 // The original planner ranks values by frequency, assigning the first
-// 80 to pairs and the remainder to reversible slots. Preserve that
+// 80 to pairs and the remainder to single-word slots. Preserve that
 // partition but reorder each group by actual minimum route cost.
 fn reorder_seed_slots(
     (addresses, _): SeedPlan,
     routing: &SeedRouting<'_>,
-) -> Result<SeedPlan, BuildError> {
+    single_use: &BTreeSet<u32>,
+) -> Result<ChunkSeedPlan, BuildError> {
     let mut pairs = Vec::new();
     let mut singles = Vec::new();
     for (value, access) in addresses {
@@ -577,8 +597,8 @@ fn reorder_seed_slots(
         }
     }
     let mut plan = (BTreeMap::new(), Vec::new());
-    reorder_seed_group(&mut pairs, routing, &mut plan, true)?;
-    reorder_seed_group(&mut singles, routing, &mut plan, false)?;
+    reorder_seed_group(&mut pairs, routing, &mut plan, (true, single_use))?;
+    reorder_seed_group(&mut singles, routing, &mut plan, (false, single_use))?;
     Ok(plan)
 }
 
@@ -594,11 +614,11 @@ fn store_seed(
 
 fn fast_load(
     emitter: &mut Emitter<'_>,
-    seed: SeedAccess,
+    seed: ChunkSeedAccess,
     accumulator_ones: bool,
     routing: &SeedRouting<'_>,
 ) -> Result<(), BuildError> {
-    if let SeedAccess::ImmutablePair(prefix) = seed {
+    if let ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(prefix)) = seed {
         if !accumulator_ones {
             fast_rotate(emitter, NEAR_ONES)?;
         }
@@ -611,8 +631,16 @@ fn fast_load(
         // reset and the walk past the uniform constants for each target.
         return emitter.jump(TARGET_RETURN);
     }
-    let SeedAccess::Reversible(address) = seed else {
-        return Err(LAYOUT);
+    let address = match seed {
+        ChunkSeedAccess::SingleRotation(address) => {
+            go_seed(emitter, address, routing)?;
+            let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
+            return after_store(emitter);
+        },
+        ChunkSeedAccess::Shared(SeedAccess::Reversible(address)) => address,
+        ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(_)) => {
+            return Err(LAYOUT);
+        },
     };
     for _ in 0..2u32 {
         fast_rotate(emitter, NEAR_TWOS)?;
@@ -752,17 +780,18 @@ fn initialize_seed_directory(
 // bootstrap stores still use the virgin even reset words until then.
 fn initialize_seed_returns(
     emitter: &mut Emitter<'_>,
-    seeds: &BTreeMap<u32, SeedAccess>,
+    seeds: &ChunkSeedMap,
     routing: &SeedRouting<'_>,
     scratch: &mut ChunkWord,
 ) -> Result<(), BuildError> {
     let mut returns = seeds
         .values()
         .filter_map(|seed| match seed {
-            SeedAccess::ImmutablePair(prefix) => {
+            ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(prefix)) => {
                 Some(prefix.checked_add(3).ok_or(LAYOUT))
             },
-            SeedAccess::Reversible(_) => None,
+            ChunkSeedAccess::Shared(SeedAccess::Reversible(_))
+            | ChunkSeedAccess::SingleRotation(_) => None,
         })
         .collect::<Result<Vec<_>, _>>()?;
     returns.sort_unstable();
@@ -1082,11 +1111,20 @@ pub(super) fn initialize_chunk_seeds(
     let mut scratch = initialize_chunk_roots(emitter, roots)?;
     initialize_late_seed_roots(emitter, &mut scratch)?;
     let directory = initialize_seed_directory(emitter, extra, &mut scratch)?;
+    let mut seen = BTreeSet::new();
+    let mut repeated = BTreeSet::new();
+    for &value in words.values() {
+        if !seen.insert(value) {
+            let _inserted = repeated.insert(value);
+        }
+    }
+    let single_use = seen.difference(&repeated).copied().collect();
     let routing = SeedRouting {
         directory: &directory,
         extra,
     };
-    let (seed_addresses, mut seeds) = reorder_seed_slots(seed_plan, &routing)?;
+    let (seed_addresses, mut seeds) =
+        reorder_seed_slots(seed_plan, &routing, &single_use)?;
     seeds.sort_unstable_by_key(|&(_, value)| value);
     for (address, value) in seeds {
         fast_rotate(emitter, NEAR_ZERO)?;

@@ -22,7 +22,7 @@
 // - Summary:
 //   - Authenticate carry-aware byte state, EOF and output.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_675_000;
+const BOOT_BUDGET: usize = 1_665_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -60,6 +60,8 @@ type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
 type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
+type SeedConsumption = (u32, u32);
+type SingleSeedReceipt = (usize, u32);
 
 #[derive(Default)]
 struct DirectSeedAudit {
@@ -116,6 +118,87 @@ impl DirectSeedAudit {
         if word(vm, address)? == predecessor {
             let _added = self.installed.insert(address);
         }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct SingleSeedAudit {
+    consumed: BTreeMap<u32, SeedConsumption>,
+    mutation: Option<u32>,
+    pending: Option<SeedConsumption>,
+    targets: BTreeMap<u32, u32>,
+}
+
+impl SingleSeedAudit {
+    fn finish(&self, vm: &ProfileMachine) -> Result<SingleSeedReceipt, String> {
+        if self.pending.is_some() || self.consumed.is_empty() {
+            return Err("incomplete destructive seed use".to_owned());
+        }
+        for (&seed, &(address, value)) in &self.consumed {
+            if word(vm, seed)? != independent_crazy(ONES, value)
+                || word(vm, address)? != value
+                || self.targets.get(&address) != Some(&value)
+                || self
+                    .targets
+                    .values()
+                    .filter(|&&target| target == value)
+                    .count()
+                    != 1
+            {
+                return Err(format!("nonunique destructive seed M{seed}"));
+            }
+        }
+        Ok((
+            self.consumed.len(),
+            self.mutation.ok_or("missing mutation")?,
+        ))
+    }
+
+    fn rotate(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+    ) -> Result<(), String> {
+        if self.pending.is_some() || self.consumed.contains_key(&address) {
+            return Err("repeated destructive seed rotation".to_owned());
+        }
+        let trace = step(vm)?;
+        let old = trace.memory_reads.data.ok_or("missing seed operand")?.value;
+        let inverse = rotate_right(old)?;
+        check_store(&trace, address, old, inverse)?;
+        self.pending = Some((address, inverse));
+        if trace.before.registers.accumulator != inverse {
+            let _previous = self
+                .mutation
+                .get_or_insert(trace.before.registers.code_pointer);
+        }
+        Ok(())
+    }
+
+    fn store(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+    ) -> Result<(), String> {
+        let trace = step(vm)?;
+        let old = trace
+            .memory_reads
+            .data
+            .ok_or("missing target operand")?
+            .value;
+        let acc = trace.before.registers.accumulator;
+        let value = independent_crazy(old, acc);
+        check_store(&trace, address, old, value)?;
+        if let Some((seed, inverse)) = self.pending.take() {
+            if acc != inverse || independent_crazy(ONES, value) != inverse {
+                return Err(
+                    "destructive seed not consumed by target".to_owned()
+                );
+            }
+            let _previous = self.consumed.insert(seed, (address, value));
+        }
+        let _previous = self.targets.insert(address, value);
         Ok(())
     }
 }
@@ -1327,6 +1410,76 @@ fn relocated_recurrent_checksum_omitted_scratch_returns_refuse()
         {
             return Err(format!("accepted omitted scratch return M{address}"));
         }
+    }
+    Ok(())
+}
+
+// The unpaired seeds occupy the remaining near-bank odd cells and the
+// separate extra bank. Neither range is a recurrent target allocation.
+fn single_seed_bank(address: u32) -> bool {
+    !address.is_multiple_of(2)
+        && ((7_174_931..7_174_970).contains(&address)
+            || (7_175_601..7_176_600).contains(&address))
+}
+
+fn materialized_target(address: u32) -> bool {
+    (7_175_000..7_244_000).contains(&address)
+        && !(7_175_601..=7_176_900).contains(&address)
+}
+
+fn audit_single_seeds(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<SingleSeedReceipt, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = SingleSeedAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        let opcode = decode_profile_instruction(
+            word(&vm, registers.code_pointer)?,
+            registers.code_pointer,
+        );
+        if opcode == Some(b'*') && single_seed_bank(address) {
+            audit.rotate(&mut vm, address)?;
+        } else if opcode == Some(b'p') && materialized_target(address) {
+            audit.store(&mut vm, address)?;
+        } else {
+            if audit.pending.is_some() && !matches!(opcode, Some(b'o' | b'j'))
+                || opcode == Some(b'p') && audit.consumed.contains_key(&address)
+            {
+                return Err("unexpected destructive seed reuse".to_owned());
+            }
+            if vm.step().map_err(|error| error.to_string())?
+                != StepOutcome::Continued
+            {
+                return Err("premature bootstrap termination".to_owned());
+            }
+        }
+    }
+    Err("missing destructive seed input".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_single_seed_rotation_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let (count, site) = audit_single_seeds(&guest)?;
+    if count != 254 {
+        return Err(format!(
+            "expected 254 destructive seeds, observed {count}"
+        ));
+    }
+    let modified = omit_site(&guest, site)?;
+    if audit_single_seeds(&modified).is_ok_and(|(actual, _)| actual == count) {
+        return Err("accepted omitted destructive seed rotation".to_owned());
     }
     Ok(())
 }
