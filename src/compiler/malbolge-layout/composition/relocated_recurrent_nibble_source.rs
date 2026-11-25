@@ -27,26 +27,25 @@ use malbolge::{ProfileDescriptor, profile_crazy};
 use super::super::super::{BuildError, LAYOUT, TapeBounds};
 use super::super::relocated_recurrent_access::AccessBlock;
 use super::relocated_recurrent_mod4_source::{
-    BYTE_ROUTE, LOAD_CONSTANT, LOOKUP_CONSTANT, LOOP_RETURN, Mod4Blocks,
-    RELOAD_CONSTANTS, SCRATCH, SCRATCH_CONSTANTS, STATE, STATE_CONSTANTS,
-    data_words, emit_terminal, seed_address, seed_records,
+    BYTE_ROUTE, LOAD_CONSTANT, LOOP_RETURN, Mod4Blocks, RELOAD_CONSTANTS,
+    SCRATCH, SCRATCH_CONSTANTS, STATE, STATE_CONSTANTS, data_words,
+    emit_terminal, seed_address,
 };
-use super::relocated_recurrent_reload_source::{
-    main_route, reset, spaced_anchors,
-};
+use super::relocated_recurrent_reload_source::{main_route, spaced_anchors};
 use super::{
-    ALL_ONES, ALL_TWOS, BYTE, BYTE_ROUTE_POINTER, CAPTURE, CONSTANTS,
+    ALL_ONES, ALL_TWOS, BYTE, BYTE_ROUTE_POINTER, Blocks, CAPTURE, CONSTANTS,
     RelocatedRecurrentCaptureSource, Route, STATES, Words, bootstrap, code,
-    go_anchored, initialize_with_extra_seeds, insert, previous,
+    go_anchored, immutable_seed_prefix, initialize_with_extra_seeds, insert,
+    previous,
 };
 
 const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_280_001,
     start: 7_201_001,
 };
-const CODE_BASE: u32 = 5_600_044;
-const TERMINAL: u32 = 5_610_044;
-const SOURCE_CELLS: usize = 5_610_170;
+const CODE_BASE: u32 = 4_002_044;
+const TERMINAL: u32 = 4_012_044;
+const SOURCE_CELLS: usize = 4_012_170;
 // Six complemented low trits select a raw-byte table entry.
 // The selected seed transforms the nibble into three complemented trits;
 // the state table then uses a 27-cell row. Its aligned high prefix also
@@ -58,8 +57,9 @@ const STATE_SEEDS: u32 = 7_200_000;
 const POINTER: u32 = 7_175_140;
 const POINTER_CONSTANTS: [u32; 3] = [7_175_150, 7_175_152, 7_175_154];
 const RAW_MASK_SEED: u32 = 7_175_160;
-const POINTER_RELOAD_CONSTANTS: [u32; 2] = [7_175_170, 7_175_172];
+const RAW_MASK_PREFIX: u32 = 7_175_164;
 const RAW_LOOKUP_CONSTANT: u32 = 7_175_058;
+const STATE_LOOKUP_CONSTANT: u32 = 7_175_176;
 
 /// Recurrent four-bit checksum projection through two indexed lookups.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,18 +68,14 @@ pub struct RelocatedRecurrentNibbleSource {
     pub capture: RelocatedRecurrentCaptureSource,
     /// Two physical recurrent load stores.
     pub load: [u32; 2],
-    /// Physical first and restoring transition seed stores.
+    /// Physical immutable transition prefix and value reads.
     pub lookup: [u32; 2],
     /// Physical raw-byte index word.
     pub pointer: u32,
-    /// Physical first and restoring raw projection seed stores.
+    /// Physical immutable raw projection prefix and value reads.
     pub raw_lookup: [u32; 2],
-    /// Physical rotation of the selected raw record's all-two constant.
-    pub raw_seed_rotate: u32,
     /// Physical scratch word holding the next state during reset.
     pub scratch: u32,
-    /// Physical rotation of the transition record's all-two constant.
-    pub seed_rotate: u32,
     /// Persistent encoded state and transition index.
     pub state: u32,
     /// First instruction of the EOF decoder.
@@ -122,25 +118,46 @@ fn words(profile: &ProfileDescriptor) -> Result<Words, BuildError> {
             RAW_MASK_SEED,
             profile_crazy(ALL_ONES, mask, profile.word_trits()),
         ),
-        (RAW_LOOKUP_CONSTANT, ALL_TWOS),
+        (RAW_LOOKUP_CONSTANT, ALL_ONES),
+        (STATE_LOOKUP_CONSTANT, ALL_ONES),
     ] {
         insert(&mut words, address, value)?;
     }
-    for address in POINTER_RELOAD_CONSTANTS {
-        insert(&mut words, address, ALL_TWOS)?;
-    }
-    for (address, value) in
-        POINTER_CONSTANTS.into_iter().zip([ALL_ONES, ALL_TWOS, 0])
-    {
-        insert(&mut words, address, value)?;
-    }
+    let inverse = profile_crazy(ALL_ONES, mask, profile.word_trits());
+    insert(
+        &mut words,
+        RAW_MASK_PREFIX,
+        immutable_seed_prefix(inverse, profile.word_trits())?,
+    )?;
+    let [ones, _, _] = POINTER_CONSTANTS;
+    insert(&mut words, ones, ALL_ONES)?;
     Ok(words)
+}
+
+fn immutable_records(
+    profile: &ProfileDescriptor,
+    route: &mut Route<'_>,
+    lookup: &AccessBlock,
+    (pointer, base): (u32, u32),
+    values: &[u32],
+) -> Result<(), BuildError> {
+    route.enter_ready(lookup, pointer)?;
+    let continuation = previous(route.cursor)?;
+    for (index, &value) in values.iter().enumerate() {
+        let seed =
+            seed_address(base, u32::try_from(index).map_err(|_error| LAYOUT)?)?;
+        let prefix = immutable_seed_prefix(value, profile.word_trits())?;
+        for (offset, word) in [(0, prefix), (1, value), (2, continuation)] {
+            insert(route.words, seed.checked_add(offset).ok_or(LAYOUT)?, word)?;
+        }
+    }
+    route.prepare(lookup, false)
 }
 
 fn raw_records(
     profile: &ProfileDescriptor,
     route: &mut Route<'_>,
-    raw_lookup: &[AccessBlock; 2],
+    raw_lookup: &AccessBlock,
 ) -> Result<(), BuildError> {
     let masks = (0..16u32)
         .map(|nibble| {
@@ -148,7 +165,13 @@ fn raw_records(
             profile_crazy(encoded, ALL_TWOS, profile.word_trits())
         })
         .collect::<Vec<_>>();
-    seed_records(route, raw_lookup, (POINTER, RAW_SEEDS), &masks)?;
+    immutable_records(
+        profile,
+        route,
+        raw_lookup,
+        (POINTER, RAW_SEEDS),
+        &masks,
+    )?;
     for byte in 0..=255u32 {
         let address = RAW_TABLE
             .checked_add(729)
@@ -166,12 +189,12 @@ fn raw_records(
 fn state_records(
     profile: &ProfileDescriptor,
     route: &mut Route<'_>,
-    lookup: &[AccessBlock; 2],
+    lookup: &AccessBlock,
 ) -> Result<(), BuildError> {
     let masks = (0..16u32)
         .map(|state| state_mask(profile, state))
         .collect::<Result<Vec<_>, _>>()?;
-    seed_records(route, lookup, (STATE, STATE_SEEDS), &masks)?;
+    immutable_records(profile, route, lookup, (STATE, STATE_SEEDS), &masks)?;
     for state in 0..16u32 {
         let end = STATE_TABLE
             .checked_add(
@@ -195,6 +218,20 @@ fn state_records(
     Ok(())
 }
 
+// The column-one fold maps every trit to zero or two. On the
+// diagonal, both zero and two map to one. Preserve A between folds.
+fn reset(
+    route: &mut Route<'_>,
+    blocks: &Blocks,
+    operand: u32,
+    [ones, _, _]: [u32; 3],
+) -> Result<(), BuildError> {
+    let [first, second, _] = &blocks.reset;
+    route.call_ready(&blocks.rotate, ones)?;
+    route.call_ready(first, operand)?;
+    route.call_ready(second, operand)
+}
+
 fn restore(
     route: &mut Route<'_>,
     blocks: &Mod4Blocks,
@@ -212,9 +249,10 @@ fn restore(
 fn byte_route(
     profile: &ProfileDescriptor,
     blocks: &Mod4Blocks,
-    raw_lookup: &[AccessBlock; 2],
+    lookups: [&AccessBlock; 2],
     words: &mut Words,
 ) -> Result<(), BuildError> {
+    let [raw_lookup, state_lookup] = lookups;
     let mut bridge = Route {
         cursor: BYTE.checked_add(1).ok_or(LAYOUT)?,
         words,
@@ -236,20 +274,19 @@ fn byte_route(
     route.call_ready(&blocks.capture.rotate, RAW_LOOKUP_CONSTANT)?;
     raw_records(profile, &mut route, raw_lookup)?;
     route.call_ready(first, STATE)?;
-    route.call_ready(&blocks.capture.rotate, LOOKUP_CONSTANT)?;
-    state_records(profile, &mut route, &blocks.lookup)?;
+    route.call_ready(&blocks.capture.rotate, STATE_LOOKUP_CONSTANT)?;
+    state_records(profile, &mut route, state_lookup)?;
     route.call_ready(&blocks.capture.crazy, SCRATCH)?;
     reset(&mut route, &blocks.capture, STATE, STATE_CONSTANTS)?;
     reset(&mut route, &blocks.capture, CAPTURE, CONSTANTS)?;
     restore(&mut route, blocks, (SCRATCH, STATE), RELOAD_CONSTANTS)?;
     reset(&mut route, &blocks.capture, SCRATCH, SCRATCH_CONSTANTS)?;
     reset(&mut route, &blocks.capture, POINTER, POINTER_CONSTANTS)?;
-    restore(
-        &mut route,
-        blocks,
-        (RAW_MASK_SEED, POINTER),
-        POINTER_RELOAD_CONSTANTS,
-    )?;
+    // The reset leaves A all ones. Both constant words are fixed
+    // points, and the final fold restores the raw index mask.
+    for address in [RAW_MASK_PREFIX, RAW_MASK_SEED, POINTER] {
+        route.call_ready(&blocks.capture.crazy, address)?;
+    }
     route.enter_ready(&blocks.capture.branch, LOOP_RETURN)?;
     if route.cursor >= RAW_TABLE {
         return Err(LAYOUT);
@@ -257,11 +294,10 @@ fn byte_route(
     Ok(())
 }
 
-fn lookup_sites(blocks: &[AccessBlock; 2]) -> Result<[u32; 2], BuildError> {
-    let [first, second] = blocks;
+fn lookup_sites(block: &AccessBlock) -> Result<[u32; 2], BuildError> {
     Ok([
-        first.start.checked_add(3).ok_or(LAYOUT)?,
-        second.start.checked_add(2).ok_or(LAYOUT)?,
+        block.start.checked_add(3).ok_or(LAYOUT)?,
+        block.start.checked_add(4).ok_or(LAYOUT)?,
     ])
 }
 
@@ -275,13 +311,13 @@ pub fn build_relocated_recurrent_nibble_source(
 ) -> Result<RelocatedRecurrentNibbleSource, BuildError> {
     let mut emitter = bootstrap(profile, SOURCE_CELLS, BOUNDS)?;
     let blocks = Mod4Blocks::new(profile, CODE_BASE)?;
-    let raw_lookup = AccessBlock::indexed_load(profile, [
-        code(CODE_BASE, 13, 0)?,
-        code(CODE_BASE, 14, 0)?,
-    ])?;
+    let state_lookup =
+        AccessBlock::indexed_immutable_load(profile, code(CODE_BASE, 11, 0)?)?;
+    let raw_lookup =
+        AccessBlock::indexed_immutable_load(profile, code(CODE_BASE, 13, 0)?)?;
     let mut words = words(profile)?;
     let entry = main_route(&blocks.capture, &mut words)?;
-    byte_route(profile, &blocks, &raw_lookup, &mut words)?;
+    byte_route(profile, &blocks, [&raw_lookup, &state_lookup], &mut words)?;
     let anchors = spaced_anchors(&words, 224)?;
     initialize_with_extra_seeds(
         &mut emitter,
@@ -296,16 +332,13 @@ pub fn build_relocated_recurrent_nibble_source(
         .ordered()
         .into_iter()
         .chain(&blocks.load)
-        .chain(&blocks.lookup)
-        .chain(&raw_lookup)
+        .chain([&state_lookup, &raw_lookup])
     {
         block.emit(&mut emitter)?;
     }
     let (output, halt) = emit_terminal(&mut emitter, TERMINAL, 3)?;
     let [first, second, third] = &blocks.capture.reset;
     let [load_first, load_second] = &blocks.load;
-    let [_, lookup_second] = &blocks.lookup;
-    let [_, raw_second] = &raw_lookup;
     Ok(RelocatedRecurrentNibbleSource {
         capture: RelocatedRecurrentCaptureSource {
             branch: blocks.capture.branch.operation_site()?,
@@ -324,12 +357,10 @@ pub fn build_relocated_recurrent_nibble_source(
             states: STATES,
         },
         load: [load_first.operation_site()?, load_second.operation_site()?],
-        lookup: lookup_sites(&blocks.lookup)?,
+        lookup: lookup_sites(&state_lookup)?,
         pointer: POINTER,
         raw_lookup: lookup_sites(&raw_lookup)?,
-        raw_seed_rotate: raw_second.start,
         scratch: SCRATCH,
-        seed_rotate: lookup_second.start,
         state: STATE,
         terminal: TERMINAL,
     })

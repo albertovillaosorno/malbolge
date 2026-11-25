@@ -260,6 +260,23 @@ impl AccessBlock {
         ])
     }
 
+    // Read two adjacent words in place. A starts at all ones; the
+    // prefix and value are fixed points of their respective crazy folds.
+    pub(super) fn indexed_immutable_load(
+        profile: &ProfileDescriptor,
+        base: u32,
+    ) -> Result<Self, BuildError> {
+        use LinearOpcode::{CrazyData, RelocateDataPointer};
+        Self::best_phase(profile, base, &[
+            RelocateDataPointer,
+            RelocateDataPointer,
+            RelocateDataPointer,
+            CrazyData,
+            CrazyData,
+            RelocateDataPointer,
+        ])
+    }
+
     fn best_phase(
         profile: &ProfileDescriptor,
         base: u32,
@@ -267,8 +284,11 @@ impl AccessBlock {
     ) -> Result<Self, BuildError> {
         let mut best = None;
         let aligned = base.checked_sub(base.rem_euclid(94)).ok_or(LAYOUT)?;
-        // Five operations and the final indirect transfer fit in 94 cells.
-        for phase in 0..=88u32 {
+        // The operations and final indirect transfer must fit in 94 cells.
+        let extent =
+            u32::try_from(operations.len()).map_err(|_error| LAYOUT)?;
+        let last = 93u32.checked_sub(extent).ok_or(LAYOUT)?;
+        for phase in 0..=last {
             let start = aligned.checked_add(phase).ok_or(LAYOUT)?;
             let candidate =
                 Self::from_operations(profile, start, (0, 0), operations)?;

@@ -139,17 +139,18 @@ covers all 1,024 state/byte pairs; eight shorter streams cover both
 EOF landings for each state. Both indexed stores, dirty scratch reset,
 new state commit and terminal decode are authenticated. Four omitted
 effects, the historical profile and all 65,536 host projection pairs
-are checked. A separate 5,610,170-cell factorized four-bit image
+are checked. A separate 4,012,170-cell factorized four-bit image
 uses two 256-entry tables: the first selects the low nibble of the
 live raw byte, the second selects the next state. Its compact
 marker-tape initialization uses sixteen anchors and a separate
 inverse-seed bank. Single-fold virgin initialization and ten immutable
-seed pairs reduce its extent by 899,956 cells. The bootstrap remains
-bounded by 5,400,000 instructions. A 4,096-byte Euler circuit covers every prior
+seed pairs reduce its extent by 899,956 cells. Immutable indexed
+reads and two-fold dirty resets save another 1,598,000 cells; the
+bootstrap remains bounded by 3,950,000 instructions. A 4,096-byte Euler circuit covers every prior
 nibble/raw-byte pair, and short streams cover all 32 state/EOF
-combinations. Both physical lookups, seed restorations, state commit
-and raw-mask restoration are independently traced. Five omitted-effect
-controls and the historical profile refuse. Full-byte recurrent
+combinations. Both physical lookups, immutable seed reads, two-fold
+resets, state commit and raw-mask restoration are independently traced.
+Eight omitted-effect controls and the historical profile refuse. Full-byte recurrent
 checksum arithmetic, carry propagation, compact execution and complete
 source-frame routing remain open. Evidence:
 `tests/compiler/relocated_recurrent_nibble.rs`,

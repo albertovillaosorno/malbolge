@@ -13927,16 +13927,23 @@ not full-byte arithmetic or source-C admission; the original P2
 
 ### Factorized recurrent four-bit checksum transition
 
-The separate 5,610,170-cell
+The separate 4,012,170-cell
 `build_relocated_recurrent_nibble_source` image factors a direct
 16-by-256 transition table into two 256-entry tables. A physical
 raw-byte lookup at M7195959 + 729 - byte selects one of sixteen
-restored seeds containing the ternary-transformed low nibble. The next
+immutable records containing the ternary-transformed low nibble. The next
 crazy fold combines that word with the persistent state mask; the
 second physical lookup selects M7199010 + 27 * (state + 1) - nibble.
-It reads and restores one of sixteen next-state records. The existing
-scratch/reload path commits the new encoded state, and the capture,
-scratch, and raw index mask are restored before the actual backedge.
+It reads one of sixteen immutable next-state records. Each lookup
+uses a single six-operation access envelope. Two successive crazy
+folds with A initially all ones read the adjacent prefix and value
+without mutating either word. The record's third word transfers to
+the common restoration route. The scratch/reload path commits the
+new encoded state; each dirty-word reset now uses two folds. The
+column-one fold maps all trits to zero or two; the second fold uses
+the resulting accumulator on the same word, mapping both diagonal
+trits to one. A separate immutable prefix/value pair restores the
+raw index mask before the actual backedge.
 The byte arm emits nothing. Three real rotations after the EOF fold
 decode the low four bits, then the guest emits one byte and halts.
 
@@ -13952,18 +13959,19 @@ fold to become all ones; dirty-word normalization remains unchanged.
 The ten most frequent inverse seed values use adjacent odd prefix/value
 pairs. With A initially all ones, two crazy folds read both words
 without mutation, eliminating a second anchor traversal. Other seeds
-retain reversible loading. The compact source saves 899,956 cells
-relative to the initial 6,510,126-cell image, keeping its original
-instruction phases and loader tail. Independent replay bounds the
-bootstrap by 5,400,000 instructions, far beyond the P2 publication
-budget.
+retain reversible loading. That change saved 899,956 cells; the
+immutable indexed reads and two-fold dirty resets save another
+1,598,000 cells, keeping the original instruction phases and loader
+tail. Independent replay bounds the bootstrap by 3,950,000
+instructions, far beyond the P2 publication budget.
 
 Independent VM replay follows a 4,096-byte Euler circuit through every
 raw-byte/prior-nibble pair exactly once. Short streams cover all
 sixteen states at both EOF landings. Both indexed selection addresses,
-four reversible stores, dirty resets, state commit and raw-mask
-restoration are checked against an independent oracle. Five
-omitted-effect controls, the historical profile, and all 65,536
+four immutable folds, two-fold dirty resets, state commit and raw-mask
+restoration are checked against an independent oracle. Eight
+omitted-effect controls, independent per-trit read/reset closure,
+the historical profile, and all 65,536
 full-state/raw-byte host projection pairs are checked. This is still
 only a low-nibble projection: carry propagation, high-nibble
 arithmetic, compact execution and source-C admission are open.

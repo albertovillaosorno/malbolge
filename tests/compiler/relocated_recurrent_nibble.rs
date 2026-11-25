@@ -33,13 +33,12 @@ use super::super::super::super::layout::{
     RelocatedRecurrentNibbleSource, ZeroCellSourceError,
     build_relocated_recurrent_nibble_source,
 };
-use super::relocated_recurrent_reload::reset_operand;
 use super::{
     BYTE, CONSTANTS, EOF, EOF_EVEN, EOF_ODD, INITIAL, ONES, check_store, cycle,
     effect, enter, fold, independent_crazy, plus, prev, routing, select, word,
 };
 
-const BOOT_BUDGET: usize = 5_400_000;
+const BOOT_BUDGET: usize = 3_950_000;
 const RAW_TABLE: u32 = 7_195_959;
 const RAW_SEEDS: u32 = 7_197_000;
 const STATE_TABLE: u32 = 7_199_010;
@@ -83,10 +82,24 @@ fn seed_address(base: u32, state: u8) -> Result<u32, String> {
     plus(base, u32::from(state).checked_mul(8).ok_or("seed stride")?)
 }
 
+fn immutable_prefix(mut value: u32) -> Result<u32, String> {
+    let mut prefix = 0u32;
+    for place in 0..15 {
+        if value.rem_euclid(3) == 0 {
+            prefix = plus(
+                prefix,
+                3u32.pow(place).checked_mul(2).ok_or("prefix trit")?,
+            )?;
+        }
+        value = value.div_euclid(3);
+    }
+    Ok(prefix)
+}
+
 fn lookup(
     vm: &mut ProfileMachine,
     guest: &RelocatedRecurrentNibbleSource,
-    (sites, operand, rotate): ([u32; 2], u32, u32),
+    (sites, operand): ([u32; 2], u32),
     (pointer, seed, expected): (u32, u32, u32),
 ) -> Result<u32, String> {
     let base = &guest.capture;
@@ -106,23 +119,27 @@ fn lookup(
         }
         routing(&trace, base.branch)?;
     }
-    let dirty = fold(vm, base, (first, seed), (expected, EOF))?;
-    let rotation = effect(vm, base, rotate, b'*')?;
-    check_store(&rotation, plus(seed, 5)?, EOF, EOF)?;
-    let restored = fold(vm, base, (second, seed), (dirty, EOF))?;
-    if restored != expected || word(vm, seed)? != expected {
-        return Err("factorized seed was not restored".to_owned());
+    let prefix = immutable_prefix(expected)?;
+    let first_value = fold(vm, base, (first, seed), (prefix, ONES))?;
+    let value = fold(vm, base, (second, plus(seed, 1)?), (expected, prefix))?;
+    if first_value != prefix
+        || value != expected
+        || word(vm, seed)? != prefix
+        || word(vm, plus(seed, 1)?)? != expected
+    {
+        return Err("factorized seed was mutated".to_owned());
     }
-    Ok(restored)
+    Ok(value)
 }
 
-fn rotate_ones(
+fn rotate_constant(
     vm: &mut ProfileMachine,
     guest: &RelocatedRecurrentNibbleSource,
     address: u32,
+    value: u32,
 ) -> Result<(), String> {
     let rotation = effect(vm, &guest.capture, guest.capture.rotate, b'*')?;
-    check_store(&rotation, address, EOF, EOF)
+    check_store(&rotation, address, value, value)
 }
 
 fn raw_projection(
@@ -133,7 +150,7 @@ fn raw_projection(
     let base = &guest.capture;
     let [first, _] = guest.load;
     select(vm, base, 7_180_670, 7_182_199)?;
-    rotate_ones(vm, guest, 7_175_050)?;
+    rotate_constant(vm, guest, 7_175_050, EOF)?;
     let transformed = fold(vm, base, (first, base.capture), (encoded, EOF))?;
     let pointer =
         fold(vm, base, (first, guest.pointer), (raw_mask()?, transformed))?;
@@ -143,17 +160,34 @@ fn raw_projection(
     if pointer != expected_pointer {
         return Err("wrong raw-byte index".to_owned());
     }
-    rotate_ones(vm, guest, 7_175_058)?;
+    rotate_constant(vm, guest, 7_175_058, ONES)?;
     let nibble = byte & 15;
     let projected =
         independent_crazy(independent_crazy(ONES, u32::from(nibble)), EOF);
     let actual = lookup(
         vm,
         guest,
-        (guest.raw_lookup, guest.pointer, guest.raw_seed_rotate),
+        (guest.raw_lookup, guest.pointer),
         (pointer, seed_address(RAW_SEEDS, nibble)?, projected),
     )?;
     Ok((transformed, pointer, actual))
+}
+
+fn reset_operand(
+    vm: &mut ProfileMachine,
+    base: &super::RelocatedRecurrentCaptureSource,
+    (address, dirty): (u32, u32),
+    [ones, _, _]: [u32; 3],
+) -> Result<(), String> {
+    let rotation = effect(vm, base, base.rotate, b'*')?;
+    check_store(&rotation, ones, ONES, ONES)?;
+    let [first, second, _] = base.reset;
+    let middle = fold(vm, base, (first, address), (dirty, ONES))?;
+    let restored = fold(vm, base, (second, address), (middle, middle))?;
+    if restored != ONES || word(vm, address)? != ONES {
+        return Err("two-fold dirty reset failed".to_owned());
+    }
+    Ok(())
 }
 
 fn restore(
@@ -165,7 +199,7 @@ fn restore(
     let base = &guest.capture;
     let mut value = inverse;
     for (address, site) in constants.into_iter().zip(guest.load) {
-        rotate_ones(vm, guest, address)?;
+        rotate_constant(vm, guest, address, EOF)?;
         value = fold(vm, base, (site, seed), (value, EOF))?;
     }
     if value != inverse {
@@ -194,11 +228,11 @@ fn transition(
     {
         return Err("wrong nibble transition index".to_owned());
     }
-    rotate_ones(vm, guest, 7_175_052)?;
+    rotate_constant(vm, guest, 7_175_176, ONES)?;
     let selected = lookup(
         vm,
         guest,
-        (guest.lookup, guest.state, guest.seed_rotate),
+        (guest.lookup, guest.state),
         (pointer, seed_address(STATE_SEEDS, next)?, mask(next)?),
     )?;
     let inverse =
@@ -213,16 +247,15 @@ fn transition(
     }
     reset_operand(vm, base, (guest.scratch, inverse), SCRATCH_CONSTANTS)?;
     reset_operand(vm, base, (guest.pointer, raw_pointer), POINTER_CONSTANTS)?;
-    let restored = restore(
-        vm,
-        guest,
-        (
-            7_175_160,
-            guest.pointer,
-            independent_crazy(ONES, raw_mask()?),
-        ),
-        [7_175_170, 7_175_172],
-    )?;
+    let inverse = independent_crazy(ONES, raw_mask()?);
+    let prefix = immutable_prefix(inverse)?;
+    let loaded_prefix =
+        fold(vm, base, (base.crazy, 7_175_164), (prefix, ONES))?;
+    let loaded = fold(vm, base, (base.crazy, 7_175_160), (inverse, prefix))?;
+    if loaded_prefix != prefix || loaded != inverse {
+        return Err("immutable raw mask read failed".to_owned());
+    }
+    let restored = fold(vm, base, (base.crazy, guest.pointer), (ONES, loaded))?;
     if restored != raw_mask()? {
         return Err("wrong restored raw mask".to_owned());
     }
@@ -373,7 +406,7 @@ fn transition_stream() -> Result<Vec<u8>, String> {
 #[test]
 fn relocated_recurrent_nibble_all_transitions_and_eof() -> Result<(), String> {
     let guest = source()?;
-    if guest.capture.source.len() != 5_610_170 {
+    if guest.capture.source.len() != 4_012_170 {
         return Err("incorrect source extent".to_owned());
     }
     let boot = enter(&guest.capture, BOOT_BUDGET)?;
@@ -384,7 +417,8 @@ fn relocated_recurrent_nibble_all_transitions_and_eof() -> Result<(), String> {
         return Err("incorrect immutable-seed initial accumulator".to_owned());
     }
     for index in 0..10 {
-        let address = plus(7_174_611, 4 * index)?;
+        let address =
+            plus(7_174_611, 4u32.checked_mul(index).ok_or("pair stride")?)?;
         let prefix = word(&boot, address)?;
         let inverse = word(&boot, plus(address, 2)?)?;
         if independent_crazy(prefix, ONES) != prefix
@@ -418,6 +452,21 @@ fn relocated_recurrent_nibble_all_transitions_and_eof() -> Result<(), String> {
 }
 
 #[test]
+fn relocated_recurrent_nibble_immutable_read_and_reset_algebra()
+-> Result<(), String> {
+    // All possible single trits, repeated across a complete N15 word.
+    // The crazy operation acts independently at every trit position.
+    for value in [0, ONES, EOF] {
+        let prefix = immutable_prefix(value)?;
+        assert_eq!(independent_crazy(prefix, ONES), prefix);
+        assert_eq!(independent_crazy(value, prefix), value);
+        let middle = independent_crazy(value, ONES);
+        assert_eq!(independent_crazy(middle, middle), ONES);
+    }
+    Ok(())
+}
+
+#[test]
 fn relocated_recurrent_nibble_is_checksum_projection() {
     for state in 0..=255u8 {
         for byte in 0..=255u8 {
@@ -440,12 +489,16 @@ fn relocated_recurrent_nibble_refuses_other_profile() {
 #[test]
 fn relocated_recurrent_nibble_omitted_effects_refuse() -> Result<(), String> {
     let guest = source()?;
-    let [_, restore] = guest.lookup;
-    let [_, raw_restore] = guest.raw_lookup;
+    let [prefix, value] = guest.lookup;
+    let [raw_prefix, raw_value] = guest.raw_lookup;
+    let [_, reset, _] = guest.capture.reset;
     let [_, commit] = guest.load;
     for site in [
-        raw_restore,
-        restore,
+        raw_prefix,
+        raw_value,
+        prefix,
+        value,
+        reset,
         commit,
         plus(guest.terminal, 4)?,
         guest.capture.output,
