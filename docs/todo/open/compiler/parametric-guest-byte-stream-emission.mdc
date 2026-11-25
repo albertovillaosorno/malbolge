@@ -338,6 +338,9 @@ digit and jointly checks the two varying EOF digits; it rejects a mixed
 EOF landing after two correct byte dispatches. Four unused frame-store
 omissions preserve empty-input behavior but refuse the proof. All 37
 source-recurrent, 20 physical checksum and three C23 pipeline tests pass.
+Minimum-cost two-mask scratch patches now pass an independent 729-transition
+census and all 27 route-cost checks. First input takes 1,163,613 steps,
+with the physical regression ceiling reduced to 1,165,000 steps.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

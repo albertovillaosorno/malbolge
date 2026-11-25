@@ -23,6 +23,7 @@
 //   - Synthesize inverse seeds in five reusable three-trit chunks.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use malbolge::profile_crazy;
 
@@ -107,6 +108,9 @@ const TARGET_BANKS: [u32; 12] = [
 const TARGET_PAGE_COUNT: u32 = 24;
 const TARGET_DIRECT_START: u32 = 7_174_515;
 
+static PATCH_CHOICES: OnceLock<PatchChoices> = OnceLock::new();
+
+type PatchChoices = BTreeMap<(u32, u32), [u32; 2]>;
 type ChunkMasks = Vec<(u32, u32)>;
 type ChunkPage = (u32, u32);
 type SeedDirectory = Vec<(u32, u32)>;
@@ -396,12 +400,73 @@ fn patch_columns(mut before: u32, mut after: u32) -> [u32; 2] {
     columns
 }
 
+// The cost from CHUNK_NEXT includes the accumulator reload, the
+// mask lookup, and both scratch folds. The first mask of a patch may
+// begin elsewhere, but its reload cost changes equally for every mask.
+const fn fast_column_cost(column: u32) -> u32 {
+    match column {
+        26 => 0,
+        24 | 25 => 38,
+        _ => 36u32
+            .saturating_add(
+                2u32.saturating_mul(column.div_euclid(CHUNK_PAGE_WIDTH)),
+            )
+            .saturating_add(
+                4u32.saturating_mul(column.rem_euclid(CHUNK_PAGE_WIDTH)),
+            ),
+    }
+}
+
+const fn pair_cost(pair: [u32; 2]) -> (u32, [u32; 2]) {
+    let [first, second] = pair;
+    (
+        fast_column_cost(first).saturating_add(fast_column_cost(second)),
+        pair,
+    )
+}
+
+fn apply_low_column(value: u32, column: u32) -> u32 {
+    profile_crazy(profile_crazy(value, column, 3), 26, 3)
+}
+
+fn record_patch_choices(choices: &mut PatchChoices, before: u32, first: u32) {
+    let middle = apply_low_column(before, first);
+    for second in 0..27u32 {
+        let after = apply_low_column(middle, second);
+        let pair = [first, second];
+        let old = choices.entry((before, after)).or_insert(pair);
+        if pair_cost(pair) < pair_cost(*old) {
+            *old = pair;
+        }
+    }
+}
+
+fn fast_patch_choices() -> PatchChoices {
+    let mut choices = BTreeMap::new();
+    for before in 0..27u32 {
+        for first in 0..27u32 {
+            record_patch_choices(&mut choices, before, first);
+        }
+    }
+    choices
+}
+
+fn fast_patch_columns(before: u32, after: u32) -> [u32; 2] {
+    PATCH_CHOICES
+        .get_or_init(fast_patch_choices)
+        .get(&(before, after))
+        .copied()
+        .unwrap_or_else(|| patch_columns(before, after))
+}
+
 fn patch_chunk(
     emitter: &mut Emitter<'_>,
     before: u32,
     after: u32,
 ) -> Result<(), BuildError> {
-    for column in patch_columns(before.rem_euclid(27), after.rem_euclid(27)) {
+    for column in
+        fast_patch_columns(before.rem_euclid(27), after.rem_euclid(27))
+    {
         if column != 26 {
             apply_chunk_column(emitter, column, true)?;
         }
@@ -1292,20 +1357,9 @@ fn patch_distance(mut before: u32, mut after: u32) -> u32 {
         30
     };
     for _ in 0..5u32 {
-        for column in patch_columns(before.rem_euclid(27), after.rem_euclid(27))
-        {
-            if column != 26 {
-                cost = cost.saturating_add(
-                    48u32
-                        .saturating_add(2u32.saturating_mul(
-                            column.div_euclid(CHUNK_PAGE_WIDTH),
-                        ))
-                        .saturating_add(4u32.saturating_mul(
-                            column.rem_euclid(CHUNK_PAGE_WIDTH),
-                        )),
-                );
-            }
-        }
+        let pair =
+            fast_patch_columns(before.rem_euclid(27), after.rem_euclid(27));
+        cost = cost.saturating_add(pair_cost(pair).0);
         before = before.div_euclid(27);
         after = after.div_euclid(27);
     }
@@ -1519,3 +1573,7 @@ fn materialize_chunk_words(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/recurrent_chunk_patch.rs"]
+mod tests;

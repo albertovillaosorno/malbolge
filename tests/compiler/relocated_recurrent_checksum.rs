@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_171_000;
+const BOOT_BUDGET: usize = 1_165_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -2334,7 +2334,7 @@ fn relocated_recurrent_checksum_omitted_scratch_constants_refuses()
 -> Result<(), String> {
     let guest = source()?;
     let (sites, selections) = audit_scratch_constants(&guest)?;
-    if selections != 1_323 {
+    if selections != 1_333 {
         return Err(format!("unexpected shortcut count: {selections}"));
     }
     for site in sites {

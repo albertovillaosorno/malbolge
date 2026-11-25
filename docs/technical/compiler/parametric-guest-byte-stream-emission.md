@@ -14721,3 +14721,15 @@ admitted shape, not a proof of arbitrary physical control paths or complete
 source-frame publication. The 100,000-step publication limit is unchanged.
 All 37 source-recurrent, 20 physical checksum and three C23 pipeline
 tests pass; source publication continues to refuse.
+
+The fast scratch patch now enumerates all 729 ordered three-trit
+transitions and chooses a minimum-cost pair of mask columns, using the
+actual local or paged mask path from the scratch continuation. Numeric
+ties are deterministic. Slow bootstrap mask synthesis retains its fixed
+elementary columns. Independent scalar replay checks every selected pair
+against every alternative; all 27 modeled column costs match the emitted
+instruction counts, including the omitted identity. The physical guest
+reaches first input in 1,163,613 steps, saving 5,785 steps in the same
+2,318,854-cell image. The scratch-constant shortcut is independently
+observed 1,333 times. The physical regression ceiling tightens to
+1,165,000 steps, while the publication ceiling remains 100,000 steps.
