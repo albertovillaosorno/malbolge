@@ -14733,3 +14733,18 @@ reaches first input in 1,163,613 steps, saving 5,785 steps in the same
 2,318,854-cell image. The scratch-constant shortcut is independently
 observed 1,333 times. The physical regression ceiling tightens to
 1,165,000 steps, while the publication ceiling remains 100,000 steps.
+
+The source-bound bootstrap now separately reserves all 144 code words
+of the recurrent envelopes, their entry predecessors and the entire
+33-instruction terminal. Their loader values derive from the actual
+source image. Before first input no data read, data write, code fetch
+or encryption may touch these words except the final indirect transfer
+to the input envelope and its entry data jump. Both allowed touches
+must match the original source cell, exact encryption delta and the
+two adjacent initial-entry indices. This covers byte-only code that
+the empty-input replay never visits. Fifteen trace-mutation controls
+alter an earlier real pre-entry observation across an unused lookup
+site, its predecessor and the terminal, separately forging each of the
+five memory access roles; all refuse while the original trace passes.
+All 38 source-recurrent tests pass. This preserves the finite recurrent
+code placement, not the complete general SSA frame or publication gate.

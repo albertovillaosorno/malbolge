@@ -341,6 +341,10 @@ source-recurrent, 20 physical checksum and three C23 pipeline tests pass.
 Minimum-cost two-mask scratch patches now pass an independent 729-transition
 census and all 27 route-cost checks. First input takes 1,163,613 steps,
 with the physical regression ceiling reduced to 1,165,000 steps.
+The bootstrap now additionally reserves 144 recurrent code, predecessor
+and terminal words. Only the two authenticated initial-entry steps may
+touch them before input. Fifteen pre-entry trace mutations refuse; all
+38 source-recurrent tests pass.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

@@ -23,8 +23,8 @@
 use core::mem::swap;
 
 use malbolge::{
-    ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
-    decode_profile_instruction, profile_crazy,
+    ProfileMachine, ProfileMemoryRead, ProfileMemoryWrite, ProfileStepTrace,
+    StepOutcome, current_profile, decode_profile_instruction, profile_crazy,
 };
 
 use super::super::super::super::{
@@ -51,6 +51,7 @@ use super::{
 };
 
 type IndexedEntry = (usize, [ProfileStepTrace; 3]);
+type InitialEntryTrace = (usize, [ProfileStepTrace; 4]);
 type InitialStores = Vec<(usize, ProfileStepTrace)>;
 type LoadedState = ([u32; 2], InitialStores);
 
@@ -127,7 +128,8 @@ fn check_control_counts(
     {
         return Err("wrong initial state order".to_owned());
     }
-    if proof.bootstrap_auxiliary_words != 37
+    if proof.bootstrap_code_words != 144
+        || proof.bootstrap_auxiliary_words != 37
         || proof.bootstrap_frame_words != 12
         || proof.bootstrap_table_words != 2_514
         || proof.bootstrap_route_words != 4_716
@@ -450,19 +452,19 @@ fn check_control_mutations(
 
 fn first_entry_trace(
     guest: &RelocatedRecurrentChecksumSource,
-) -> Result<IndexedEntry, String> {
+) -> Result<InitialEntryTrace, String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         &guest.capture.source,
         vec![255],
     )
     .map_err(|error| error.to_string())?;
-    let mut last = [None; 3];
+    let mut last = [None; 4];
     for index in 0..1_950_001usize {
         if vm
             .step_traced(&mut |trace| {
-                let [_, earlier, recent] = last;
-                last = [earlier, recent, Some(*trace)];
+                let [_, oldest, earlier, recent] = last;
+                last = [oldest, earlier, recent, Some(*trace)];
             })
             .map_err(|error| error.to_string())?
             != StepOutcome::Continued
@@ -470,10 +472,11 @@ fn first_entry_trace(
             return Err("bootstrap terminated before input".to_owned());
         }
         if vm.input_consumed() == 1 {
-            let [Some(indirect), Some(entry), Some(input)] = last else {
+            let [Some(prior), Some(indirect), Some(entry), Some(input)] = last
+            else {
                 return Err("incomplete entry trace".to_owned());
             };
-            return Ok((index, [indirect, entry, input]));
+            return Ok((index, [prior, indirect, entry, input]));
         }
     }
     Err("first input trace budget exhausted".to_owned())
@@ -500,7 +503,7 @@ fn check_initial_entry_mutations(
     projected: &SourceProjection,
 ) -> Result<(), String> {
     let first = *projected.events.first().ok_or("missing projected input")?;
-    let (index, [indirect, entry, input]) = first_entry_trace(guest)?;
+    let (index, [_, indirect, entry, input]) = first_entry_trace(guest)?;
     let actual = (index, [indirect, entry, input]);
     if observe_first_entry(probe, first, actual, false)
         != Ok([index.saturating_sub(2), index.saturating_sub(1)])
@@ -527,6 +530,75 @@ fn check_initial_entry_mutations(
         {
             return Err("corrupt first entry accepted".to_owned());
         }
+    }
+    Ok(())
+}
+
+// Alter an earlier, otherwise ignored pre-entry trace, not either of
+// the two already authenticated initial transfer instructions.
+fn forbidden_bootstrap_accesses(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    (index, prior): (usize, ProfileStepTrace),
+    address: u32,
+) -> Result<(), String> {
+    let value = probe
+        .loop_probe
+        .guard
+        .io
+        .physical_source
+        .get(usize::try_from(address).map_err(|error| error.to_string())?)
+        .copied()
+        .map(u32::from)
+        .ok_or("missing reserved source word")?;
+    let read = Some(ProfileMemoryRead { address, value });
+    let write = Some(ProfileMemoryWrite {
+        address,
+        before: value,
+        after: value.saturating_add(1),
+    });
+    let mut mutations = [prior; 5];
+    let [data, fetch, encryption, data_write, encryption_write] =
+        &mut mutations;
+    data.memory_reads.data = read;
+    fetch.memory_reads.fetch = read;
+    encryption.memory_reads.encryption = read;
+    data_write.memory_delta.data = write;
+    encryption_write.memory_delta.encryption = write;
+    for mutation in mutations {
+        let mut audit = TransitionTrace::new(probe)
+            .map_err(|error| format!("geometry: {error:?}"))?;
+        if audit.observe(&mutation, index, None)
+            != Err(Error::GuestTransitionMismatch)
+        {
+            return Err(format!("accepted bootstrap access to M{address}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_bootstrap_code_trace_mutations()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[255], &guest)?;
+    let (index, [prior, _, _, _]) = first_entry_trace(&guest)?;
+    let prior_index = index.saturating_sub(3);
+    let mut audit = TransitionTrace::new(&probe)
+        .map_err(|error| format!("geometry: {error:?}"))?;
+    audit
+        .observe(&prior, prior_index, None)
+        .map_err(|error| format!("actual bootstrap trace: {error:?}"))?;
+    // Include a byte-only lookup, its entry predecessor, and terminal
+    // code. These are distinct from the authentic initial input entry.
+    let [low_result, _] = probe.lookup[4];
+    for address in [
+        low_result,
+        low_result.saturating_sub(5),
+        probe.terminal_address.saturating_add(32),
+    ] {
+        forbidden_bootstrap_accesses(&probe, (prior_index, prior), address)?;
     }
     Ok(())
 }

@@ -455,6 +455,10 @@ pub(in super::super) struct TransitionTrace {
 }
 
 impl TransitionTrace {
+    pub(super) fn bootstrap_code_words(&self) -> Result<usize, Error> {
+        self.control.bootstrap_code_words()
+    }
+
     pub(super) fn bootstrap_receipt(&self) -> Result<BootstrapReceipt, Error> {
         self.bootstrap
             .as_ref()

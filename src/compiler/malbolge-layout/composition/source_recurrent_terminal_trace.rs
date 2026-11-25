@@ -35,7 +35,7 @@ use super::super::{
     SourceRecurrentTransitionProbe,
 };
 
-const OPS: &[u8; 33] = b"*jpj*jpooooooj*jjpjpj*jpj*jjpjp<v";
+pub(super) const OPS: &[u8; 33] = b"*jpj*jpooooooj*jjpjpj*jpj*jjpjp<v";
 // The terminal combines residues on disjoint seven/eight-trit fields.
 const SPLIT: u32 = 2_187;
 

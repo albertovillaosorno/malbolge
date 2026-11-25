@@ -23,6 +23,8 @@
 
 #[path = "source_recurrent_control_bootstrap.rs"]
 mod source_recurrent_control_bootstrap;
+#[path = "source_recurrent_control_bootstrap_code.rs"]
+mod source_recurrent_control_bootstrap_code;
 
 use core::iter::{once, repeat_n};
 use std::collections::BTreeMap;
@@ -32,6 +34,7 @@ use malbolge::{
     decode_profile_instruction, encrypt_profile_cell,
 };
 pub(super) use source_recurrent_control_bootstrap::BootstrapRoute;
+use source_recurrent_control_bootstrap_code::BootstrapCode;
 
 use super::super::{Effect, Error, ProjectedIo};
 use super::SourceRecurrentTransitionProbe;
@@ -411,6 +414,7 @@ impl Execution {
 
 pub(super) struct ControlTrace {
     active: Option<Execution>,
+    bootstrap_code: BootstrapCode,
     calls: usize,
     eof: bool,
     initial_entry: Option<[usize; 2]>,
@@ -469,6 +473,7 @@ impl ControlTrace {
             {
                 return Err(MISMATCH);
             }
+            self.bootstrap_code.complete(index)?;
             self.initial_entry = Some([indirect_index, entry_index]);
         }
         self.active = Some(active);
@@ -482,6 +487,11 @@ impl ControlTrace {
         source_recurrent_control_bootstrap::bootstrap_addresses(
             &self.plan, lookup,
         )
+    }
+
+    pub(super) fn bootstrap_code_words(&self) -> Result<usize, Error> {
+        let _entry = self.initial_entry()?;
+        Ok(self.bootstrap_code.words())
     }
 
     pub(super) fn bootstrap_route(
@@ -539,13 +549,19 @@ impl ControlTrace {
     pub(super) fn new(
         probe: &SourceRecurrentTransitionProbe<'_>,
     ) -> Result<Self, Error> {
+        let plan = Plan::new(probe)?;
+        let bootstrap_code = BootstrapCode::new(
+            &plan,
+            probe.loop_probe.guard.io.physical_source,
+        )?;
         Ok(Self {
             active: None,
+            bootstrap_code,
             calls: 0,
             eof: false,
             initial_entry: None,
             phase: Phase::Main,
-            plan: Plan::new(probe)?,
+            plan,
             position: 0,
             prelude: [None; 2],
             preparations: 0,
@@ -568,6 +584,7 @@ impl ControlTrace {
             }
         }
         if self.steps == 0 && self.active.is_none() {
+            self.bootstrap_code.observe(trace, index)?;
             let [_, previous] = self.prelude;
             self.prelude = [previous, Some((index, *trace))];
             return Ok(());
