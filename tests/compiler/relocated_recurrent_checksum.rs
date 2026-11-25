@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_495_000;
+const BOOT_BUDGET: usize = 1_485_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;

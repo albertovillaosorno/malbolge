@@ -162,6 +162,10 @@ type InitialMaterialization<'plan, 'scratch> = (
     &'scratch mut ChunkWord,
 );
 
+// (address, final word, inverse word). Cache inverses once rather than
+// recalculating their fifteen-trit transforms at every selection.
+type MaterializationEntry = (u32, u32, u32);
+
 struct ChunkWord {
     value: u32,
 }
@@ -1215,6 +1219,59 @@ pub(super) fn initialize_chunk_seeds(
     )
 }
 
+// Approximate the walk cost of a patch by the actual mask-page distance
+// and the full rotation cycle required for changes above the low chunk.
+// The fixed fold weight is a heuristic, not an execution bound: scratch
+// synthesis still compares the two emitted candidates at every store.
+fn patch_distance(mut before: u32, mut after: u32) -> u32 {
+    let mut cost: u32 = if before.div_euclid(27) == after.div_euclid(27) {
+        0
+    } else {
+        30
+    };
+    for _ in 0..5u32 {
+        for column in patch_columns(before.rem_euclid(27), after.rem_euclid(27))
+        {
+            if column != 26 {
+                cost = cost.saturating_add(
+                    48u32
+                        .saturating_add(2u32.saturating_mul(
+                            column.div_euclid(CHUNK_PAGE_WIDTH),
+                        ))
+                        .saturating_add(4u32.saturating_mul(
+                            column.rem_euclid(CHUNK_PAGE_WIDTH),
+                        )),
+                );
+            }
+        }
+        before = before.div_euclid(27);
+        after = after.div_euclid(27);
+    }
+    cost
+}
+
+fn order_materialization(
+    mut remaining: &mut [MaterializationEntry],
+    mut current: u32,
+) {
+    // The order changes only scratch synthesis, never the destinations or
+    // their protected reset cells. Numeric ties make it reproducible.
+    while let Some((offset, &(_, _, inverse))) = remaining
+        .iter()
+        .enumerate()
+        .min_by_key(|&(_, &(address, value, inverse))| {
+            (patch_distance(current, inverse), value, address)
+        })
+    {
+        remaining.swap(0, offset);
+        current = inverse;
+        let Some((_, rest)) = remaining.split_first_mut() else {
+            break;
+        };
+        remaining = rest;
+    }
+}
+
 fn initialize_materialization(
     emitter: &mut Emitter<'_>,
     words: &Words,
@@ -1236,9 +1293,14 @@ fn initialize_materialization(
             .filter(|(address, _)| direct.contains(address))
             .map(|(&address, &value)| (address, value)),
     );
-    schedule.sort_unstable_by_key(|&(_, value)| value);
-    for (address, value) in schedule {
-        let inverse = profile_crazy(ALL_ONES, value, 15);
+    let mut entries = schedule
+        .into_iter()
+        .map(|(address, value)| {
+            (address, value, profile_crazy(ALL_ONES, value, 15))
+        })
+        .collect::<Vec<_>>();
+    order_materialization(&mut entries, scratch.value);
+    for (address, value, inverse) in entries {
         if direct.contains(&address) {
             let reset = target_reset(
                 address,

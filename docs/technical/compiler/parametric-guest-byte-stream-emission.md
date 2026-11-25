@@ -14526,3 +14526,17 @@ reaches first input in 1,491,992 steps, 97,402 fewer than the prior
 layout; the physical regression ceiling is now 1,495,000 steps.
 All 16 physical checksum and 31 source-recurrent tests pass. The
 original 100,000-step source-C publication limit remains unchanged.
+
+A deterministic scratch-aware materialization order now selects the next
+seed or singleton by the estimated cost of patching the current inverse
+word. It caches each inverse, counts nonidentity chunk columns, weights
+their page walks and accounts for the full rotation cycle when higher
+chunks differ. Numeric value and destination break equal-cost ties. This
+is a host-side scheduling heuristic, not an execution or admission proof:
+the actual emitted patch and fresh synthesis still compete for each
+word, and all destinations and protected reset cells are unchanged.
+Independent replay reaches first input in 1,482,923 steps, 9,069 fewer
+than numeric ordering, in the same 2,318,854-cell image. The physical
+ceiling is 1,485,000 steps. All 16 physical and 31 source-recurrent tests
+pass, including direct commit, reset and seed omission controls. The
+100,000-step source-C publication limit remains unchanged.
