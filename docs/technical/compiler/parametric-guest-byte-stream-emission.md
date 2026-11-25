@@ -14354,3 +14354,33 @@ source projection, physical transition audit and terminal receipt agreeing.
 This is a bounded post-bootstrap census, not a separate source-compiled
 artifact or an initialization proof. The five full source-backed replays
 and original fail-closed C23 publication gate remain mandatory.
+
+The combined replay now also authenticates the bounded post-input
+control schedule independently of the guest builder. Each active
+access envelope must have the declared source opcodes, distinct
+nonoverlapping code and entry-predecessor cells, the expected entry
+operand, and the exact sequential data and code transfers. Every
+ordinary return must read the next route-tape word; the guard's byte
+landing, bridge, byte-route root and backedge must reach the declared
+main-route root and first input call. Between active calls, indirect
+jumps may target only the just-executed envelope's interior. The
+actual encrypted cell and every executed inert suffix cell must
+follow the normative encryption mapping until the complete active
+source envelope has been restored. An unexpected active opcode,
+extra or missing call, bad jump, code-cell data write, or incomplete
+restoration refuses. The terminal guard alone may leave its envelope
+unrestored because no subsequent invocation can occur.
+
+Each proof records the active-call count (65 per successful byte,
+plus nine for the final EOF), actual preparation jumps and total
+post-input steps. The five original complete replays and all 512
+source-projected terminal forks pass. The weaker loop-only proof
+still accepts the guest when six proposed control addresses are
+individually shifted; the stronger proof refuses each. Mutating the
+actual preparation trace's encryption delta or jump operand, or
+omitting its jump, also refuses without changing the guest's I/O.
+The first input starts at an already-entered envelope: this is not
+an audit of the bootstrap, not a certificate of unvisited tape
+words or code, and not complete SSA storage or publication authority.
+The original 100,000-step source-C gate remains fail-closed.
+Evidence: `tests/compiler/source_recurrent_transition.rs`.

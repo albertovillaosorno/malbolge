@@ -23,8 +23,8 @@
 use core::mem::swap;
 
 use malbolge::{
-    ProfileMachine, StepOutcome, current_profile, decode_profile_instruction,
-    profile_crazy,
+    ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
+    decode_profile_instruction, profile_crazy,
 };
 
 use super::super::super::super::{
@@ -41,9 +41,10 @@ use super::super::{
 use super::{
     Error, GuardPlan, ParityPlan, ProjectionPlans, SourceRecurrentLoopProbe,
     SourceRecurrentRouteProbe, SourceRecurrentTransitionCheckpoint,
-    SourceRecurrentTransitionProbe, SourceTransitionValue, StatePlan,
-    TernaryCfgTerminator, TransitionTrace, admit_probe,
-    project_function_with_plans, verify_source_recurrent_transition,
+    SourceRecurrentTransitionProbe, SourceRecurrentTransitionProof,
+    SourceTransitionValue, StatePlan, TernaryCfgTerminator, TransitionTrace,
+    admit_probe, project_function_with_plans,
+    verify_source_recurrent_transition,
 };
 
 fn proposal<'source>(
@@ -65,12 +66,18 @@ fn proposal<'source>(
         reset_constants: [[7_180_832, 7_180_840], [7_180_836, 7_180_844]],
         rotate_address: guest.capture.rotate,
         route: SourceRecurrentRouteProbe {
+            byte_bridge_word: 7_180_670,
+            byte_route: 7_194_000,
             capture_reset_constant: 7_175_040,
+            input_word: 7_175_030,
             load_addresses: guest.load,
             load_raw_constant: 7_180_800,
             lookup_constants: [
                 7_180_812, 7_180_816, 7_180_820, 7_180_824, 7_180_828,
             ],
+            loop_return_word: 7_175_090,
+            main_entry: 7_175_207,
+            main_route: 7_175_200,
             raw_pointers: guest.pointers,
             raw_reset_constants: [7_180_848, 7_180_852],
             raw_restore_words: [[7_180_872, 7_180_876], [7_180_880, 7_180_884]],
@@ -84,6 +91,35 @@ fn proposal<'source>(
     })
 }
 
+fn check_control_counts(
+    proof: &SourceRecurrentTransitionProof,
+    bytes: usize,
+) -> Result<(), String> {
+    let first_input = proof
+        .loop_proof
+        .checkpoints
+        .first()
+        .ok_or("missing first input")?
+        .guard
+        .input_index;
+    if proof.control_calls != bytes.saturating_mul(65).saturating_add(9)
+        || proof.preparation_jumps == 0
+        || proof.preparation_jumps >= proof.post_input_steps
+        || proof.post_input_steps
+            != proof.loop_proof.io.guest_steps.saturating_sub(first_input)
+        || proof.transitions.len() != bytes
+        || proof.loop_proof.checkpoints.len() != bytes.saturating_add(1)
+    {
+        return Err(format!(
+            "wrong counts: calls={}, preparations={}, steps={}",
+            proof.control_calls,
+            proof.preparation_jumps,
+            proof.post_input_steps
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
     let wire = checksum_wire()?;
@@ -93,12 +129,7 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
         let probe = proposal(&wire, stream, &guest)?;
         let proof = verify_source_recurrent_transition(&probe)
             .map_err(|error| format!("transition {stream:?}: {error:?}"))?;
-        if proof.transitions.len() != stream.len()
-            || proof.loop_proof.checkpoints.len()
-                != stream.len().saturating_add(1)
-        {
-            return Err("wrong transition count".to_owned());
-        }
+        check_control_counts(&proof, stream.len())?;
         let mut prior = 0u8;
         for (receipt, byte) in
             proof.transitions.iter().zip(stream.iter().copied())
@@ -197,7 +228,13 @@ fn verify_terminal_fork(
         .terminal
         .receipt()
         .map_err(|error| format!("terminal receipt: {error:?}"))?;
-    if transition.checkpoints.len() != stream.len()
+    let (calls, preparations, steps) = transition
+        .control_receipt()
+        .map_err(|error| format!("control receipt: {error:?}"))?;
+    if calls != stream.len().saturating_mul(65).saturating_add(9)
+        || preparations == 0
+        || steps != replay.io.guest_steps
+        || transition.checkpoints.len() != stream.len()
         || receipt.halt_index.saturating_add(1) != replay.io.guest_steps
         || receipt.scratch_indices
             != [
@@ -256,6 +293,171 @@ fn source_recurrent_transition_all_terminal_nibbles_and_phases()
         }
     }
     Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_control_geometry() -> Result<(), String>
+{
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[255], &guest)?;
+    let route = probe.route;
+    let _weaker = verify_source_recurrent_loop(&probe.loop_probe)
+        .map_err(|error| format!("loop: {error:?}"))?;
+    for wrong in [
+        SourceRecurrentRouteProbe {
+            byte_bridge_word: route.byte_bridge_word.saturating_add(1),
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            byte_route: route.byte_route.saturating_add(1),
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            input_word: route.input_word.saturating_add(1),
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            loop_return_word: route.loop_return_word.saturating_add(1),
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            main_entry: route.main_entry.saturating_add(1),
+            ..route
+        },
+        SourceRecurrentRouteProbe {
+            main_route: route.main_route.saturating_add(1),
+            ..route
+        },
+    ] {
+        let candidate =
+            SourceRecurrentTransitionProbe { route: wrong, ..probe };
+        if verify_source_recurrent_transition(&candidate)
+            != Err(Error::GuestTransitionMismatch)
+        {
+            return Err(format!("false control binding: {wrong:?}"));
+        }
+    }
+    Ok(())
+}
+
+fn refuse_control_trace(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+    traces: &[ProfileStepTrace],
+    (index, replacement): (usize, ProfileStepTrace),
+) -> Result<(), String> {
+    let audit = TransitionTrace::new(probe)
+        .map_err(|error| format!("geometry: {error:?}"))?;
+    let mut journal = ReplayJournal::new(None, None, [0; 32], Some(audit));
+    for trace in traces.get(..index).ok_or("bad mutation index")? {
+        journal.observe(trace, projected);
+        if let Some(error) = journal.failed {
+            return Err(format!("unmodified prefix: {error:?}"));
+        }
+    }
+    if journal.reconcile(&replacement, projected)
+        != Err(Error::GuestTransitionMismatch)
+    {
+        return Err(format!("wrong control trace accepted at {index}"));
+    }
+    Ok(())
+}
+
+fn check_control_mutations(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+    traces: &[ProfileStepTrace],
+) -> Result<(), String> {
+    // Use a real indirect jump that encrypts an envelope interior and
+    // executes an inert suffix, not an artificial arithmetic operation.
+    let (index, jump) = traces
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, step)| {
+            step.decoded == Some(b'i')
+                && step.before.registers.code_pointer
+                    > step.after.registers.code_pointer
+                && step
+                    .before
+                    .registers
+                    .code_pointer
+                    .saturating_sub(step.after.registers.code_pointer)
+                    < 8
+                && step.memory_delta.encryption.is_some()
+        })
+        .ok_or("missing actual preparation jump")?;
+    let next = *traces
+        .get(index.saturating_add(1))
+        .ok_or("missing suffix")?;
+    let mut missing_encryption = jump;
+    missing_encryption.memory_delta.encryption = None;
+    refuse_control_trace(
+        probe,
+        projected,
+        traces,
+        (index, missing_encryption),
+    )?;
+    refuse_control_trace(probe, projected, traces, (index, next))?;
+    // Leave the VM's effects and output untouched; only corrupt the
+    // evidence of the control-data operand at this actual transfer.
+    let mut wrong_operand = jump;
+    let read = wrong_operand
+        .memory_reads
+        .data
+        .as_mut()
+        .ok_or("missing jump operand")?;
+    read.value = read.value.saturating_add(1);
+    refuse_control_trace(probe, projected, traces, (index, wrong_operand))
+}
+
+#[test]
+fn source_recurrent_transition_rejects_control_trace_mutations()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let stream = [255];
+    let probe = proposal(&wire, &stream, &guest)?;
+    let cfg = admit_probe(probe.loop_probe.guard.io)
+        .map_err(|error| format!("source: {error:?}"))?;
+    let [function] = cfg.functions.as_slice() else {
+        return Err("one checksum function required".to_owned());
+    };
+    let guard = GuardPlan::new(function, probe.loop_probe.guard.source_header)
+        .map_err(|error| format!("guard: {error:?}"))?;
+    let state = StatePlan::new(function, &probe.loop_probe.state)
+        .map_err(|error| format!("state: {error:?}"))?;
+    let parity = ParityPlan::new(function, &probe.loop_probe, guard.phi)
+        .map_err(|error| format!("parity: {error:?}"))?;
+    let projected =
+        project_function_with_plans(function, &stream, &ProjectionPlans {
+            guard: Some(&guard),
+            state: Some(&state),
+            transition: Some(&parity),
+        })
+        .map_err(|error| format!("source: {error:?}"))?;
+    let boot = terminal_boot(&guest)?;
+    let mut vm = boot
+        .fork_with_input(stream.to_vec())
+        .map_err(|error| error.to_string())?;
+    let audit = TransitionTrace::new(&probe)
+        .map_err(|error| format!("geometry: {error:?}"))?;
+    let mut journal =
+        ReplayJournal::new(None, None, cfg.source_sha256, Some(audit));
+    let mut traces = Vec::new();
+    let outcome = vm
+        .run_traced(27_000, &mut |trace| {
+            journal.observe(trace, &projected);
+            traces.push(*trace);
+        })
+        .map_err(|error| error.to_string())?;
+    let _proof = journal
+        .finish(outcome, &projected, &vm)
+        .map_err(|error| format!("unmodified control: {error:?}"))?;
+    check_control_mutations(&probe, &projected, &traces)
 }
 
 #[test]
@@ -419,10 +621,6 @@ fn source_recurrent_transition_rejects_wrong_raw_route() -> Result<(), String> {
             ..route
         },
         SourceRecurrentRouteProbe {
-            load_addresses: [second, first],
-            ..route
-        },
-        SourceRecurrentRouteProbe {
             raw_restore_words: [high_restore, low_restore],
             ..route
         },
@@ -435,6 +633,21 @@ fn source_recurrent_transition_rejects_wrong_raw_route() -> Result<(), String> {
             return Err("wrong executed raw route accepted".to_owned());
         }
     }
+    // The two load envelopes have different inert suffix lengths; swapping
+    // them is now a static envelope error rather than a late route error.
+    let swapped = SourceRecurrentTransitionProbe {
+        route: SourceRecurrentRouteProbe {
+            load_addresses: [second, first],
+            ..route
+        },
+        ..probe
+    };
+    if verify_source_recurrent_transition(&swapped)
+        != Err(Error::InvalidTransitionBinding)
+    {
+        return Err("swapped load envelopes accepted".to_owned());
+    }
+
     Ok(())
 }
 
@@ -480,16 +693,19 @@ fn source_recurrent_transition_rejects_wrong_scratch_geometry()
             reset_constants: [high_constants, low_constants],
             ..probe
         },
-        SourceRecurrentTransitionProbe {
-            scratch_rotate_address: guest.terminal,
-            ..probe
-        },
     ] {
         if verify_source_recurrent_transition(&invalid)
             != Err(Error::GuestTransitionMismatch)
         {
             return Err("wrong actual scratch route accepted".to_owned());
         }
+    }
+    if verify_source_recurrent_transition(&SourceRecurrentTransitionProbe {
+        scratch_rotate_address: guest.terminal,
+        ..probe
+    }) != Err(Error::InvalidTransitionBinding)
+    {
+        return Err("terminal code accepted as scratch envelope".to_owned());
     }
     Ok(())
 }

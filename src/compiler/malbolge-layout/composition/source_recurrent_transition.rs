@@ -38,17 +38,29 @@ use super::{
     TernaryOperation, admit_probe, project_function_with_plans, replay_guest,
 };
 
-/// Physical arithmetic geometry between the guard, lookups and commits.
+/// Physical arithmetic and control geometry of the recurrent route.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceRecurrentRouteProbe {
+    /// Data word selecting the successful-byte route after guard restoration.
+    pub byte_bridge_word: u32,
+    /// First byte-route tape word after the bridge dispatch.
+    pub byte_route: u32,
     /// Uniform constant for restoring the capture word.
     pub capture_reset_constant: u32,
+    /// Data word at the shared physical input instruction.
+    pub input_word: u32,
     /// Two reversible crazy-load sites.
     pub load_addresses: [u32; 2],
     /// Uniform all-two constant for initially reading the raw byte.
     pub load_raw_constant: u32,
     /// Uniform all-one constants before the five lookups.
     pub lookup_constants: [u32; 5],
+    /// Data word selecting the main route after the byte commits.
+    pub loop_return_word: u32,
+    /// First input call's tape word, after main-route branch restoration.
+    pub main_entry: u32,
+    /// Main route tape root reached by the physical backedge.
+    pub main_route: u32,
     /// Low and high mutable raw-byte index words.
     pub raw_pointers: [u32; 2],
     /// Uniform reset constants for the low and high index words.
@@ -149,8 +161,14 @@ pub struct SourceRecurrentTerminalCheckpoint {
 /// Finite paired loop proof with the ordered factored byte transitions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceRecurrentTransitionProof {
+    /// Actual active envelope calls, including the initial physical input.
+    pub control_calls: usize,
     /// Signed/unsigned bindings and one complete I/O and halt receipt.
     pub loop_proof: SourceRecurrentLoopProof,
+    /// All authenticated instructions from the first input through halt.
+    pub post_input_steps: usize,
+    /// Actual indirect jumps restoring a previously executed envelope.
+    pub preparation_jumps: usize,
     /// Final signed EOF, output scratch and actual termination witness.
     pub terminal: SourceRecurrentTerminalCheckpoint,
     /// One actual transition for each successful input; no transition at EOF.
@@ -578,6 +596,46 @@ fn verify_pairs(
     Ok(())
 }
 
+fn finish_transition(
+    loop_proof: SourceRecurrentLoopProof,
+    transition: TransitionTrace,
+) -> Result<SourceRecurrentTransitionProof, Error> {
+    verify_pairs(&loop_proof, &transition.checkpoints)?;
+    let terminal = transition.terminal.receipt()?;
+    let eof = loop_proof
+        .checkpoints
+        .last()
+        .ok_or(Error::GuestTransitionMismatch)?;
+    if terminal.terminal_index != eof.guard.guard_index.saturating_add(2)
+        || terminal.byte != eof.state.value
+        || terminal.halt_index.saturating_add(1) != loop_proof.io.guest_steps
+    {
+        return Err(Error::GuestTransitionMismatch);
+    }
+    let (control_calls, preparation_jumps, post_input_steps) =
+        transition.control_receipt()?;
+    let first = loop_proof
+        .checkpoints
+        .first()
+        .ok_or(Error::GuestTransitionMismatch)?;
+    if post_input_steps
+        != loop_proof
+            .io
+            .guest_steps
+            .saturating_sub(first.guard.input_index)
+    {
+        return Err(Error::GuestTransitionMismatch);
+    }
+    Ok(SourceRecurrentTransitionProof {
+        control_calls,
+        loop_proof,
+        post_input_steps,
+        preparation_jumps,
+        terminal,
+        transitions: transition.checkpoints,
+    })
+}
+
 /// Bind the canonical successful-byte parity branch and arithmetic arms to
 /// the actual factored lookup and commit sequence in the shared loop replay.
 ///
@@ -586,8 +644,9 @@ fn verify_pairs(
 /// # Errors
 /// Refuses incompatible loop probes, nonmatching source operations, missing,
 /// mutated or out-of-order indexed effects, raw-pointer preparation and
-/// restoration, scratch transfers, dirty resets, expanded-memory code execution
-/// and incorrect carried-state commits.
+/// restoration, scratch transfers, dirty resets, invalid envelope calls or
+/// preparation transfers, expanded-memory code execution and incorrect
+/// carried-state commits.
 pub fn verify_source_recurrent_transition(
     probe: &SourceRecurrentTransitionProbe<'_>,
 ) -> Result<SourceRecurrentTransitionProof, Error> {
@@ -627,23 +686,7 @@ pub fn verify_source_recurrent_transition(
         unsigned_phi: loop_probe.state.phi_result,
         word_addresses: loop_probe.state.words,
     };
-    verify_pairs(&loop_proof, &transition.checkpoints)?;
-    let terminal = transition.terminal.receipt()?;
-    let eof = loop_proof
-        .checkpoints
-        .last()
-        .ok_or(Error::GuestTransitionMismatch)?;
-    if terminal.terminal_index != eof.guard.guard_index.saturating_add(2)
-        || terminal.byte != eof.state.value
-        || terminal.halt_index.saturating_add(1) != loop_proof.io.guest_steps
-    {
-        return Err(Error::GuestTransitionMismatch);
-    }
-    Ok(SourceRecurrentTransitionProof {
-        loop_proof,
-        terminal,
-        transitions: transition.checkpoints,
-    })
+    finish_transition(loop_proof, transition)
 }
 
 #[cfg(test)]

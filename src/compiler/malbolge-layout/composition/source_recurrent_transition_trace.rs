@@ -25,6 +25,8 @@
 
 #[path = "source_recurrent_commit_trace.rs"]
 mod source_recurrent_commit_trace;
+#[path = "source_recurrent_control_trace.rs"]
+mod source_recurrent_control_trace;
 #[path = "source_recurrent_route_trace.rs"]
 mod source_recurrent_route_trace;
 #[path = "source_recurrent_terminal_trace.rs"]
@@ -37,6 +39,7 @@ use malbolge::{
     profile_crazy,
 };
 use source_recurrent_commit_trace::{CommitGeometry, CommitTrace};
+use source_recurrent_control_trace::{ControlReceipt, ControlTrace};
 use source_recurrent_route_trace::{RouteGeometry, RouteTrace};
 use source_recurrent_terminal_trace::TerminalTrace;
 
@@ -439,6 +442,7 @@ impl PendingTransition {
 
 pub(in super::super) struct TransitionTrace {
     pub(super) checkpoints: Vec<SourceRecurrentTransitionCheckpoint>,
+    control: ControlTrace,
     geometry: Geometry,
     pending: Option<PendingTransition>,
     source_extent: u32,
@@ -447,10 +451,15 @@ pub(in super::super) struct TransitionTrace {
 }
 
 impl TransitionTrace {
+    pub(super) fn control_receipt(&self) -> Result<ControlReceipt, Error> {
+        self.control.receipt()
+    }
+
     pub(in super::super) fn finish(&self) -> Result<(), Error> {
         if self.pending.is_some() {
             return Err(Error::GuestTransitionMismatch);
         }
+        let _control = self.control.receipt()?;
         self.terminal.receipt().map(|_receipt| ())
     }
 
@@ -459,6 +468,7 @@ impl TransitionTrace {
     ) -> Result<Self, Error> {
         Ok(Self {
             checkpoints: Vec::new(),
+            control: ControlTrace::new(probe)?,
             geometry: Geometry::new(probe)?,
             pending: None,
             source_extent: u32::try_from(
@@ -490,10 +500,15 @@ impl TransitionTrace {
                 || trace
                     .memory_delta
                     .encryption
-                    .is_some_and(|write| write.address >= self.source_extent))
+                    .is_some_and(|write| write.address >= self.source_extent)
+                || trace
+                    .memory_delta
+                    .data
+                    .is_some_and(|write| write.address < self.source_extent))
         {
             return Err(Error::GuestTransitionMismatch);
         }
+        self.control.observe(trace, projected_event)?;
         self.terminal.observe(trace, index, projected_event)?;
         if let Some(event) = projected_event {
             if let Some(pending) = self.pending.take() {

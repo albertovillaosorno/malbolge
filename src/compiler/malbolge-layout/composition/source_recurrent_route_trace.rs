@@ -36,13 +36,22 @@ type RouteIndices = [usize; EFFECT_COUNT];
 
 impl SourceRecurrentRouteProbe {
     pub(super) fn data_words(self) -> impl Iterator<Item = u32> + Clone {
-        [self.capture_reset_constant, self.load_raw_constant]
-            .into_iter()
-            .chain(self.lookup_constants)
-            .chain(self.raw_pointers)
-            .chain(self.raw_reset_constants)
-            .chain(self.raw_restore_words.into_iter().flatten())
-            .chain(self.recover_raw_constants)
+        [
+            self.capture_reset_constant,
+            self.load_raw_constant,
+            self.byte_bridge_word,
+            self.byte_route,
+            self.input_word,
+            self.loop_return_word,
+            self.main_entry,
+            self.main_route,
+        ]
+        .into_iter()
+        .chain(self.lookup_constants)
+        .chain(self.raw_pointers)
+        .chain(self.raw_reset_constants)
+        .chain(self.raw_restore_words.into_iter().flatten())
+        .chain(self.recover_raw_constants)
     }
 }
 
