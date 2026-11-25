@@ -14167,3 +14167,20 @@ independent replay finds both kinds of executed direct jumps and
 refuses omission of their physical pointer stores. All 11 physical
 checksum tests and nine independent source-recurrent tests pass.
 This remains outside the 100,000-step publication budget.
+
+A follow-up phase sweep preserved the optimized routes and tested
+smaller source extents. Four successful candidates had the following
+source cells and measured first-input steps, respectively:
+
+| Source cells | Bootstrap steps |
+| ---: | ---: |
+| 2,300,054 | 2,202,179 |
+| 2,281,254 | 2,149,051 |
+| 2,262,454 | 2,173,657 |
+| 2,243,654 | 2,171,241 |
+
+The 2,224,854-cell candidate exhausted a 2,180,000-step boot
+bound. The 2,206,054- and 2,168,454-cell candidates refused
+construction with `NoLoadableZero`. Retain the faster
+2,318,854-cell geometry (2,102,518 steps); source size alone
+is not a reliable predictor of execution cost.
