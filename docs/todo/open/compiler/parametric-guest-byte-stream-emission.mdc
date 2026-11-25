@@ -41,6 +41,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A separate **5,796-cell guarded live parity candidate** reverses the
+physical C118 branch, so bytes enter C126 and EOF halts at C120 without
+output or normalization. It constructs masks from marker tapes and
+preserves the raw byte through 15 rotations. C5501 writes the pointer
+`3^15 - 3^6 + byte`, C5555/C5556 select and rotate one of two virgin
+loader-word classes, and a read-only reconvergence plus two crazy folds
+writes the Boolean at M7,174,477 (C5582). All 256 successful inputs emit
+`byte & 1` in 5,578 steps; EOF never executes the tape. An extended
+paired proof and omitted-lookup control also pass. The result is
+scratch, not source SSA, and the separate signed-EOF and parity arms
+are not yet composed. Next: link parity-selected control, source-frame
+effects, arithmetic, phi/backedge, and the unchanged original C loop.
+Evidence: `tests/compiler/relocated_live_parity.rs` and the P2 contract.
+
 A new **6,642-cell signed EOF physical candidate** preserves the common
 C53 read and C118 byte/EOF dispatch. True EOF builds a ternary marker
 tape through genuine guest operations, stores canonical signed C32

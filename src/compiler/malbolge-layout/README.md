@@ -12,6 +12,22 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Guarded live byte parity (2026-11-24)
+
+`build_relocated_live_parity_source` emits a separate 5,796-cell probe.
+C118 selects C126 on a successful byte and C120 on true EOF. Marker
+tapes construct scratch masks and a full rotation cycle preserves the
+raw byte. C5501 computes a pointer equal to `3^15 - 3^6 + byte`;
+C5555/C5556 select and rotate a virgin loader word. The two classes
+encode even/odd, and a fixed read-only route plus two crazy folds
+writes exactly `byte & 1` at M7,174,477 (C5582). C5583 outputs the bit
+and C5584 halts after 5,578 instructions. All 256 successful bytes and
+EOF are checked in the normative VM. The long paired proof passes;
+omitting the lookup is rejected even when its output happens to match.
+The probe is not composed with signed EOF normalization, does not
+branch on parity, and does not authorize source-frame effects or
+publish the checksum. See `tests/compiler/relocated_live_parity.rs`.
+
 ### Physical signed EOF pair (2026-11-24)
 
 `build_relocated_signed_eof_source` emits a separate 6,642-cell N15

@@ -8,7 +8,7 @@
 //   - LICENSE
 // Boundary-Contract:
 // - Owns:
-//   - A source-loaded EOF-only canonical C32 pair materialization.
+//   - Source-loaded canonical EOF materialization and shared marker tapes.
 // - Must-Not:
 //   - Claim source-frame admission, checksum arithmetic, or an EOF loop.
 // - Allows:
@@ -27,12 +27,18 @@
 //! The byte arm remains incomplete. No source-level CFG or frame
 //! authorization follows from these physical candidate addresses.
 
+#[path = "relocated_live_parity_source.rs"]
+mod relocated_live_parity_source;
 use malbolge::{ProfileDescriptor, current_profile};
+pub use relocated_live_parity_source::{
+    RelocatedLiveParitySource, build_relocated_live_parity_source,
+};
 
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 use super::{
-    LinearOpcode, ZeroCellSourceError, build_relocated_eof_branch_source,
-    unique_graphical_cell, unwritten_loader_word,
+    LinearOpcode, RelocatedEofBranchSource, ZeroCellSourceError,
+    build_relocated_eof_branch_source, unique_graphical_cell,
+    unwritten_loader_word,
 };
 
 const FRAME: u32 = 7_174_417;
@@ -96,7 +102,6 @@ struct MarkerCopy {
 struct TapePlan {
     copies: Vec<MarkerCopy>,
     next_slot: u32,
-    tapes: [Vec<u32>; 2],
 }
 
 impl TapePlan {
@@ -128,36 +133,39 @@ impl TapePlan {
         }
     }
 
-    fn new(targets: [u32; 2]) -> Result<Self, BuildError> {
-        let mut plan = Self {
+    const fn new() -> Self {
+        Self {
             copies: Vec::new(),
             next_slot: TAPE_START,
-            tapes: [Vec::new(), Vec::new()],
-        };
-        let [low, high] = targets;
-        plan.tapes = [plan.tape(low)?, plan.tape(high)?];
-        Ok(plan)
+        }
     }
 
-    const fn operands_for_digit(target_digit: u32) -> &'static [Operand] {
+    const fn operands_for_digit(
+        target_digit: u32,
+        baseline_ones: bool,
+    ) -> &'static [Operand] {
         use Operand::{Marker, Swap};
         // The final target store swaps zero/one. Build its inverse first.
-        // F_i,G changes digit i from zero to two; F_i,G,G,F_i to one.
-        match target_digit {
-            0 => &[Marker, Swap, Swap, Marker],
-            2 => &[Marker, Swap],
+        match (target_digit, baseline_ones) {
+            (0, false) => &[Marker, Swap, Swap, Marker],
+            (1, true) => &[Marker, Swap, Marker, Swap],
+            (2, _) => &[Marker, Swap],
             _ => &[],
         }
     }
 
-    fn tape(&mut self, target: u32) -> Result<Vec<u32>, BuildError> {
+    fn tape(
+        &mut self,
+        target: u32,
+        baseline_ones: bool,
+    ) -> Result<Vec<u32>, BuildError> {
         let mut tape = Vec::new();
         for digit in ROTATION_ORDER {
             let trit = target
                 .checked_div(3u32.pow(digit))
                 .and_then(|value| value.checked_rem(3))
                 .ok_or(LAYOUT)?;
-            for kind in Self::operands_for_digit(trit) {
+            for kind in Self::operands_for_digit(trit, baseline_ones) {
                 tape.push(self.allocate_operand(digit, *kind)?);
             }
         }
@@ -171,12 +179,13 @@ struct Emitter<'profile> {
     data: u32,
     profile: &'profile ProfileDescriptor,
     source: Vec<u8>,
+    source_cells: usize,
 }
 
 impl Emitter<'_> {
     fn append(&mut self, op: LinearOpcode) -> Result<u32, BuildError> {
         let position = self.source.len();
-        if position >= SOURCE_CELLS {
+        if position >= self.source_cells {
             return Err(LAYOUT);
         }
         let byte = unique_graphical_cell(self.profile, op, position)
@@ -186,7 +195,7 @@ impl Emitter<'_> {
     }
 
     fn finish(mut self) -> Result<Vec<u8>, BuildError> {
-        let tail = SOURCE_CELLS.checked_sub(2).ok_or(LAYOUT)?;
+        let tail = self.source_cells.checked_sub(2).ok_or(LAYOUT)?;
         if self.source.len() > tail {
             return Err(LAYOUT);
         }
@@ -281,7 +290,10 @@ impl Emitter<'_> {
             FRAME_RESET
         } else if self.data == BOOT_RETURN {
             7_174_468
-        } else if self.data >= TAPE_START && self.data.is_multiple_of(2) {
+        } else if ((7_174_468..=7_174_484).contains(&self.data)
+            || self.data >= TAPE_START)
+            && self.data.is_multiple_of(2)
+        {
             self.data
         } else {
             return Err(LAYOUT);
@@ -311,14 +323,15 @@ impl Emitter<'_> {
         &mut self,
         tape: &[u32],
         target: u32,
+        baseline: u32,
     ) -> Result<u32, BuildError> {
-        self.zero_accumulator()?;
+        self.go(baseline)?;
+        let _: u32 = self.linear(LinearOpcode::RotateData)?;
         for &operand in tape {
             self.walk(operand)?;
             let _: u32 = self.linear(LinearOpcode::CrazyData)?;
         }
-        self.reset()?;
-        self.walk(target)?;
+        self.go(target)?;
         self.linear(LinearOpcode::CrazyData)
     }
 
@@ -339,6 +352,32 @@ impl Emitter<'_> {
     }
 }
 
+fn extended_prefix(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedEofBranchSource, BuildError> {
+    use LinearOpcode::{CrazyData, Halt, RelocateDataPointer};
+    if profile != current_profile() {
+        return Err(BuildError::UnsupportedProfile);
+    }
+    let mut prefix = build_relocated_eof_branch_source(profile)?;
+    let source = &mut prefix.source;
+    source.truncate(134);
+    for (position, opcode) in [
+        (0, RelocateDataPointer),
+        (1, RelocateDataPointer),
+        (8, CrazyData),
+        (10, RelocateDataPointer),
+        (16, RelocateDataPointer),
+        (38, CrazyData),
+        (122, Halt),
+    ] {
+        let byte = unique_graphical_cell(profile, opcode, position)
+            .map_err(|_error| LAYOUT)?;
+        *source.get_mut(position).ok_or(LAYOUT)? = byte;
+    }
+    Ok(prefix)
+}
+
 /// Emit a distinct source-loaded signed-EOF branch candidate.
 ///
 /// The bootstrap uses unreachable M122 as a high-memory pointer instead
@@ -354,38 +393,23 @@ impl Emitter<'_> {
 pub fn build_relocated_signed_eof_source(
     profile: &ProfileDescriptor,
 ) -> Result<RelocatedSignedEofBranchSource, BuildError> {
-    use LinearOpcode::{CrazyData, Halt, OutputByte, RelocateDataPointer};
-    if profile != current_profile() {
-        return Err(BuildError::UnsupportedProfile);
-    }
-    let prefix = build_relocated_eof_branch_source(profile)?;
-    let mut source = prefix.source;
-    source.truncate(134);
-    for (position, opcode) in [
-        (0, RelocateDataPointer),
-        (1, RelocateDataPointer),
-        (8, CrazyData),
-        (10, RelocateDataPointer),
-        (16, RelocateDataPointer),
-        (38, CrazyData),
-        (122, Halt),
-    ] {
-        let byte = unique_graphical_cell(profile, opcode, position)
-            .map_err(|_error| LAYOUT)?;
-        *source.get_mut(position).ok_or(LAYOUT)? = byte;
-    }
+    use LinearOpcode::{CrazyData, Halt, OutputByte};
+    let prefix = extended_prefix(profile)?;
     let mut emitter = Emitter {
         data: 7_174_418,
         profile,
-        source,
+        source: prefix.source,
+        source_cells: SOURCE_CELLS,
     };
-    let tape = TapePlan::new(encode_i32_cells(u32::MAX))?;
+    let mut tape = TapePlan::new();
+    let [low_word, high_word] = encode_i32_cells(u32::MAX);
+    let low = tape.tape(low_word, false)?;
+    let high = tape.tape(high_word, false)?;
     emitter.prepare_tape(&tape)?;
     emitter.prepare_pair()?;
-    let [low, high] = &tape.tapes;
     let [low_address, high_address] = prefix.input_pair;
-    let low_store = emitter.store_tape(low, low_address)?;
-    let high_store = emitter.store_tape(high, high_address)?;
+    let low_store = emitter.store_tape(&low, low_address, TAPE_ZERO)?;
+    let high_store = emitter.store_tape(&high, high_address, TAPE_ZERO)?;
     emitter.zero_accumulator()?;
     emitter.reset()?;
     emitter.walk(7_174_454)?;

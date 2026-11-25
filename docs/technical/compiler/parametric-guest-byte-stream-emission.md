@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Guarded live byte parity through loader classes (2026-11-24)
+
+The separate 5,796-cell `build_relocated_live_parity_source` candidate
+reverses the physical C118 branch by replacing C108/C110 with no-ops:
+true EOF halts at C120 before the tape, and every successful byte enters
+C126. The existing signed EOF image is unchanged. On the byte path, the
+shared marker-tape generator constructs three masks in scratch memory,
+including 14,348,542 and 14,348,905. A full 15-rotation cycle preserves
+the original raw byte while recovering it in A. Two crazy folds then
+write `3^15 - 3^6 + byte` at M7,174,469 (C5501). C5555 reads that
+pointer, and C5556 rotates its selected virgin loader word at pointer+1.
+The two loader classes are 37 (even byte) and 7,174,416 (odd byte).
+A fixed read-only route reconverges D at M7,174,467 without reading
+input-dependent scratch. Two further crazy folds write the exact bit
+at M7,174,477 (C5582), output it at C5583 and halt at C5584 in 5,578
+steps. The EOF path halts in 120 steps without output or normalization.
+
+Normative replay checks all 256 bytes, the preserved adjacent raw
+input pair, actual pointer and lookup, final Boolean write and output,
+and true EOF exclusion. The explicit MarkerTape paired-route proof
+accepts byte 255 versus true EOF. Omitting C5556 still produces the
+expected output for byte 1 but fails the physical lookup check. This
+is a scratch predicate witness, not a parity-selected code transfer or
+source SSA/frame admission. The signed EOF arm and predicate have not
+been composed; XOR, addition, masking, phi moves and the backedge are
+still missing. The original whole-C checksum must continue to refuse.
+Evidence: `tests/compiler/relocated_live_parity.rs`.
+
 ### Physical signed C32 EOF materialization (2026-11-24)
 
 The separate `build_relocated_signed_eof_source` candidate extends the

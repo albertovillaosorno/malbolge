@@ -36,6 +36,8 @@ mod relocated_eof_source_binding;
 
 #[path = "compiler/relocated_signed_eof.rs"]
 mod relocated_signed_eof;
+#[path = "compiler/relocated_live_parity.rs"]
+mod relocated_live_parity;
 
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
