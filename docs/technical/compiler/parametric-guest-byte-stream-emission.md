@@ -13274,3 +13274,14 @@ valid-denominator control every class can output `A`; no class can forge
 `-O2`, requiring NUL to output `A` and byte 1, `ff`, and real EOF to trap
 before output. The source-only branch checker never executes the C branch
 or arithmetic in the guest; these are separately scoped C23 controls.
+
+### First-iteration physical carry probe
+
+The 355,194-cell first-byte addition probe takes actual parity-selected
+branches at C62477, stores the zero-initialized XOR/add identity on either
+arm, and rejoins at C85000. Six rounds of digitwise ternary sum and shifted
+carry compute the full byte-plus-three word at M7177621. Nine boundary
+bytes and true EOF pass normative replay. Byte runs consume one input
+and halt in 165,467 steps; EOF normalizes the signed pair and returns zero
+in 43,121 steps. Output truncation is not a canonical masked frame store.
+This is not general XOR/add lowering, a loop, or source-frame admission.

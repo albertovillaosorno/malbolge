@@ -29,11 +29,16 @@
 
 #[path = "relocated_eof_parity_source.rs"]
 mod relocated_eof_parity_source;
+#[path = "relocated_first_byte_add_source.rs"]
+mod relocated_first_byte_add_source;
 #[path = "relocated_live_parity_source.rs"]
 mod relocated_live_parity_source;
 use malbolge::{ProfileDescriptor, current_profile};
 pub use relocated_eof_parity_source::{
     RelocatedEofParitySource, build_relocated_eof_parity_source,
+};
+pub use relocated_first_byte_add_source::{
+    RelocatedFirstByteAddSource, build_relocated_first_byte_add_source,
 };
 pub use relocated_live_parity_source::{
     RelocatedLiveParityBranchSource, RelocatedLiveParitySource,

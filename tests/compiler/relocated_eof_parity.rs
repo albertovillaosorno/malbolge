@@ -442,3 +442,91 @@ fn relocated_eof_parity_omitted_signed_stores() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "physical arithmetic and branch boundary assertions"
+)]
+#[test]
+fn relocated_first_byte_add_boundaries() -> Result<(), String> {
+    let guest =
+        super::layout::build_relocated_first_byte_add_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(guest.source.len(), 355_194);
+    assert_eq!(guest.sum_address, 7_177_621);
+    assert_eq!(guest.arm_store_code_addresses, [80_263, 82_263]);
+    assert_eq!(guest.parity_branch_code_address, 62_477);
+    assert_eq!(guest.byte_halt_code_address, 199_481);
+    assert_eq!(guest.eof_halt_code_address, 354_977);
+    let initial =
+        ProfileMachine::from_source(current_profile(), &guest.source, vec![])
+            .map_err(|error| error.to_string())?;
+    let [low, high] = guest.input_pair;
+    for byte in [0u8, 1, 2, 8, 26, 242, 253, 254, 255] {
+        let mut machine = initial
+            .fork_with_input(vec![byte, 128])
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(166_000, &mut |step| {
+                if [
+                    guest.parity_branch_code_address,
+                    guest.byte_halt_code_address,
+                    guest.eof_halt_code_address,
+                ]
+                .contains(&step.before.registers.code_pointer)
+                    || guest
+                        .arm_store_code_addresses
+                        .contains(&step.before.registers.code_pointer)
+                {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 165_467
+        });
+        assert_eq!(machine.input_consumed(), 1);
+        assert_eq!(machine.output(), &[byte.wrapping_add(3)]);
+        assert_eq!(word(&machine, guest.sum_address)?, u32::from(byte) + 3);
+        assert_eq!(word(&machine, low)?, u32::from(byte));
+        assert_eq!(word(&machine, high)?, 0);
+        assert_eq!(word(&machine, guest.merged_address)?, u32::from(byte));
+        let (pointer, target, selected, other) = if byte & 1 == 0 {
+            (7_174_501, 80_000, 80_263, 82_263)
+        } else {
+            (7_174_511, 82_000, 82_263, 80_263)
+        };
+        check_transfer(
+            &trace,
+            guest.parity_branch_code_address,
+            pointer,
+            target,
+        )?;
+        check_write(&trace, selected, guest.merged_address, u32::from(byte))?;
+        assert!(at(&trace, other).is_err());
+        assert!(at(&trace, guest.eof_halt_code_address).is_err());
+        for address in guest.zero_pair {
+            assert_eq!(word(&machine, address)?, 0);
+        }
+    }
+    let mut machine = initial
+        .fork_with_input(vec![])
+        .map_err(|error| error.to_string())?;
+    let outcome = machine
+        .run_traced(166_000, &mut |_| {})
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 43_121
+    });
+    assert_eq!(machine.output(), &[0]);
+    assert_eq!(machine.input_consumed(), 0);
+    assert_eq!([word(&machine, low)?, word(&machine, high)?], [
+        4_644_102, 299
+    ]);
+    Ok(())
+}

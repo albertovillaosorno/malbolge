@@ -101,7 +101,7 @@ pub struct RelocatedEofParitySource {
     pub zero_pair: [u32; 2],
 }
 
-fn composed_prefix(
+pub(super) fn composed_prefix(
     profile: &ProfileDescriptor,
 ) -> Result<RelocatedEofBranchSource, BuildError> {
     use LinearOpcode::{Halt, NoOperation, RelocateDataPointer};

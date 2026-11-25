@@ -223,9 +223,10 @@ pub use relocated_eof_branch_source::{
     RelocatedEofBranchSource, build_relocated_eof_branch_source,
 };
 pub use relocated_signed_eof_source::{
-    RelocatedEofParitySource, RelocatedLiveParityBranchSource,
-    RelocatedLiveParitySource, RelocatedSignedEofBranchSource,
-    build_relocated_eof_parity_source,
+    RelocatedEofParitySource, RelocatedFirstByteAddSource,
+    RelocatedLiveParityBranchSource, RelocatedLiveParitySource,
+    RelocatedSignedEofBranchSource, build_relocated_eof_parity_source,
+    build_relocated_first_byte_add_source,
     build_relocated_live_parity_branch_source,
     build_relocated_live_parity_source, build_relocated_signed_eof_source,
 };
