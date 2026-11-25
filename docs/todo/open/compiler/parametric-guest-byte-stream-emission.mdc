@@ -302,6 +302,10 @@ Three forward normalization sweeps preserve all even reset cells;
 270 independently traced clusters and 2,101 final commits save another
 114,634 steps. First input now takes 1,335,757 steps. Both omitted-store
 controls, all 19 physical checksum and 31 source-recurrent tests pass.
+Adaptive virgin-reset reservations allow even targets into the same
+sweeps. The independent replay checks 8,268 forward virgin reset jumps
+and 4,194 pre-normalized commits; first input takes 1,202,412 steps.
+All 19 physical checksum and 31 source-recurrent tests pass again.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

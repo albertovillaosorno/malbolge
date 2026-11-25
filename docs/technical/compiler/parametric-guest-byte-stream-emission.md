@@ -14580,3 +14580,19 @@ The same 2,318,854-cell image reaches first input in 1,335,757 steps,
 saving 114,634; its physical ceiling is 1,340,000 steps. All 19
 physical checksum and 31 source-recurrent tests pass. The separate
 100,000-step source-C publication limit remains unchanged.
+
+The next sweep revision includes selected even targets. Protect every
+direct target and selected even candidate before the first sweep,
+reserving an even candidate when its three preceding even cells are
+already protected. The final address-ordered commit pass may still use
+reserved virgin cells before their own initialization. A fully mixed
+sweep protecting every planned word reached first input in 1,327,307
+steps; fixed eight-cell reservation spacing reached 1,227,879. Adaptive
+reservation reaches first input in 1,202,412 steps, 133,345 fewer than
+the odd-only sweep, with the same source extent. Independent VM replay
+checks 318 clusters, 8,216 clustered visits, 2,202 distinct even targets,
+4,194 pre-normalized final commits, 646 remaining zeroed targets and
+8,268 actual forward virgin reset jumps. Omitting either alternating
+store, an even store or a shared reset refuses. The new physical ceiling
+is 1,210,000 steps; all 19 physical checksum and 31 source-recurrent tests
+pass. The 100,000-step source-C publication limit is not changed.

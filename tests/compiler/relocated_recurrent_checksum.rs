@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_340_000;
+const BOOT_BUDGET: usize = 1_210_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -75,26 +75,34 @@ struct ClusterVisit {
 }
 
 #[derive(Default)]
-struct OddClusterAudit {
+struct TargetClusterAudit {
     commits: BTreeSet<u32>,
+    even_site: Option<u32>,
+    even_targets: BTreeSet<u32>,
     groups: usize,
     normalized: BTreeSet<u32>,
     ones_site: Option<u32>,
+    pending_target: Option<u32>,
+    reset_site: Option<u32>,
+    resets: usize,
     run: Vec<ClusterVisit>,
     visits: usize,
     zero_site: Option<u32>,
     zeroed: BTreeSet<u32>,
 }
 
-impl OddClusterAudit {
-    fn finish(mut self, vm: &ProfileMachine) -> Result<[u32; 2], String> {
+impl TargetClusterAudit {
+    fn finish(mut self, vm: &ProfileMachine) -> Result<[u32; 4], String> {
         self.flush()?;
         check_materialized_tables(vm)?;
-        if self.groups != 270
-            || self.visits != 4_081
-            || self.zeroed.len() != 499
-            || self.normalized.len() != 2_101
+        if self.groups != 318
+            || self.visits != 8_216
+            || self.even_targets.len() != 2_202
+            || self.zeroed.len() != 646
+            || self.resets != 8_268
+            || self.normalized.len() != 4_194
             || self.commits != self.normalized
+            || self.pending_target.is_some()
         {
             return Err(
                 "missing clustered normalization or final commit".to_owned()
@@ -103,6 +111,8 @@ impl OddClusterAudit {
         Ok([
             self.ones_site.ok_or("missing clustered one store")?,
             self.zero_site.ok_or("missing clustered zero store")?,
+            self.reset_site.ok_or("missing shared reset")?,
+            self.even_site.ok_or("missing clustered even store")?,
         ])
     }
 
@@ -116,15 +126,14 @@ impl OddClusterAudit {
         }
         let mut previous = None;
         for (index, visit) in self.run.drain(..).enumerate() {
-            if visit.address.is_multiple_of(2)
-                || previous.is_some_and(|last: u32| {
-                    visit.address <= last
-                        || visit.address.saturating_sub(last) > 16
-                })
-                || self.normalized.contains(&visit.address)
+            if previous.is_some_and(|last: u32| {
+                visit.address <= last || visit.address.saturating_sub(last) > 16
+            }) || self.normalized.contains(&visit.address)
                 || visit.old
                     != if self.zeroed.contains(&visit.address) {
                         0
+                    } else if visit.address.is_multiple_of(2) {
+                        7_174_416
                     } else {
                         37
                     }
@@ -132,6 +141,10 @@ impl OddClusterAudit {
                 return Err("invalid normalization cluster operand".to_owned());
             }
             previous = Some(visit.address);
+            if visit.address.is_multiple_of(2) {
+                let _inserted = self.even_targets.insert(visit.address);
+                let _site = self.even_site.get_or_insert(visit.site);
+            }
             if index.is_multiple_of(2) && visit.accumulator == 0 {
                 let _inserted = self.normalized.insert(visit.address);
                 let _removed = self.zeroed.remove(&visit.address);
@@ -148,6 +161,33 @@ impl OddClusterAudit {
         Ok(())
     }
 
+    fn reset(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let target = self
+            .pending_target
+            .take()
+            .ok_or("missing shared reset target")?;
+        let trace = step(vm)?;
+        let address = trace.before.registers.data_pointer;
+        if address <= target
+            || !address.is_multiple_of(2)
+            || self.even_targets.contains(&address)
+            || trace
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value))
+                != Some((address, 7_174_416))
+            || trace.after.registers.data_pointer != 7_174_417
+        {
+            return Err("incorrect shared virgin reset".to_owned());
+        }
+        routing(&trace, u32::MAX)?;
+        let _site = self
+            .reset_site
+            .get_or_insert(trace.before.registers.code_pointer);
+        self.resets = self.resets.saturating_add(1);
+        Ok(())
+    }
+
     fn store(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
         let trace = step(vm)?;
         let address = trace.before.registers.data_pointer;
@@ -159,7 +199,9 @@ impl OddClusterAudit {
             .value;
         let new = independent_crazy(old, accumulator);
         check_store(&trace, address, old, new)?;
-        if matches!(old, 0 | 37) && matches!(accumulator, 0 | ONES) {
+        self.pending_target = Some(address);
+        if matches!(old, 0 | 37 | 7_174_416) && matches!(accumulator, 0 | ONES)
+        {
             self.run.push(ClusterVisit {
                 accumulator,
                 address,
@@ -1900,16 +1942,16 @@ fn relocated_recurrent_checksum_omitted_chunk_page_refuses()
     Ok(())
 }
 
-fn audit_odd_clusters(
+fn audit_target_clusters(
     guest: &RelocatedRecurrentChecksumSource,
-) -> Result<[u32; 2], String> {
+) -> Result<[u32; 4], String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         &guest.capture.source,
         Vec::new(),
     )
     .map_err(|error| error.to_string())?;
-    let mut audit = OddClusterAudit::default();
+    let mut audit = TargetClusterAudit::default();
     let mut shared = false;
     for _ in 0..BOOT_BUDGET {
         if is_input(&vm, guest)? {
@@ -1930,7 +1972,15 @@ fn audit_odd_clusters(
         }
         if opcode != Some(b'o') {
             audit.flush()?;
-        } else if !audit.run.is_empty() {
+        }
+        if audit.pending_target.is_some() && opcode != Some(b'o') {
+            if opcode != Some(b'j') {
+                return Err("missing shared reset jump".to_owned());
+            }
+            audit.reset(&mut vm)?;
+            continue;
+        }
+        if opcode == Some(b'o') && !audit.run.is_empty() {
             routing(&step(&mut vm)?, u32::MAX)?;
             continue;
         }
@@ -1944,12 +1994,12 @@ fn audit_odd_clusters(
 }
 
 #[test]
-fn relocated_recurrent_checksum_omitted_odd_cluster_stores_refuse()
+fn relocated_recurrent_checksum_omitted_target_cluster_effects_refuse()
 -> Result<(), String> {
     let guest = source()?;
-    for site in audit_odd_clusters(&guest)? {
+    for site in audit_target_clusters(&guest)? {
         let modified = omit_site(&guest, site)?;
-        if audit_odd_clusters(&modified).is_ok() {
+        if audit_target_clusters(&modified).is_ok() {
             return Err("accepted omitted cluster normalization".to_owned());
         }
     }

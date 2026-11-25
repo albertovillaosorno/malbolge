@@ -151,6 +151,7 @@ enum ChunkSeedAccess {
 
 type ChunkSeedMap = BTreeMap<u32, ChunkSeedAccess>;
 type ChunkSeedPlan = (ChunkSeedMap, Vec<(u32, u32)>);
+type ClusterPlan = (BTreeSet<u32>, BTreeSet<u32>);
 type ClusterSweep<'targets> = (&'targets [u32], &'targets mut BTreeSet<u32>);
 type ClusterProtection<'targets> = (&'targets BTreeSet<u32>, (u32, u32));
 type ChunkMaterialization<'seeds> = (
@@ -1366,22 +1367,23 @@ fn needs_normalization(address: u32, inverse: u32, value: u32) -> bool {
     profile_crazy(virgin, inverse, 15) != value
 }
 
-// Nearby odd targets can share one zero reload and one anchor route.
+// Nearby targets can share one zero reload and one anchor route.
 // Virgin words contain only zero/one trits, so alternating crazy stores
 // leave every other target normalized. The other targets become zero and
 // can participate in another sweep before their ordinary normalization.
-// Never touch even targets in this pass: they may be live reset cells.
-fn normalize_odd_clusters(
+// Reserve an even cell after three consecutive protected cells. The
+// forward shared commit order can reuse reserved cells until their own
+// initialization; never jump through a pre-touched even target.
+fn normalize_target_clusters(
     emitter: &mut Emitter<'_>,
     words: &Words,
     anchors: &[(TargetSlot, u32)],
     protection: ClusterProtection<'_>,
-) -> Result<BTreeSet<u32>, BuildError> {
+) -> Result<ClusterPlan, BuildError> {
     let mut candidates = words
         .iter()
         .filter_map(|(&address, &value)| {
-            (!address.is_multiple_of(2)
-                && !protection.0.contains(&address)
+            (!protection.0.contains(&address)
                 && needs_normalization(
                     address,
                     profile_crazy(ALL_ONES, value, 15),
@@ -1390,22 +1392,38 @@ fn normalize_odd_clusters(
             .then_some(address)
         })
         .collect::<Vec<_>>();
+    let mut protected = protection.0.clone();
+    // Select only even targets with a nearby unprotected predecessor.
+    // Include direct targets and every selected even candidate in the
+    // protection set, even if a short cluster is ultimately skipped.
+    candidates.retain(|&address| {
+        if !address.is_multiple_of(2) {
+            return true;
+        }
+        if [2u32, 4, 6].into_iter().all(|distance| {
+            protected.contains(&address.saturating_sub(distance))
+        }) {
+            return false;
+        }
+        let _added = protected.insert(address);
+        true
+    });
     let mut normalized = BTreeSet::new();
     for _ in 0..3u32 {
-        candidates = normalize_odd_sweep(
+        candidates = normalize_target_sweep(
             emitter,
             anchors,
-            protection,
+            (&protected, protection.1),
             (&candidates, &mut normalized),
         )?;
     }
-    Ok(normalized)
+    Ok((normalized, protected))
 }
 
-fn normalize_odd_sweep(
+fn normalize_target_sweep(
     emitter: &mut Emitter<'_>,
     anchors: &[(TargetSlot, u32)],
-    (direct, extra): ClusterProtection<'_>,
+    (protected, extra): ClusterProtection<'_>,
     (candidates, normalized): ClusterSweep<'_>,
 ) -> Result<Vec<u32>, BuildError> {
     let mut zeroed = Vec::new();
@@ -1429,7 +1447,7 @@ fn normalize_odd_sweep(
             }
         }
         let reset =
-            target_reset(last, direct, extra, emitter.tape_bounds.limit)?;
+            target_reset(last, protected, extra, emitter.tape_bounds.limit)?;
         emitter.walk(reset)?;
     }
     Ok(zeroed)
@@ -1441,7 +1459,7 @@ fn materialize_chunk_words(
     anchors: &[(TargetSlot, u32)],
     (seed_addresses, routing, direct): ChunkMaterialization<'_>,
 ) -> Result<(), BuildError> {
-    let pre_normalized = normalize_odd_clusters(
+    let (pre_normalized, protected) = normalize_target_clusters(
         emitter,
         words,
         anchors,
@@ -1456,7 +1474,7 @@ fn materialize_chunk_words(
         }
         let reset = target_reset(
             address,
-            direct,
+            &protected,
             routing.extra,
             emitter.tape_bounds.limit,
         )?;
