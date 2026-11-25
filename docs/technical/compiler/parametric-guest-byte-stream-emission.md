@@ -13803,3 +13803,53 @@ refuses; the historical profile refuses as well. The recovered raw
 word is now physically available for the next arithmetic experiment.
 This image deliberately does not claim checksum arithmetic or
 original source-frame admission.
+
+### Recurrent input-dependent checksum-bit projection
+
+A separate 6,420,168-cell image executes the low bit of the original
+mutable C checksum recurrence. Unlike length parity, this state depends
+on the actual byte value. For both XOR and addition the low bit before
+the final increment is the old low bit XOR the input low bit. Adding
+three modulo 256 flips it, so the even arm toggles the persistent state
+and the odd arm leaves it alone. An independent census checks the
+projection for all 65,536 pairs of prior checksum and current byte.
+
+The recurrent guard still captures every raw byte or EOF and applies
+the six dirty classifier stores. After actual byte dispatch, a crazy
+store with all twos exchanges trits one and two of the capture. The
+next store into an all-one scratch word exchanges trits zero and one.
+Together with capture's initial exchange of zero and one, these three
+operations exchange zero and two, preserving one. The actual pointer
+at M7175080 is therefore 14348906 minus the original byte.
+
+A four-cell relocation envelope selects that pointer, then follows
+three dependent data relocations. For bytes 1 through 255 the first
+dependent relocation lands at M14348907 minus the byte, in an untouched
+alternating loader region. An odd input selects 7174416; an even input
+selects 37. Byte zero wraps the pointer to M0. Bootstrap explicitly
+materializes M0=37, M38=7181819 and M7174417=7181799 using guest
+instructions after the ordinary route stores finish. The second and
+third dependent relocations follow these read-only dispatch words
+to the even or odd continuation. The indirect dispatcher transfers
+control through that selected route; no host selects an arm.
+
+Only the even continuation loads all twos and performs a crazy store
+into M7175100, which exchanges the persistent encodings 334080 and
+462339. The odd continuation does not change it. Both arms join at
+the same restoration/reset route, restore the selector envelope and
+reset the capture and pointer to all ones before the backedge. Both
+EOF classes instead select a common terminal relocation, rotation,
+output and halt. The final rotation maps the state to 111360 or
+154113; their normative output bytes are respectively zero and one.
+
+Independent trace replay checks every real input, guard, transform,
+dependent relocation (including pointer wrap), selected update, dirty
+reset, restoration and terminal effect. Seven streams include empty,
+zero, high-byte, repeated odd, mixed parity, and ascending/descending
+all-byte sequences; the expected output is the low bit of the full
+eight-bit checksum computed by a separate oracle. Six omitted-effect
+controls (three selector relocations, transform, final rotation and
+output) and the historical profile refuse. The bootstrap bound is
+6,400,000 instructions; this is not a compact runtime, a full eight-bit
+checksum, or independent source-frame admission. Original whole-C
+publication still requires those remaining obligations.

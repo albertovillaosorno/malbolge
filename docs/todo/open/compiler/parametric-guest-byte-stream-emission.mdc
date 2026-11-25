@@ -118,8 +118,16 @@ saved encoding with two reversible stores and recovers the original
 byte in a second dirty word. The real byte arm emits that recovered
 byte, restores both slots and takes the backedge; EOF skips reloading.
 All bytes in both orders, both EOF routes and omitted-load/echo
-controls pass. Recurrent checksum arithmetic and complete
-source-frame routing remain open. Evidence:
+controls pass. A separate 6,420,168-cell physical image now computes
+the original checksum's low-bit projection across arbitrary recurrent
+byte/EOF dispatch: a complemented raw pointer selects the untouched
+loader parity word; even input toggles persistent state and odd input
+leaves it unchanged. Both arms join through dirty resets and a backedge.
+Seven traced streams, six omitted-effect controls and all 65,536
+checksum/byte projection pairs pass. Full-byte recurrent checksum
+arithmetic, compact execution and complete source-frame routing remain
+open. Evidence:
+`tests/compiler/relocated_recurrent_parity.rs`,
 `tests/compiler/relocated_recurrent_reload.rs`,
 `tests/compiler/relocated_recurrent_capture.rs`, `tests/compiler/relocated_reusable_guard.rs`,
 `tests/compiler/relocated_first_iteration.rs`,

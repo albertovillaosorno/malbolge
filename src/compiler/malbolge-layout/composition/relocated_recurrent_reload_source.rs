@@ -89,7 +89,7 @@ impl ReloadBlocks {
     }
 }
 
-fn anchors(words: &Words) -> Result<Anchors, BuildError> {
+pub(super) fn anchors(words: &Words) -> Result<Anchors, BuildError> {
     let mut result = Vec::new();
     let mut next_base = 0u32;
     let mut address = ANCHOR_START;
@@ -128,7 +128,10 @@ fn data_words() -> Result<Words, BuildError> {
     Ok(words)
 }
 
-fn main_route(blocks: &Blocks, words: &mut Words) -> Result<u32, BuildError> {
+pub(super) fn main_route(
+    blocks: &Blocks,
+    words: &mut Words,
+) -> Result<u32, BuildError> {
     let mut route = Route {
         cursor: MAIN_ROUTE,
         words,
@@ -150,7 +153,7 @@ fn main_route(blocks: &Blocks, words: &mut Words) -> Result<u32, BuildError> {
     Ok(entry)
 }
 
-fn reset(
+pub(super) fn reset(
     route: &mut Route<'_>,
     blocks: &Blocks,
     operand: u32,

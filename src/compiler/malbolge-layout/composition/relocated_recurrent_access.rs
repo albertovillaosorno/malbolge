@@ -107,8 +107,6 @@ impl AccessBlock {
         op: LinearOpcode,
         shape: AccessShape,
     ) -> Result<Self, BuildError> {
-        use super::super::super::unique_graphical_cell;
-
         let AccessShape {
             after,
             before,
@@ -133,8 +131,35 @@ impl AccessBlock {
         if return_to_route {
             operations.push(LinearOpcode::RelocateDataPointer);
         }
+        Self::from_operations(profile, start, before, after, &operations)
+    }
+
+    pub(super) fn selector(
+        profile: &ProfileDescriptor,
+        start: u32,
+    ) -> Result<Self, BuildError> {
+        Self::from_operations(
+            profile,
+            start,
+            0,
+            2,
+            &[LinearOpcode::RelocateDataPointer; 4],
+        )
+    }
+
+    fn from_operations(
+        profile: &ProfileDescriptor,
+        start: u32,
+        before: u32,
+        after: u32,
+        operations: &[LinearOpcode],
+    ) -> Result<Self, BuildError> {
+        use super::super::super::unique_graphical_cell;
+        if operations.len() > MAX_CELLS {
+            return Err(LAYOUT);
+        }
         let mut cells = Vec::new();
-        for (offset, operation) in operations.into_iter().enumerate() {
+        for (offset, &operation) in operations.iter().enumerate() {
             let position = usize::try_from(start)
                 .ok()
                 .and_then(|value| value.checked_add(offset))

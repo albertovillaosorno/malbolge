@@ -22,6 +22,8 @@
 // - Summary:
 //   - Prove one dirty capture slot survives dispatch and is reused.
 
+#[path = "relocated_recurrent_parity.rs"]
+mod relocated_recurrent_parity;
 #[path = "relocated_recurrent_reload.rs"]
 mod relocated_recurrent_reload;
 
@@ -106,6 +108,14 @@ fn invariant(
 // Preparation may encrypt arbitrary graphical cells, but must not execute
 // any unexpected arithmetic, I/O or halt. Authenticate each intervening
 // transfer and its actual selected memory operand.
+fn successor(address: u32) -> Result<u32, String> {
+    if address == EOF {
+        Ok(0)
+    } else {
+        plus(address, 1)
+    }
+}
+
 fn routing(trace: &ProfileStepTrace, branch: u32) -> Result<(), String> {
     let before = trace.before.registers;
     let after = trace.after.registers;
@@ -116,8 +126,8 @@ fn routing(trace: &ProfileStepTrace, branch: u32) -> Result<(), String> {
                 return Err("wrong code pointer operand".to_owned());
             }
             (
-                plus(read.value, 1)?,
-                plus(before.data_pointer, 1)?,
+                successor(read.value)?,
+                successor(before.data_pointer)?,
                 read.value,
             )
         },
@@ -127,8 +137,8 @@ fn routing(trace: &ProfileStepTrace, branch: u32) -> Result<(), String> {
                 return Err("wrong data pointer operand".to_owned());
             }
             (
-                plus(before.code_pointer, 1)?,
-                plus(read.value, 1)?,
+                successor(before.code_pointer)?,
+                successor(read.value)?,
                 before.code_pointer,
             )
         },
@@ -136,8 +146,8 @@ fn routing(trace: &ProfileStepTrace, branch: u32) -> Result<(), String> {
             return Err(format!("unexpected physical effect: {trace:?}"));
         },
         Some(_) => (
-            plus(before.code_pointer, 1)?,
-            plus(before.data_pointer, 1)?,
+            successor(before.code_pointer)?,
+            successor(before.data_pointer)?,
             before.code_pointer,
         ),
     };

@@ -67,7 +67,7 @@ fn reload_word(
     fold(vm, base, (base.crazy, guest.raw), (ONES, encoded))
 }
 
-fn reset_operand(
+pub(super) fn reset_operand(
     vm: &mut ProfileMachine,
     guest: &RelocatedRecurrentCaptureSource,
     operand: (u32, u32),

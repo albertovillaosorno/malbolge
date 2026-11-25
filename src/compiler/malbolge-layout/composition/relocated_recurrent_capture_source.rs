@@ -22,12 +22,17 @@
 // - Summary:
 //   - Capture the raw word before dirty classification and reset its slot.
 
+#[path = "relocated_recurrent_parity_source.rs"]
+mod relocated_recurrent_parity_source;
 #[path = "relocated_recurrent_reload_source.rs"]
 mod relocated_recurrent_reload_source;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{ProfileDescriptor, profile_crazy};
+pub use relocated_recurrent_parity_source::{
+    RelocatedRecurrentParitySource, build_relocated_recurrent_parity_source,
+};
 pub use relocated_recurrent_reload_source::{
     RelocatedRecurrentReloadSource, build_relocated_recurrent_reload_source,
 };
@@ -372,7 +377,21 @@ fn initialize(
     anchors: &[(u32, u32)],
     stride: u32,
 ) -> Result<(), BuildError> {
-    let values = words.values().copied().collect::<BTreeSet<_>>();
+    initialize_with_dispatch(emitter, words, anchors, stride, &[])
+}
+
+fn initialize_with_dispatch(
+    emitter: &mut Emitter<'_>,
+    words: &Words,
+    anchors: &[(u32, u32)],
+    stride: u32,
+    dispatch: &[(u32, u32)],
+) -> Result<(), BuildError> {
+    let values = words
+        .values()
+        .copied()
+        .chain(dispatch.iter().map(|&(_, value)| value))
+        .collect::<BTreeSet<_>>();
     let mut seed_addresses = BTreeMap::new();
     let mut seeds = Vec::new();
     for (index, value) in values.into_iter().enumerate() {
@@ -420,6 +439,51 @@ fn initialize(
             crazy(emitter, seed)?;
         }
         store_anchored(emitter, address, anchors)?;
+    }
+    for &(address, value) in dispatch {
+        for constant in [ONES, NEAR_TWOS, NEAR_ZERO] {
+            rotate(emitter, constant)?;
+            store_dispatch(emitter, address)?;
+        }
+        let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
+        for _ in 0..2u8 {
+            rotate(emitter, NEAR_TWOS)?;
+            crazy(emitter, seed)?;
+        }
+        store_dispatch(emitter, address)?;
+    }
+    Ok(())
+}
+
+// These three cells have already been executed or initialized by the prefix.
+// The marker return path is retained until all ordinary route stores finish.
+fn store_dispatch(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+) -> Result<(), BuildError> {
+    match address {
+        0 => {
+            emitter.go(NEAR_TWOS)?;
+            emitter.jump(0)?;
+        },
+        38 => {
+            emitter.go(7_174_425)?;
+            emitter.jump(38)?;
+        },
+        FRAME => {
+            emitter.go(FRAME)?;
+        },
+        _ => return Err(LAYOUT),
+    }
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    if address != FRAME {
+        emitter.walk(40)?;
+        emitter.jump(70)?;
+        emitter.jump(116)?;
+        emitter.walk(117)?;
+        emitter.jump(120)?;
+        emitter.walk(122)?;
+        emitter.jump(BOOT_RETURN)?;
     }
     Ok(())
 }
