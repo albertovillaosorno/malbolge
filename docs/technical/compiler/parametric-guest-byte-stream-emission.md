@@ -13462,3 +13462,33 @@ the compact layout stays below those addresses.
 This proves the bounded second even arithmetic and canonical storage,
 not the nonzero XOR arm, third read, repeated code visits, independent
 source-frame admission or whole-C publication.
+
+
+### Third input and a second dirty phi edge
+
+The separate 4,350,006-cell second-even-read candidate extends the
+canonical mask with a real third input. The top trit of the fresh raw
+word M7174933 selects C3900000 (byte) or C3940000 (EOF). A byte
+overwrites the dirty signed input pair at M7174453/M7174454; EOF
+resets both words before the canonical signed stores [4644102, 299].
+Both arms transfer to C3980000. Four dirty snapshot copies and four
+dirty commit copies overwrite the exact first-edge reservations and
+temporaries, with six reset stores and two copy stores per word.
+The new header class is read from the committed signed high word.
+It selects C4050000 for a third byte (halt before arithmetic) or
+C4090000 for true EOF (store, emit and halt on the committed checksum).
+
+Nine traced vectors, including 512 before masking, verify the exact
+three input requests, both normalized classes, both selected transfers,
+the 64 ordered dirty phi effects with independent reset arithmetic,
+and the terminal output or unfinished byte halt. The fourth byte
+remains unread. Empty, one-byte EOF and odd-second paths bypass the
+third read. The two high-checksum store omissions still return the
+correct output byte, but the physical effect checker refuses both;
+the omitted signed EOF high store also fails. The historical profile
+is refused. Earlier bounded source builders remain available.
+
+This is an executable two-update witness for an even second byte,
+not a whole-C linked artifact. The second odd XOR arm, subsequent
+arithmetic, reusable code cells and full independent source-frame
+admission remain open.

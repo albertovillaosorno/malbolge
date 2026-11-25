@@ -34,9 +34,11 @@ use super::super::crazy as independent_crazy;
 use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
     RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
-    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
-    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
-    build_relocated_second_add_source, build_relocated_second_even_mask_source,
+    RelocatedSecondEvenReadSource, RelocatedSecondParityAddSource,
+    ScratchResetSite, ZeroCellSourceError, build_relocated_dirty_phi_source,
+    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    build_relocated_second_even_mask_source,
+    build_relocated_second_even_read_source,
     build_relocated_second_parity_add_source,
 };
 use super::{at, check_transfer, check_write, word};
@@ -45,10 +47,12 @@ const ITERATION_BUDGET: usize = 700_000;
 const SECOND_ADD_BUDGET: usize = 2_600_000;
 const SECOND_PARITY_ADD_BUDGET: usize = 4_400_000;
 const SECOND_MASK_BUDGET: usize = 3_400_000;
+const THIRD_READ_BUDGET: usize = 4_350_006;
 
 type MaskTraceBuffers<'trace> =
     (&'trace mut Vec<ProfileStepTrace>, &'trace mut ScratchReplay);
 type MaskTraceSites<'sites> = (&'sites [u32], &'sites [u32]);
+type PhiWordSets = ([u32; 4], [u32; 4]);
 
 #[derive(Default)]
 struct ScratchReplay {
@@ -2048,6 +2052,471 @@ fn relocated_second_even_mask_rejects_omitted_effects() -> Result<(), String> {
         assert_eq!(at(&trace, site)?.decoded, Some(b'o'), "mutation reached");
         assert!(
             check_second_mask_result(&guest, &machine, &trace, [252, 254])
+                .is_err(),
+            "omitted C{site} accepted: {outcome:?}"
+        );
+    }
+    Ok(())
+}
+
+fn third_read_source() -> Result<RelocatedSecondEvenReadSource, String> {
+    build_relocated_second_even_read_source(current_profile())
+        .map_err(|error| format!("third read layout: {error:?}"))
+}
+
+fn third_read_sites(guest: &RelocatedSecondEvenReadSource) -> Vec<u32> {
+    [
+        guest.third_branch_code_address,
+        guest.third_class_store,
+        guest.third_header_branch_code_address,
+        guest.third_header_class_store,
+        guest.third_input_code_address,
+        guest.third_eof_output_store,
+        guest.third_eof_output_code_address,
+        guest.third_eof_halt_code_address,
+        guest.third_byte_halt_code_address,
+    ]
+    .into_iter()
+    .chain(guest.third_phi_transfers)
+    .chain(guest.third_eof_stores)
+    .chain(guest.third_eof_resets.into_iter().flatten())
+    .chain(guest.third_byte_stores.into_iter().flat_map(dirty_sites))
+    .chain(guest.third_phi_snapshots.into_iter().flat_map(dirty_sites))
+    .chain(guest.third_phi_commits.into_iter().flat_map(dirty_sites))
+    .collect()
+}
+
+fn check_third_dirty_copy(
+    trace: &[ProfileStepTrace],
+    copy: DirtyPhiCopySites,
+    addresses: [u32; 2],
+    values: [u32; 3],
+) -> Result<(), String> {
+    let [dest, temp] = addresses;
+    let [old, new, old_temp] = values;
+    check_dirty_reset(trace, copy.temporary_resets, temp, old_temp)?;
+    check_dirty_reset(trace, copy.destination_resets, dest, old)?;
+    check_write(
+        trace,
+        copy.temporary_store,
+        temp,
+        independent_crazy(7_174_453, new),
+    )?;
+    check_write(trace, copy.destination_store, dest, new)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the actual input and branch authenticate the signed normalization"
+)]
+fn check_third_input(
+    guest: &RelocatedSecondEvenReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: (u8, Option<u8>),
+) -> Result<[u32; 2], String> {
+    let (second, third) = input;
+    let input_step = at(trace, guest.third_input_code_address)?;
+    let (event, raw, pair) = third.map_or(
+        (TraceInput::EndOfInput, 14_348_906, [4_644_102, 299]),
+        |byte| {
+            (TraceInput::Byte(byte), u32::from(byte), [
+                u32::from(byte),
+                0,
+            ])
+        },
+    );
+    assert_eq!(input_step.input, Some(event), "third actual input");
+    assert_eq!(input_step.after.registers.accumulator, raw, "raw N15 input");
+    assert_eq!(word(machine, 7_174_933)?, raw, "raw input preserved");
+    check_write(
+        trace,
+        guest.third_class_store,
+        7_174_957,
+        u32::from(third.is_none()),
+    )?;
+    let [byte_transfer, eof_transfer] = guest.third_phi_transfers;
+    let transfer = if third.is_some() {
+        check_transfer(
+            trace,
+            guest.third_branch_code_address,
+            7_174_961,
+            3_900_000,
+        )?;
+        check_third_byte_stores(guest, trace, u32::from(second), pair)?;
+        assert!(at(trace, eof_transfer).is_err(), "EOF normalizer bypass");
+        byte_transfer
+    } else {
+        check_transfer(
+            trace,
+            guest.third_branch_code_address,
+            7_174_971,
+            3_940_000,
+        )?;
+        for (((sites, store), address), (old, new)) in guest
+            .third_eof_resets
+            .into_iter()
+            .zip(guest.third_eof_stores)
+            .zip([7_174_453, 7_174_454])
+            .zip([u32::from(second), 0].into_iter().zip(pair))
+        {
+            check_dirty_reset(trace, sites, address, old)?;
+            check_write(trace, store, address, new)?;
+        }
+        assert!(at(trace, byte_transfer).is_err(), "byte normalizer bypass");
+        eof_transfer
+    };
+    check_transfer(trace, transfer, 7_174_981, 3_980_000)?;
+    assert_eq!(
+        [word(machine, 7_174_453)?, word(machine, 7_174_454)?],
+        pair,
+        "third canonical pair"
+    );
+    Ok(pair)
+}
+
+fn check_third_byte_stores(
+    guest: &RelocatedSecondEvenReadSource,
+    trace: &[ProfileStepTrace],
+    second: u32,
+    pair: [u32; 2],
+) -> Result<(), String> {
+    let [low, high] = guest.third_byte_stores;
+    let [value, zero] = pair;
+    check_third_dirty_copy(trace, low, [7_174_453, 7_174_701], [
+        second,
+        value,
+        independent_crazy(7_174_453, second),
+    ])?;
+    check_third_dirty_copy(trace, high, [7_174_454, 7_174_701], [
+        0,
+        zero,
+        independent_crazy(7_174_453, value),
+    ])
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all dirty snapshots must precede ordered dirty commits"
+)]
+fn check_third_phi(
+    guest: &RelocatedSecondEvenReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    values: PhiWordSets,
+) -> Result<(), String> {
+    let (previous, next) = values;
+    let addresses = [
+        7_174_456, 7_174_457, 7_174_458, 7_174_459, 7_174_431, 7_174_432,
+        7_174_433, 7_174_434,
+    ];
+    let temps = [
+        7_174_709, 7_174_713, 7_174_717, 7_174_721, 7_174_725, 7_174_729,
+        7_174_733, 7_174_737,
+    ];
+    let copies = guest
+        .third_phi_snapshots
+        .into_iter()
+        .chain(guest.third_phi_commits);
+    for ((copy, (dest, temp)), (old, new)) in
+        copies.zip(addresses.into_iter().zip(temps)).zip(
+            previous
+                .into_iter()
+                .chain(previous)
+                .zip(next.into_iter().chain(next)),
+        )
+    {
+        check_third_dirty_copy(trace, copy, [dest, temp], [
+            old,
+            new,
+            independent_crazy(7_174_453, old),
+        ])?;
+        assert_eq!(word(machine, dest)?, new, "committed M{dest}");
+    }
+    let sites = guest
+        .third_phi_snapshots
+        .into_iter()
+        .chain(guest.third_phi_commits)
+        .flat_map(dirty_sites)
+        .collect::<Vec<_>>();
+    let observed = trace
+        .iter()
+        .map(|step| step.before.registers.code_pointer)
+        .filter(|code| sites.contains(code))
+        .collect::<Vec<_>>();
+    assert_eq!(observed, sites, "exact second-edge effect order");
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the actual committed signed header chooses the terminal arm"
+)]
+fn check_third_terminal(
+    guest: &RelocatedSecondEvenReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    expected: (u8, Option<u8>),
+) -> Result<(), String> {
+    let (checksum, third) = expected;
+    check_write(
+        trace,
+        guest.third_header_class_store,
+        7_175_013,
+        u32::from(third.is_none()),
+    )?;
+    if third.is_none() {
+        check_transfer(
+            trace,
+            guest.third_header_branch_code_address,
+            7_175_027,
+            4_090_000,
+        )?;
+        check_write(
+            trace,
+            guest.third_eof_output_store,
+            7_174_455,
+            u32::from(checksum),
+        )?;
+        assert_eq!(
+            at(trace, guest.third_eof_output_code_address)?.output,
+            Some(checksum),
+            "actual output effect"
+        );
+        assert_eq!(machine.output(), &[checksum], "exact two-byte checksum");
+        assert_eq!(machine.input_consumed(), 2, "EOF does not consume a byte");
+        assert!(
+            at(trace, guest.third_eof_halt_code_address).is_ok(),
+            "EOF halt"
+        );
+    } else {
+        check_transfer(
+            trace,
+            guest.third_header_branch_code_address,
+            7_175_017,
+            4_050_000,
+        )?;
+        assert!(machine.output().is_empty(), "unfinished third arithmetic");
+        assert_eq!(machine.input_consumed(), 3, "fourth byte remains unread");
+        assert!(
+            at(trace, guest.third_byte_halt_code_address).is_ok(),
+            "third byte halt"
+        );
+    }
+    Ok(())
+}
+
+fn check_third_read_result(
+    guest: &RelocatedSecondEvenReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: (u8, u8, Option<u8>),
+) -> Result<(), String> {
+    let (first, second, third) = input;
+    let initial = first.wrapping_add(3);
+    let checksum = initial.wrapping_add(second).wrapping_add(3);
+    let [low, high] =
+        check_third_input(guest, machine, trace, (second, third))?;
+    check_third_phi(
+        guest,
+        machine,
+        trace,
+        ([u32::from(second), 0, u32::from(initial), 0], [
+            low,
+            high,
+            u32::from(checksum),
+            0,
+        ]),
+    )?;
+    check_third_terminal(guest, machine, trace, (checksum, third))
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "third read uses canonical second checksum"
+)]
+fn check_third_vector(
+    guest: &RelocatedSecondEvenReadSource,
+    initial: &ProfileMachine,
+    input: (u8, u8, Option<u8>),
+) -> Result<(), String> {
+    let (first, second, third) = input;
+    let mut stream = vec![first, second];
+    if let Some(byte) = third {
+        stream.extend([byte, 42]);
+    }
+    let mut machine = initial
+        .fork_with_input(stream)
+        .map_err(|error| error.to_string())?;
+    let sites = third_read_sites(guest);
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(THIRD_READ_BUDGET, &mut |step| {
+            if step.input.is_some()
+                || step.output.is_some()
+                || sites.contains(&step.before.registers.code_pointer)
+            {
+                trace.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "input: {input:?}, outcome: {outcome:?}"
+    );
+    let events = trace
+        .iter()
+        .filter_map(|step| step.input)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        events,
+        [
+            TraceInput::Byte(first),
+            TraceInput::Byte(second),
+            third.map_or(TraceInput::EndOfInput, TraceInput::Byte),
+        ],
+        "exact three input requests"
+    );
+    check_third_read_result(guest, &machine, &trace, input)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "freeze bounded geometry and retain current-profile refusal"
+)]
+#[test]
+fn relocated_second_even_read_boundaries() -> Result<(), String> {
+    let guest = third_read_source()?;
+    assert_eq!(
+        guest.mask.parity.addition.iteration.addition.source.len(),
+        4_350_006,
+        "bootstrap loader separation"
+    );
+    assert_eq!(
+        build_relocated_second_even_read_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile),
+        "current N15 only"
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.mask.parity.addition.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for input in [
+        (0, 0, None),
+        (0, 250, None),
+        (0, 252, None),
+        (251, 254, None),
+        (252, 254, None),
+        (255, 254, None),
+        (0, 2, Some(255)),
+        (252, 254, Some(0)),
+        (253, 128, Some(1)),
+    ] {
+        check_third_vector(&guest, &initial, input)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier returns and odd second input never reach third read"
+)]
+#[test]
+fn relocated_second_even_read_preserves_bypass_paths() -> Result<(), String> {
+    let guest = third_read_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.mask.parity.addition.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    let sites = third_read_sites(&guest);
+    for (input, expected) in [
+        (vec![], vec![0]),
+        (vec![252], vec![255]),
+        (vec![255], vec![2]),
+        (vec![0, 1, 42], vec![]),
+        (vec![255, 255, 42], vec![]),
+    ] {
+        let count = input.len().min(2);
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(THIRD_READ_BUDGET, &mut |step| {
+                reached |= sites.contains(&step.before.registers.code_pointer);
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached, "third read bypass");
+        assert_eq!(machine.input_consumed(), count, "earlier input count");
+        assert_eq!(machine.output(), expected, "earlier output");
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "omitted physical stores fail even when terminal output agrees"
+)]
+#[test]
+fn relocated_second_even_read_rejects_omitted_effects() -> Result<(), String> {
+    let guest = third_read_source()?;
+    let [_, _, _, snapshot] = guest.third_phi_snapshots;
+    let [_, _, _, commit] = guest.third_phi_commits;
+    let [_, high] = guest.third_eof_stores;
+    let sites = third_read_sites(&guest);
+    for site in [snapshot.destination_store, commit.destination_store, high] {
+        let mut source =
+            guest.mask.parity.addition.iteration.addition.source.clone();
+        let noop = (33..=126u8)
+            .find(|&cell| {
+                decode_profile_instruction(u32::from(cell), site) == Some(b'o')
+            })
+            .ok_or("missing no-op")?;
+        let position =
+            usize::try_from(site).map_err(|error| error.to_string())?;
+        *source.get_mut(position).ok_or("missing effect site")? = noop;
+        let mut machine =
+            ProfileMachine::from_source(current_profile(), &source, vec![0, 2])
+                .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(THIRD_READ_BUDGET, &mut |step| {
+                if sites.contains(&step.before.registers.code_pointer) {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(at(&trace, site)?.decoded, Some(b'o'), "mutation reached");
+        if site != high {
+            assert_eq!(
+                machine.output(),
+                &[8],
+                "omitted checksum-high store does not change output"
+            );
+            assert!(
+                matches!(outcome, RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    ..
+                }),
+                "mutation still halts normally"
+            );
+        }
+        assert!(
+            check_third_read_result(&guest, &machine, &trace, (0, 2, None))
                 .is_err(),
             "omitted C{site} accepted: {outcome:?}"
         );

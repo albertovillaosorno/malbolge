@@ -71,8 +71,12 @@ now checks the full 257-value residual and all 32,768 even input pairs
 in host algebra. A compact 3,380,208-cell variant now executes both
 wrap decisions and writes the canonical pair with dirty storage. All
 702 second-mask scratch resets, eight boundary vectors and omitted-
-effect controls pass. Nonzero XOR, a third read, code restoration
-and complete source-frame routing remain open. Evidence:
+effect controls pass. A separate 4,350,006-cell image now performs
+a real third read, signed normalization, and a second dirty phi edge
+with 64 ordered reset/copy effects; third EOF emits the actual
+committed checksum. Nine boundary vectors, earlier bypass paths and
+three omitted-store controls pass. Nonzero XOR, reusable code and
+complete source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 
