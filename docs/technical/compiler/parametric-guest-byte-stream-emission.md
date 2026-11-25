@@ -13324,3 +13324,18 @@ edge. The first parity arms still use the initial-zero identities. The
 unchanged original C23 checksum remains unlinked and unpublished.
 Next: genuine nonzero-checksum XOR/add, reusable state and encryption
 visits, complete source operation/edge admission, and publication.
+
+The next storage prerequisite has a finite arithmetic witness: applying
+crazy to an arbitrary old destination with accumulators all-one,
+all-two, and all-zero in that order resets every trit to one. Reset both
+an old temporary and an old destination this way; two all-one-data
+crazy operations then copy the source word exactly. The test exhausts
+all 27 combinations of old temporary, old destination, and source
+trits, and checks representative complete N15 words, including the
+canonical signed EOF pair. This is host-side algebra evidence only:
+a guest must still preserve independent constant cells, route to dirty
+storage safely, and execute the reset and copy. In particular, the
+first-visit phi store instructions cannot simply be revisited unchanged:
+at least one of their eight actual code cells no longer decodes to `p`
+after XLAT2 encryption. Reusable code scheduling and restoration remain
+separate obligations; no second iteration is admitted.

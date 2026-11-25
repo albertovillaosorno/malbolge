@@ -52,7 +52,10 @@ marginal censuses pass. This is not yet a reusable loop or source-frame
 certificate: destinations are virgin and loads temporarily mutate and
 restore operands. The original C23 checksum remains unpublished.
 Next: nonzero-checksum XOR/add, repeated code and storage visits, and
-complete independent source-effect admission. Evidence:
+complete independent source-effect admission. A digitwise reset/copy
+algebra test covers dirty storage, and XLAT2 checks disprove direct
+unchanged replay of the current phi stores. Actual repeated guest
+reset, code restoration, and safe data routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

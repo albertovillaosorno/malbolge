@@ -24,7 +24,8 @@
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
-    current_profile, decode_profile_instruction, historical_profile,
+    current_profile, decode_profile_instruction, encrypt_profile_cell,
+    historical_profile, profile_crazy,
 };
 
 use super::super::layout::{
@@ -635,5 +636,79 @@ fn relocated_first_iteration_second_byte_census() -> Result<(), String> {
     for byte in 0..=u8::MAX {
         check_census(&guest, &initial, 255, Some(byte))?;
     }
+    Ok(())
+}
+
+fn reset_to_ones(word: u32, ones: u32, twos: u32, trits: u8) -> u32 {
+    [ones, twos, 0].into_iter().fold(word, |data, accumulator| {
+        profile_crazy(data, accumulator, trits)
+    })
+}
+
+// This checks the digitwise arithmetic prerequisite only; it does not
+// execute a reset or a second visit to the physical header in the guest.
+#[test]
+fn reusable_copy_algebra_handles_dirty_destinations() {
+    // The crazy operation acts independently at each ternary position.
+    // Exhaust the old temporary, destination and source digit domains.
+    for old_temp in 0..3 {
+        for old_dest in 0..3 {
+            for source in 0..3 {
+                let temp = reset_to_ones(old_temp, 1, 2, 1);
+                let dest = reset_to_ones(old_dest, 1, 2, 1);
+                assert_eq!(temp, 1);
+                assert_eq!(dest, 1);
+                let encoded = profile_crazy(temp, source, 1);
+                assert_eq!(profile_crazy(dest, encoded, 1), source);
+            }
+        }
+    }
+}
+
+#[test]
+fn reusable_copy_algebra_handles_n15_words() {
+    // Check the N15 word-scale composition, including signed EOF words.
+    let words = [0, 1, 255, 299, 4_644_102, 7_174_453, 14_348_906];
+    for old_word in words {
+        for source in words {
+            let reset = reset_to_ones(old_word, 7_174_453, 14_348_906, 15);
+            assert_eq!(reset, 7_174_453);
+            let encoded = profile_crazy(reset, source, 15);
+            assert_eq!(profile_crazy(reset, encoded, 15), source);
+        }
+    }
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact one-shot code-cell encryption limitation"
+)]
+#[test]
+fn existing_phi_store_code_requires_reentry_restoration() -> Result<(), String>
+{
+    let guest = iteration_source()?;
+    let sites = guest
+        .phi_snapshot_code_addresses
+        .into_iter()
+        .chain(guest.phi_commit_code_addresses);
+    let mut changed = false;
+    for site in sites {
+        let index = usize::try_from(site).map_err(|error| error.to_string())?;
+        let cell = u32::from(
+            *guest
+                .addition
+                .source
+                .get(index)
+                .ok_or("missing code cell")?,
+        );
+        assert_eq!(decode_profile_instruction(cell, site), Some(b'p'));
+        let encrypted =
+            encrypt_profile_cell(cell).ok_or("missing encryption")?;
+        changed |= decode_profile_instruction(encrypted, site) != Some(b'p');
+    }
+    assert!(
+        changed,
+        "direct header replay must not be presumed reusable"
+    );
     Ok(())
 }
