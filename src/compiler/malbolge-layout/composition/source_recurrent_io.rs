@@ -36,6 +36,8 @@ mod source_recurrent_guard;
 mod source_recurrent_loop;
 #[path = "source_recurrent_state.rs"]
 mod source_recurrent_state;
+#[path = "source_recurrent_transition.rs"]
+mod source_recurrent_transition;
 
 use std::collections::BTreeMap;
 
@@ -56,6 +58,13 @@ use source_recurrent_state::{SourceCheckpointValue, StatePlan, StateTrace};
 pub use source_recurrent_state::{
     SourceRecurrentStateCheckpoint, SourceRecurrentStateProbe,
     SourceRecurrentStateProof, verify_source_recurrent_state,
+};
+use source_recurrent_transition::{
+    ParityPlan, SourceTransitionValue, TransitionTrace,
+};
+pub use source_recurrent_transition::{
+    SourceRecurrentTransitionCheckpoint, SourceRecurrentTransitionProbe,
+    SourceRecurrentTransitionProof, verify_source_recurrent_transition,
 };
 
 use super::{
@@ -149,6 +158,8 @@ pub enum SourceRecurrentIoError {
     GuestStateMismatch,
     /// Guest halt did not correspond to the source's void return.
     GuestTerminationMismatch,
+    /// A physical indexed transition differs from the selected source arm.
+    GuestTransitionMismatch,
     /// Canonical typed source failed independent admission.
     InvalidCanonicalSource,
     /// The proposed signed input phi, guard or physical placement is invalid.
@@ -161,6 +172,8 @@ pub enum SourceRecurrentIoError {
     InvalidProbeBound,
     /// The proposed phi, input sites or split-state representation is invalid.
     InvalidStateBinding,
+    /// Unsupported source parity arm or proposed physical table geometry.
+    InvalidTransitionBinding,
     /// A recurrent state word lacked a physical arithmetic store.
     MissingGuestStateStore,
     /// Source evaluation or event journal exhausted its separate finite limit.
@@ -180,12 +193,19 @@ struct ProjectedIo {
     guard: Option<SourceGuardValue>,
     ordinal: u32,
     state: Option<SourceCheckpointValue>,
+    transition: Option<SourceTransitionValue>,
 }
 
 struct ProjectionJournal<'plan> {
     events: Vec<ProjectedIo>,
-    guard_plan: Option<&'plan GuardPlan>,
-    state_plan: Option<&'plan StatePlan>,
+    plans: &'plan ProjectionPlans<'plan>,
+}
+
+#[derive(Default)]
+struct ProjectionPlans<'plan> {
+    guard: Option<&'plan GuardPlan>,
+    state: Option<&'plan StatePlan>,
+    transition: Option<&'plan ParityPlan>,
 }
 
 struct ReplayJournal {
@@ -196,18 +216,21 @@ struct ReplayJournal {
     source_sha256: [u8; 32],
     state: Option<StateTrace>,
     trace_index: usize,
+    transition: Option<TransitionTrace>,
 }
 
 #[derive(Default)]
 struct ReplayAudits<'probe, 'source> {
     guard: Option<&'probe SourceRecurrentGuardProbe<'source>>,
     state: Option<&'probe SourceRecurrentStateProbe<'source>>,
+    transition: Option<&'probe SourceRecurrentTransitionProbe<'source>>,
 }
 
 struct ReplayProof {
     guard: Option<GuardTrace>,
     io: SourceRecurrentIoProof,
     state: Option<StateTrace>,
+    transition: Option<TransitionTrace>,
 }
 
 struct SourceProjection {
@@ -252,6 +275,9 @@ impl ReplayJournal {
         if let Some(audit) = self.state.as_ref() {
             audit.finish(vm)?;
         }
+        if let Some(audit) = self.transition.as_ref() {
+            audit.finish()?;
+        }
         Ok(ReplayProof {
             guard: self.guard,
             io: SourceRecurrentIoProof {
@@ -266,6 +292,7 @@ impl ReplayJournal {
                 source_steps: projected.steps,
             },
             state: self.state,
+            transition: self.transition,
         })
     }
 
@@ -273,6 +300,7 @@ impl ReplayJournal {
         state: Option<StateTrace>,
         guard: Option<GuardTrace>,
         source_sha256: [u8; 32],
+        transition: Option<TransitionTrace>,
     ) -> Self {
         Self {
             failed: None,
@@ -282,6 +310,7 @@ impl ReplayJournal {
             source_sha256,
             state,
             trace_index: 0,
+            transition,
         }
     }
 
@@ -312,6 +341,9 @@ impl ReplayJournal {
             guard.observe(step, self.trace_index, event)?;
         }
         if let Some(audit) = self.state.as_mut() {
+            audit.observe(step, self.trace_index, event)?;
+        }
+        if let Some(audit) = self.transition.as_mut() {
             audit.observe(step, self.trace_index, event)?;
         }
         Ok(())
@@ -410,7 +442,8 @@ fn project_reached_operation(
     journal: &mut ProjectionJournal<'_>,
 ) -> Result<(), Error> {
     let checkpoint = journal
-        .state_plan
+        .plans
+        .state
         .map(|plan| plan.checkpoint(state, operation))
         .transpose()?
         .flatten();
@@ -425,6 +458,7 @@ fn project_reached_operation(
             ordinal: u32::try_from(state.operation)
                 .map_err(|_error| Error::UnsupportedSourceExecution)?,
             state: checkpoint,
+            transition: None,
         });
     }
     state.operation = state.operation.saturating_add(1);
@@ -445,11 +479,22 @@ fn project_function_with_guard(
     state_plan: Option<&StatePlan>,
     guard_plan: Option<&GuardPlan>,
 ) -> Result<SourceProjection, Error> {
+    project_function_with_plans(function, input, &ProjectionPlans {
+        guard: guard_plan,
+        state: state_plan,
+        transition: None,
+    })
+}
+
+fn project_function_with_plans(
+    function: &TernaryCfgFunction,
+    input: &[u8],
+    plans: &ProjectionPlans<'_>,
+) -> Result<SourceProjection, Error> {
     let mut state = SourceInputWalkState::entry(function.entry);
     let mut journal = ProjectionJournal {
         events: Vec::new(),
-        guard_plan,
-        state_plan,
+        plans,
     };
     for step in 1..=MAX_SOURCE_INPUT_CFG_SEARCH_STATES {
         let block = usize::try_from(state.block)
@@ -472,19 +517,25 @@ fn project_function_with_guard(
                 &mut journal,
             )?;
         } else if let Some(target) = next_target(&state, block.terminator)? {
-            if let Some(plan) = journal.guard_plan {
+            if let Some(plan) = journal.plans.guard {
+                plan.checkpoint(&state, target, &mut journal.events)?;
+            }
+            if let Some(plan) = journal.plans.transition {
                 plan.checkpoint(&state, target, &mut journal.events)?;
             }
             // Shared source semantics take every phi input from the old
             // state before committing any destination (parallel edge copy).
             state = source_successor_state(function, &state, target)
                 .ok_or(Error::UnsupportedSourceExecution)?;
-            if let Some(plan) = journal.state_plan {
+            if let Some(plan) = journal.plans.state {
                 plan.merge(&state, &journal.events)?;
             }
         } else {
-            if journal.guard_plan.is_some() {
+            if journal.plans.guard.is_some() {
                 GuardPlan::finish(&journal.events)?;
+            }
+            if journal.plans.transition.is_some() {
+                ParityPlan::finish(&journal.events)?;
             }
             return Ok(SourceProjection {
                 bytes_consumed: state.consumed,
@@ -574,7 +625,9 @@ fn replay_guest(
         .map(|proposal| StateTrace::new(proposal, &vm))
         .transpose()?;
     let guard = audits.guard.map(GuardTrace::new).transpose()?;
-    let mut journal = ReplayJournal::new(state, guard, source_sha256);
+    let transition = audits.transition.map(TransitionTrace::new).transpose()?;
+    let mut journal =
+        ReplayJournal::new(state, guard, source_sha256, transition);
     let outcome = vm
         .run_traced(probe.step_budget, &mut |step| {
             journal.observe(step, projected);

@@ -97,7 +97,7 @@ type StateSites = BTreeMap<ReadSite, u32>;
 #[derive(Clone, Copy)]
 pub(super) struct SourceCheckpointValue {
     source_value: u32,
-    value: u8,
+    pub(super) value: u8,
 }
 
 pub(super) struct StatePlan {
@@ -468,6 +468,7 @@ pub fn verify_source_recurrent_state(
         &ReplayAudits {
             guard: None,
             state: Some(probe),
+            transition: None,
         },
     )?;
     let trace = replay.state.ok_or(Error::InvalidStateBinding)?;

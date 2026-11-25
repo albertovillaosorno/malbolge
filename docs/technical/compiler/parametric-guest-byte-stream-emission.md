@@ -14215,3 +14215,24 @@ All five original streams pass; incompatible proposals and omitted,
 reordered or prematurely placed checkpoint receipts refuse. No full
 source-frame or unrestricted control certificate is asserted.
 Evidence: `tests/compiler/source_recurrent_loop.rs`.
+
+
+The combined replay now optionally authenticates the successful-byte
+transition as well. It derives the signed parity test, both unsigned
+arithmetic arms, their merge, the addition of three and the byte mask
+from the canonical operations and phi operands. It independently
+evaluates the chosen arm and compares the resulting byte to the next
+source loop checkpoint. The physical side requires, in order, the
+raw-low and carry lookups, raw-high/parity and high-result lookups,
+then the low-result lookup. Six actual indexed jumps and ten immutable
+crazy reads must use the expected records, values and restored code
+cells. Both final high/low crazy stores must match the next loop
+checkpoint's last-store indices. The lookup banks must be disjoint
+from each other and the bound loop data. All 65,536 two-byte source
+paths and five complete physical guest runs pass. Swapped source
+arms, aliased table banks and a shifted raw-low table refuse.
+This is a finite trace witness for the factored recurrence, not
+an attestation of all intermediate SSA storage, all physical control
+edges or any unexecuted table entry; publication remains refused
+under the original 100,000-step ceiling.
+Evidence: `tests/compiler/source_recurrent_transition.rs`.

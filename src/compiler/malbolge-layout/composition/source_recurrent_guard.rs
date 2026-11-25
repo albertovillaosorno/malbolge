@@ -657,6 +657,7 @@ pub fn verify_source_recurrent_guard(
         replay_guest(probe.io, &projected, cfg.source_sha256, &ReplayAudits {
             guard: Some(probe),
             state: None,
+            transition: None,
         })?;
     let guard = replay.guard.ok_or(Error::InvalidGuardBinding)?;
     Ok(SourceRecurrentGuardProof {

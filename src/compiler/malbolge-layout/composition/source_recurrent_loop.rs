@@ -67,7 +67,9 @@ pub struct SourceRecurrentLoopProof {
     pub word_addresses: [u32; 2],
 }
 
-fn compatible(probe: &SourceRecurrentLoopProbe<'_>) -> Result<(), Error> {
+pub(super) fn compatible(
+    probe: &SourceRecurrentLoopProbe<'_>,
+) -> Result<(), Error> {
     let guard = &probe.guard;
     let state = &probe.state;
     let loop_header = state.loop_header;
@@ -86,7 +88,7 @@ fn compatible(probe: &SourceRecurrentLoopProbe<'_>) -> Result<(), Error> {
     validate_geometry(state)
 }
 
-fn pair_checkpoints(
+pub(super) fn pair_checkpoints(
     guard: Vec<SourceRecurrentGuardCheckpoint>,
     state: Vec<SourceRecurrentStateCheckpoint>,
     io: &SourceRecurrentIoProof,
@@ -161,6 +163,7 @@ pub fn verify_source_recurrent_loop(
         replay_guest(io, &projected, cfg.source_sha256, &ReplayAudits {
             guard: Some(&probe.guard),
             state: Some(&probe.state),
+            transition: None,
         })?;
     let guard = replay.guard.ok_or(Error::InvalidLoopBinding)?;
     let state = replay.state.ok_or(Error::InvalidLoopBinding)?;
