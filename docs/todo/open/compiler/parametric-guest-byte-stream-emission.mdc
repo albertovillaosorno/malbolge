@@ -54,8 +54,11 @@ restore operands. The original C23 checksum remains unpublished.
 Next: nonzero-checksum XOR/add, repeated code and storage visits, and
 complete independent source-effect admission. A digitwise reset/copy
 algebra test covers dirty storage, and XLAT2 checks disprove direct
-unchanged replay of the current phi stores. Actual repeated guest
-reset, code restoration, and safe data routing remain open. Evidence:
+unchanged replay of the current phi stores. A separate physical byte-arm
+variant now resets and copies the same dirty temporary and checksum
+word twice, with independent trace checks and omitted-effect controls.
+The code cells remain fresh. Nonzero arithmetic, code restoration, and
+complete repeated source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

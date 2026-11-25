@@ -28,8 +28,10 @@ use malbolge::{
     historical_profile, profile_crazy,
 };
 
+use super::super::crazy as independent_crazy;
 use super::super::layout::{
-    RelocatedFirstIterationSource, ZeroCellSourceError,
+    DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
+    ZeroCellSourceError, build_relocated_dirty_phi_source,
     build_relocated_first_iteration_source,
 };
 use super::{at, check_transfer, check_write, word};
@@ -710,5 +712,349 @@ fn existing_phi_store_code_requires_reentry_restoration() -> Result<(), String>
         changed,
         "direct header replay must not be presumed reusable"
     );
+    Ok(())
+}
+
+const fn dirty_sites(copy: DirtyPhiCopySites) -> [u32; 8] {
+    let [t1, t2, t3] = copy.temporary_resets;
+    let [d1, d2, d3] = copy.destination_resets;
+    [
+        t1,
+        t2,
+        t3,
+        d1,
+        d2,
+        d3,
+        copy.temporary_store,
+        copy.destination_store,
+    ]
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical reset must read the exact dirty word and constants"
+)]
+fn check_dirty_reset(
+    trace: &[ProfileStepTrace],
+    sites: [u32; 3],
+    address: u32,
+    mut old: u32,
+) -> Result<(), String> {
+    for (site, accumulator) in sites.into_iter().zip([7_174_453, 14_348_906, 0])
+    {
+        let step = at(trace, site)?;
+        assert_eq!(step.before.registers.accumulator, accumulator, "C{site} A");
+        assert_eq!(
+            step.memory_reads.data.ok_or("missing reset operand")?.value,
+            old,
+            "C{site} M{address} reset with A={accumulator}"
+        );
+        old = independent_crazy(old, accumulator);
+        check_write(trace, site, address, old)?;
+    }
+    assert_eq!(old, 7_174_453, "reset must produce all-one trits");
+    Ok(())
+}
+
+fn dirty_phi_source() -> Result<RelocatedDirtyPhiSource, String> {
+    build_relocated_dirty_phi_source(current_profile())
+        .map_err(|error| format!("dirty phi source: {error:?}"))
+}
+
+fn check_dirty_copy(
+    guest: &RelocatedDirtyPhiSource,
+    trace: &[ProfileStepTrace],
+    copy: DirtyPhiCopySites,
+    expected: [u32; 3],
+) -> Result<(), String> {
+    let [input, old_destination, old_temporary] = expected;
+    check_dirty_reset(
+        trace,
+        copy.temporary_resets,
+        guest.temporary_address,
+        old_temporary,
+    )?;
+    check_dirty_reset(
+        trace,
+        copy.destination_resets,
+        guest.destination_address,
+        old_destination,
+    )?;
+    check_write(
+        trace,
+        copy.temporary_store,
+        guest.temporary_address,
+        independent_crazy(7_174_453, input),
+    )?;
+    check_write(
+        trace,
+        copy.destination_store,
+        guest.destination_address,
+        input,
+    )
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "final dirty state and preserved operands"
+)]
+fn check_dirty_result(
+    guest: &RelocatedDirtyPhiSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: (u8, u8),
+) -> Result<(), String> {
+    let (first_byte, second_byte) = input;
+    let [first, second] = guest.copies;
+    let checksum = u32::from(first_byte.wrapping_add(3));
+    let current = u32::from(second_byte);
+    let encoded_current = independent_crazy(7_174_453, current);
+    check_dirty_copy(guest, trace, first, [
+        current,
+        checksum,
+        encoded_current,
+    ])?;
+    check_dirty_copy(guest, trace, second, [
+        checksum,
+        current,
+        encoded_current,
+    ])?;
+    assert_eq!(
+        word(machine, guest.destination_address)?,
+        checksum,
+        "checksum must be restored"
+    );
+    assert_eq!(
+        word(machine, guest.temporary_address)?,
+        independent_crazy(7_174_453, checksum),
+        "reused temporary must hold the second encoding"
+    );
+    for (address, expected) in
+        guest.source_addresses.into_iter().zip([current, checksum])
+    {
+        assert_eq!(
+            word(machine, address)?,
+            expected,
+            "M{address} source must survive both copies"
+        );
+    }
+    for (address, expected) in guest
+        .reset_constants
+        .into_iter()
+        .zip([7_174_453, 14_348_906, 0])
+    {
+        assert_eq!(
+            word(machine, address)?,
+            expected,
+            "M{address} reset constant must survive both copies"
+        );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual dirty phi effect sequence"
+)]
+fn check_dirty_vector(
+    guest: &RelocatedDirtyPhiSource,
+    initial: &ProfileMachine,
+    first_byte: u8,
+    second_byte: u8,
+) -> Result<(), String> {
+    let wanted = guest
+        .copies
+        .into_iter()
+        .flat_map(dirty_sites)
+        .collect::<Vec<_>>();
+    let mut machine = initial
+        .fork_with_input(vec![first_byte, second_byte, 42])
+        .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(ITERATION_BUDGET, &mut |step| {
+            if wanted.contains(&step.before.registers.code_pointer) {
+                trace.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "{outcome:?}"
+    );
+    assert_eq!(machine.input_consumed(), 2, "third byte must remain unread");
+    assert!(
+        machine.output().is_empty(),
+        "incomplete second iteration must not output"
+    );
+    assert_eq!(
+        trace
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        wanted,
+        "all dirty effects must occur in order exactly once"
+    );
+    check_dirty_result(guest, &machine, &trace, (first_byte, second_byte))
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "only the reserved second-byte code gap may differ"
+)]
+#[test]
+fn relocated_dirty_phi_copy_restores_live_checksum() -> Result<(), String> {
+    let guest = dirty_phi_source()?;
+    let old = iteration_source()?;
+    let new_source = &guest.iteration.addition.source;
+    assert_eq!(
+        new_source.len(),
+        old.addition.source.len(),
+        "source length must remain unchanged"
+    );
+    assert_eq!(
+        new_source.get(..1_000_000),
+        old.addition.source.get(..1_000_000),
+        "prefix must remain byte-exact"
+    );
+    assert_eq!(
+        new_source.get(1_010_000..),
+        old.addition.source.get(1_010_000..),
+        "EOF suffix and loader seed must remain byte-exact"
+    );
+    let initial =
+        ProfileMachine::from_source(current_profile(), new_source, vec![])
+            .map_err(|error| error.to_string())?;
+    for (first_byte, second_byte) in
+        [(0u8, 255u8), (255, 0), (253, 128), (1, 254), (80, 80)]
+    {
+        check_dirty_vector(&guest, &initial, first_byte, second_byte)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn relocated_dirty_phi_rejects_omitted_reset_and_store() -> Result<(), String> {
+    let guest = dirty_phi_source()?;
+    let [_, restoration] = guest.copies;
+    let [_, _, reset] = restoration.destination_resets;
+    for site in [reset, restoration.destination_store] {
+        check_omitted_dirty_site(&guest, restoration, site)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "mutated physical dirty store"
+)]
+fn check_omitted_dirty_site(
+    guest: &RelocatedDirtyPhiSource,
+    restoration: DirtyPhiCopySites,
+    site: u32,
+) -> Result<(), String> {
+    let mut mutated = guest.iteration.addition.source.clone();
+    let noop = (33..=126u8)
+        .find(|&cell| {
+            decode_profile_instruction(u32::from(cell), site) == Some(b'o')
+        })
+        .ok_or("missing no-op")?;
+    let position = usize::try_from(site).map_err(|error| error.to_string())?;
+    *mutated.get_mut(position).ok_or("missing dirty store")? = noop;
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &mutated, vec![
+            0, 255, 42,
+        ])
+        .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(700_000, &mut |step| {
+            if dirty_sites(restoration)
+                .contains(&step.before.registers.code_pointer)
+            {
+                trace.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "omission must still halt"
+    );
+    assert_eq!(machine.input_consumed(), 2, "third byte must remain unread");
+    assert!(
+        machine.output().is_empty(),
+        "negative control must not output"
+    );
+    // A reset omission may coincide with the correct final value.
+    // Require the physical effect even in that case.
+    if site == restoration.destination_store {
+        assert_ne!(
+            word(&machine, guest.destination_address)?,
+            3,
+            "omitted final store must corrupt checksum"
+        );
+    } else {
+        assert_eq!(
+            word(&machine, guest.destination_address)?,
+            3,
+            "reset omission deliberately preserves final checksum"
+        );
+    }
+    let expected = if site == restoration.destination_store {
+        3
+    } else {
+        7_174_453
+    };
+    assert!(
+        check_write(&trace, site, guest.destination_address, expected).is_err(),
+        "omitted physical effect must be rejected"
+    );
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF paths must bypass every new dirty store"
+)]
+#[test]
+fn relocated_dirty_phi_preserves_eof_paths() -> Result<(), String> {
+    let guest = dirty_phi_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    check_first_eof(&guest.iteration, &initial)?;
+    for byte in [0u8, 255] {
+        check_iteration(&guest.iteration, &initial, byte, None)?;
+    }
+    let wanted = guest
+        .copies
+        .into_iter()
+        .flat_map(dirty_sites)
+        .collect::<Vec<_>>();
+    for data in [vec![], vec![0], vec![255]] {
+        let mut machine = initial
+            .fork_with_input(data)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(700_000, &mut |step| {
+                reached |= wanted.contains(&step.before.registers.code_pointer);
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }));
+        assert!(!reached, "EOF must bypass dirty storage continuation");
+    }
     Ok(())
 }

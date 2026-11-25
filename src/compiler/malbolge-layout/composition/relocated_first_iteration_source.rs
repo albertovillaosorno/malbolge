@@ -22,6 +22,8 @@
 // - Summary:
 //   - Emit the first-iteration continuation after the shared adder.
 
+use std::mem;
+
 use malbolge::ProfileDescriptor;
 
 use super::super::super::LinearOpcode::{
@@ -30,7 +32,8 @@ use super::super::super::LinearOpcode::{
 };
 use super::{
     Adder, BuildError, Emitter, FRAME, Geometry, LAYOUT, ONES,
-    RelocatedFirstByteAddSource, TapeBounds, TapePlan, ZERO, before, build,
+    RelocatedFirstByteAddSource, TWOS, TapeBounds, TapePlan, ZERO, before,
+    build,
 };
 
 const MASK_COUNT: u32 = 364;
@@ -51,6 +54,9 @@ const SELECTED: [u32; 2] = [7_174_621, 7_174_625];
 // Original block-5 SSA value 18 (offset 34), not an admitted effect.
 const MASKED: [u32; 2] = [7_174_451, 7_174_452];
 const MASKED_TEMP: u32 = 7_174_633;
+// Dedicated all-one word initialized by MaskTapes::prepare; unlike ONES,
+// the first byte parity lookup never mutates it.
+const RESET_ONES: u32 = 7_174_601;
 const SECOND_BYTE: u32 = 7_174_645;
 const SECOND_EOF: u32 = 7_174_655;
 const SECOND_RAW: [u32; 2] = [7_174_665, 7_174_669];
@@ -140,6 +146,37 @@ pub struct RelocatedFirstIterationSource {
     pub second_input_code_address: u32,
     /// Proposed source second-result reservation.
     pub second_pair: [u32; 2],
+}
+
+/// Actual physical sites for a dirty-word reset and copy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DirtyPhiCopySites {
+    /// Three resets of the destination in execution order.
+    pub destination_resets: [u32; 3],
+    /// Final destination store.
+    pub destination_store: u32,
+    /// Three resets of the intermediate word in execution order.
+    pub temporary_resets: [u32; 3],
+    /// First, encoded store to the intermediate word.
+    pub temporary_store: u32,
+}
+
+/// First-iteration image extended with two dirty copies at the byte arm.
+/// Each copy uses the same temporary and destination, but fresh code cells.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedDirtyPhiSource {
+    /// Physical sites for the overwrite and restoration, respectively.
+    pub copies: [DirtyPhiCopySites; 2],
+    /// Original header checksum low-word address, overwritten and restored.
+    pub destination_address: u32,
+    /// Extended first-iteration image; the byte halt moves to the end.
+    pub iteration: RelocatedFirstIterationSource,
+    /// Exact all-one, all-two and zero constant addresses used for reset.
+    pub reset_constants: [u32; 3],
+    /// Source addresses for the two copies.
+    pub source_addresses: [u32; 2],
+    /// Previously written phi-copy temporary, reused by both copies.
+    pub temporary_address: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -241,7 +278,7 @@ impl MaskTapes {
             FLAG_MASKS[3],
             ADJUSTED[0],
             ADJUSTED[1],
-            7_174_601,
+            RESET_ONES,
             FLAG[0],
             FLAG[1],
             SELECTED[0],
@@ -321,6 +358,27 @@ impl IterationEmitter<'_, '_, '_> {
         let branch = self.select(SECOND_CLASS[1], 188)?;
 
         Ok(InputSites { branch, input })
+    }
+
+    fn copy_dirty_word(
+        &mut self,
+        source: u32,
+        dest: u32,
+        temp: u32,
+    ) -> Result<DirtyPhiCopySites, BuildError> {
+        let temporary_resets = self.reset_dirty_word(temp)?;
+        let destination_resets = self.reset_dirty_word(dest)?;
+        self.adder.load(source)?;
+        self.adder.go(temp)?;
+        let temporary_store = self.adder.emitter.linear(CrazyData)?;
+        self.adder.go(dest)?;
+        let destination_store = self.adder.emitter.linear(CrazyData)?;
+        Ok(DirtyPhiCopySites {
+            destination_resets,
+            destination_store,
+            temporary_resets,
+            temporary_store,
+        })
     }
 
     fn copy_frame_word(
@@ -448,6 +506,25 @@ impl IterationEmitter<'_, '_, '_> {
         Ok(())
     }
 
+    fn reset_dirty_word(
+        &mut self,
+        address: u32,
+    ) -> Result<[u32; 3], BuildError> {
+        let mut sites = [0; 3];
+        for (site, constant) in sites.iter_mut().zip([RESET_ONES, TWOS, ZERO]) {
+            self.adder.go(constant)?;
+            let _: u32 = self.adder.emitter.linear(RotateData)?;
+            if constant == TWOS && address < TWOS {
+                // M7174490 holds a scratch pointer, not a frame reset.
+                self.adder.emitter.walk(7_174_492)?;
+                self.adder.emitter.jump(FRAME)?;
+            }
+            self.adder.go(address)?;
+            *site = self.adder.emitter.linear(CrazyData)?;
+        }
+        Ok(sites)
+    }
+
     fn second_read(
         &mut self,
         eof_low: &[u32],
@@ -566,6 +643,68 @@ pub fn build_relocated_first_iteration_source(
         second_eof_store_code_addresses: sites.second.eof_stores,
         second_input_code_address: sites.second.input,
         second_pair: SECOND_PAIR,
+    })
+}
+
+/// Extend the second successful-byte arm with real dirty phi storage copies.
+///
+/// First copy the current byte over the old checksum, then restore the old
+/// checksum from its edge snapshot. This is a storage experiment, not a
+/// checksum update or a reusable code-cell schedule. The first- and second-EOF
+/// code paths remain unchanged.
+///
+/// # Errors
+/// Refuses unsupported profiles or a continuation exceeding the reserved gap.
+pub fn build_relocated_dirty_phi_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedDirtyPhiSource, BuildError> {
+    let mut iteration = build_relocated_first_iteration_source(profile)?;
+    let source = mem::take(&mut iteration.addition.source);
+    let mut emitter = Emitter {
+        data: HEADER_BYTE.checked_add(1).ok_or(LAYOUT)?,
+        profile,
+        source: source.get(..HEADER_BYTE_ENTRY).ok_or(LAYOUT)?.to_vec(),
+        source_cells: source.len(),
+        tape_bounds: MASK_BOUNDS,
+    };
+    let mut adder = Adder {
+        count: 0,
+        cursor: 0,
+        emitter: &mut emitter,
+        scratch: MASK_SCRATCH,
+    };
+    let mut continuation = IterationEmitter { adder: &mut adder };
+    let temporary_address = PHI_TEMPS[4];
+    let destination_address = PHI_DEST[2];
+    let source_addresses = [PHI_DEST[0], PHI_SNAPSHOT[2]];
+    let copies = [
+        continuation.copy_dirty_word(
+            source_addresses[0],
+            destination_address,
+            temporary_address,
+        )?,
+        continuation.copy_dirty_word(
+            source_addresses[1],
+            destination_address,
+            temporary_address,
+        )?,
+    ];
+    iteration.second_byte_halt_code_address = emitter.append(Halt)?;
+    let end = emitter.source.len();
+    if end > HEADER_EOF_ENTRY {
+        return Err(LAYOUT);
+    }
+    emitter
+        .source
+        .extend_from_slice(source.get(end..).ok_or(LAYOUT)?);
+    iteration.addition.source = emitter.source;
+    Ok(RelocatedDirtyPhiSource {
+        copies,
+        destination_address,
+        iteration,
+        reset_constants: [RESET_ONES, TWOS, ZERO],
+        source_addresses,
+        temporary_address,
     })
 }
 

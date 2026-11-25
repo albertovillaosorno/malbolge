@@ -38,7 +38,8 @@ pub use relocated_eof_parity_source::{
     RelocatedEofParitySource, build_relocated_eof_parity_source,
 };
 pub use relocated_first_byte_add_source::{
-    RelocatedFirstByteAddSource, RelocatedFirstIterationSource,
+    DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstByteAddSource,
+    RelocatedFirstIterationSource, build_relocated_dirty_phi_source,
     build_relocated_first_byte_add_source,
     build_relocated_first_iteration_source,
 };

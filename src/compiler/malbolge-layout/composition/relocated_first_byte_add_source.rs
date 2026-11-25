@@ -26,11 +26,12 @@
 mod relocated_first_iteration_source;
 
 use malbolge::ProfileDescriptor;
+pub use relocated_first_iteration_source::{
+    DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+};
 use relocated_first_iteration_source::{
     IterationSites, MaskTapes, emit_iteration,
-};
-pub use relocated_first_iteration_source::{
-    RelocatedFirstIterationSource, build_relocated_first_iteration_source,
 };
 
 use super::super::LinearOpcode::{

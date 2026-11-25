@@ -13339,3 +13339,30 @@ first-visit phi store instructions cannot simply be revisited unchanged:
 at least one of their eight actual code cells no longer decodes to `p`
 after XLAT2 encryption. Reusable code scheduling and restoration remain
 separate obligations; no second iteration is admitted.
+
+### Physical dirty phi storage copy
+
+A separate variant of the same 1,129,848-cell source replaces only the
+previously unused second-byte continuation at C1000000. It uses an
+independent all-one word at M7174601, the all-two word at M7174489 and
+zero at M7174603. After the first physical phi edge, it resets the
+already-written temporary M7174725 and header checksum M7174433 with
+three actual crazy writes each, copies the second current from
+M7174431 into that checksum, then repeats the reset/copy at fresh code
+cells to restore the original checksum from snapshot M7174458. The
+source operands and reset constants remain intact. The all-two constant
+needs an explicit route through M7174492 before reaching the frame;
+M7174490 holds a scratch pointer, not the virgin reset pointer.
+
+Five binary input pairs (including NUL, ff and first-byte wrap) match
+all 16 reset/store effects, their old operands, independent ternary
+truth-table results and the restored header within 700,000 steps.
+The third input remains unread. Empty input and one-byte streams with
+EOF follow the original return paths. Two omitted-effect controls halt
+with identical empty output; omitting the final restoration store
+corrupts the header, while omitting one reset happens to retain the
+correct final checksum for the selected vector. Both fail the actual
+physical effect check. The source length, prefix, EOF suffix and loader
+seed remain unchanged. This demonstrates repeated dirty data use, not
+code-cell reuse, a second checksum computation, source-frame effect
+admission or whole-C publication.
