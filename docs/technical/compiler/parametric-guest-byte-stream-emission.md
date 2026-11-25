@@ -957,6 +957,43 @@ and the reserved branch/phi/loop sites are still unimplemented. It permits
 future actual code to replace the presently inert reserved cells only after
 independent VM and original-C23 source verification.
 
+### Original C23 first-byte physical pair in the 120-cell reservation (2026-11-24)
+
+`build_adjacent_c32_zero_c37_byte_pair_source` now starts from the same
+120-cell graphical zero/input prefix and **executes both** of the proposed
+first `getchar()` result-word sites. C14/C17 still commit the checksum's
+canonical zero initializer. After additional physical preparation, C33
+primes external M7,174,460 with the ternary-ones operand; C37 performs
+its original first `/`. C38 follows the already primed result cell to
+that scratch region, C45 `p` encodes the raw N15 input bijectively, and
+C50 `p` applies the same ones operand to recover the exact original byte
+in M7,174,419. C51 `*` physically reads and rewrites high M7,174,420=0,
+then C52 `v` halts. The two adjacent result cells are precisely the
+original checksum's source-proposed first signed-input SSA placement.
+
+This is a **successful-byte-only source-frame storage prefix**: the 256
+successful bytes give the correct `[byte, 0]` C32 cells. True EOF still
+produces `[14,348,906, 0]`, **not** the canonical signed-C23
+`[4,644,102, 299]`, and there is no executable EOF guard. C15/C19/C20
+also perform preparatory writes into the reserved frame **before** the
+source's first `getchar` result is authorized. Therefore correct bytes
+and matching C50/C51 *placement anchors* are insufficient to pass the
+complete strict frame journal. No claim is made that the input effect,
+source arithmetic, phi transfer, conditional branch, backedge, or entire
+checksum has been linked; P2 remains blocked and publication still refuses.
+
+The test uses the original frozen seven-block typed C wire to reserve
+C50/C51 as distinct input-result stores alongside C14/C17/C37, and
+explicitly rejects colliding store sites. It verifies all 257 N15 input
+classes through an independent trit truth table and eight representative
+complete 53-step normative VM traces, including true EOF. Both an omitted
+C45 scratch fold and a missing idempotent C51 high-word instruction are
+negative physical controls. A slower 257-class full normative VM run was
+also exercised while developing this prefix. Evidence:
+`tests/compiler_adjacent_zero_source.rs`. The exact release acceptance
+remains `tests/test_eof_checksum_pipeline.py`, which must still refuse
+without a guest artifact until EOF normalization and the full CFG exist.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend

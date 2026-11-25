@@ -12,6 +12,26 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Real first C23 input-result byte pair, still not signed EOF (2026-11-24)
+
+`build_adjacent_c32_zero_c37_byte_pair_source` extends the original
+120-graphical-cell C14/C17 zero and C37 input source. C33 primes
+external M7,174,460, C45 performs a real input-dependent `p` write,
+C50 recovers the raw input into original-checksum result low
+M7,174,419, and C51 executes a real `*` on its adjacent zero high
+M7,174,420. C52 halts after 53 reached instructions. The physical
+pair is `[byte, 0]` on all successful inputs by exhaustive independent
+257-class ternary reasoning and representative actual VM traces.
+The source-locked seven-block planner also reserves the matching
+first-input effect sites C50/C51 without collisions.
+
+This is **not** source-C23 `getchar` lowering: EOF remains raw N15
+`[14,348,906, 0]` rather than signed `[4,644,102, 299]`; preparatory
+writes inside the source state frame are not authorized by the complete
+journal; and all following source arithmetic/branches/phi edges are
+unlinked. The original complete mutable EOF checksum still fails closed
+without a published target. See `tests/compiler_adjacent_zero_source.rs`.
+
 ### Physical code-cell reuse contract (2026-11-21)
 
 `encode_code_visits` selects a graphical source byte for an exact bounded

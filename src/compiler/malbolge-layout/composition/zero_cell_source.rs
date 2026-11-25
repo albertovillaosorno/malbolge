@@ -126,6 +126,36 @@ pub struct AdjacentC32ZeroSource {
     pub zero_low_code_address: u32,
 }
 
+/// A source-loaded C37 input followed by an actual two-word *byte* result.
+///
+/// The original C14/C17 zero initializer remains intact. C33 primes an
+/// external scratch word, C37 reads the genuine first input, C45 encodes it,
+/// and C50 writes the exact raw word into the first signed-input SSA low
+/// cell. C51 rotates a separately zeroed high cell, proving `[byte, 0]` for
+/// all 256 successful bytes. **True EOF remains `[profile EOF, 0]`, not the
+/// canonical signed C23 `[-1]` pair**. The scratch is outside the original
+/// 43-word reserved source frame; other preparatory writes are still within
+/// that frame, so a complete source-locked store journal cannot yet accept
+/// this fixed physical prefix as the full C23 instruction or linked CFG.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37BytePairSource {
+    /// Reached C52 `v` after the two physical result stores.
+    pub halt_code_address: u32,
+    /// Real C51 `*` write of the zero high word (including an idempotent
+    /// write).
+    pub high_store_code_address: u32,
+    /// Real C50 `p` write of the input's low word.
+    pub low_store_code_address: u32,
+    /// Physical external scratch address, never a source C32 result cell.
+    pub scratch_data_address: u32,
+    /// Real C45 input-dependent `p` write at the same external scratch word.
+    pub scratch_encode_code_address: u32,
+    /// Real C33 `p` write producing the trit-wise ones seed outside the frame.
+    pub scratch_prime_code_address: u32,
+    /// Exact initially graphical source plus the original zero-word sites.
+    pub zero_pair: AdjacentC32ZeroSource,
+}
+
 /// A genuine read-derived low-cell fold after two adjacent zero writes.
 ///
 /// The first input is raw N15: the low result has only 40 distinct images
@@ -815,6 +845,101 @@ pub fn build_adjacent_c32_zero_then_c37_reserved_source(
         return Err(NoLoadableZero);
     }
     Ok(candidate)
+}
+
+/// Execute a real signed-`getchar` *successful-byte* low/high storage prefix.
+///
+/// This builds on the original source-authenticated C14/C17 zero writes and
+/// C37 first input in the 120-cell reservation. Before the input, C19/C20
+/// make the proposed high result word zero and C33 primes external M7,174,460
+/// with the trit-wise ones seed. The physical data route returns via M1,
+/// a graphical but unexecuted C86=125 and the already written M126 pointer.
+/// After C37, C38 follows the primed low operand, C45 injectively encodes
+/// the raw input in external scratch and C50 uses the second ones operand to
+/// recover exactly that input word. C51 reaches a separate `*` on the high
+/// zero word. The native VM, not this constructor, proves all site effects.
+///
+/// For 0..=255 this physically stores the correct canonical C32 pair.
+/// True EOF instead stores raw N15 EOF and zero, **not** C23 signed -1. Both
+/// initial pre-input frame priming and the unlinked remainder of the source
+/// CFG prevent publication as the original checksum. Neither branch nor
+/// checksum arithmetic or a loop executes in this fixed prefix.
+///
+/// # Errors
+///
+/// Rejects changed graphical source geometry, loader seeds and profiles.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one finite 53-cell physical data route and loader preconditions"
+)]
+pub fn build_adjacent_c32_zero_c37_byte_pair_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37BytePairSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    const LOW: u32 = 7_174_417;
+    const SCRATCH: usize = 7_174_460;
+    let mut zero_pair =
+        build_adjacent_c32_zero_then_c37_reserved_source(profile)?;
+    if zero_pair.source.len() != 120
+        || zero_pair.zero_low_address != LOW
+        || zero_pair.zero_high_address != LOW + 1
+        || zero_pair.input_code_address != Some(37)
+        || unwritten_loader_word(&zero_pair.source, SCRATCH, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != 7_174_416
+        || unwritten_loader_word(&zero_pair.source, SCRATCH + 2, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != LOW - 1
+    {
+        return Err(NoLoadableZero);
+    }
+    // C86 is not reached as code in this finite guest. Its source-valid
+    // glyph 125 is physically dereferenced twice by reached C25/C40 `j`.
+    *zero_pair.source.get_mut(86).ok_or(NoLoadableZero)? =
+        unique_graphical_cell(
+            profile,
+            LinearOpcode::SkippedDataByte { byte: 125 },
+            86,
+        )
+        .map_err(|_error| NoLoadableZero)?;
+    for (site, operation) in [
+        (18usize, LinearOpcode::NoOperation),
+        (19, LinearOpcode::CrazyData),
+        (20, LinearOpcode::CrazyData),
+        (21, LinearOpcode::NoOperation),
+        (22, LinearOpcode::RelocateDataPointer),
+        (23, LinearOpcode::RelocateDataPointer),
+        (24, LinearOpcode::RelocateDataPointer),
+        (25, LinearOpcode::RelocateDataPointer),
+        (26, LinearOpcode::RelocateDataPointer),
+        (33, LinearOpcode::CrazyData),
+        (34, LinearOpcode::NoOperation),
+        (35, LinearOpcode::RelocateDataPointer),
+        (36, LinearOpcode::NoOperation),
+        (38, LinearOpcode::RelocateDataPointer),
+        (45, LinearOpcode::CrazyData),
+        (46, LinearOpcode::NoOperation),
+        (47, LinearOpcode::RelocateDataPointer),
+        (48, LinearOpcode::NoOperation),
+        (49, LinearOpcode::NoOperation),
+        (50, LinearOpcode::CrazyData),
+        (51, LinearOpcode::RotateData),
+        (52, LinearOpcode::Halt),
+    ] {
+        *zero_pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37BytePairSource {
+        halt_code_address: 52,
+        high_store_code_address: 51,
+        low_store_code_address: 50,
+        scratch_data_address: u32::try_from(SCRATCH)
+            .map_err(|_error| NoLoadableZero)?,
+        scratch_encode_code_address: 45,
+        scratch_prime_code_address: 33,
+        zero_pair,
+    })
 }
 
 /// Continue the source-loaded C14/C17 zero initializer and C37 `/` through

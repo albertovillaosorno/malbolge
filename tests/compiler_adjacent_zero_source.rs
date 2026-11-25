@@ -1855,6 +1855,355 @@ fn physical_zero_pair_then_c37_getchar_has_genuine_input_and_data_effects()
     Ok(())
 }
 
+// This is a *physical successful-byte prefix* of the original source C23
+// checksum, not a linked input operation. The real guest executes both word
+// writes for every byte; on EOF it demonstrably lacks signed normalization.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one 257-class oracle and paired VM/mutation assertions"
+)]
+fn original_c23_first_byte_pair_is_written_by_the_120_cell_guest()
+-> Result<(), String> {
+    use layout::typed_cfg_adapter::state_storage::encode_i32_cells;
+    use malbolge::{TraceInput, current_profile};
+
+    let profile = current_profile();
+    let proposal = layout::build_adjacent_c32_zero_c37_byte_pair_source(
+        profile,
+    )
+    .map_err(|error| format!("original C23 byte-pair builder: {error:?}"))?;
+    let original =
+        layout::build_adjacent_c32_zero_then_c37_reserved_source(profile)
+            .map_err(|error| {
+                format!("original source reservation: {error:?}")
+            })?;
+    assert_eq!(proposal.zero_pair.source.len(), 120);
+    assert_eq!(&proposal.zero_pair.source[..18], &original.source[..18]);
+    assert_eq!(&proposal.zero_pair.source[118..], &original.source[118..]);
+    assert_eq!(proposal.zero_pair.zero_low_address, 7_174_417);
+    assert_eq!(proposal.zero_pair.zero_high_address, 7_174_418);
+    assert_eq!(proposal.zero_pair.input_code_address, Some(37));
+    assert_eq!(proposal.scratch_data_address, 7_174_460);
+    assert_eq!(proposal.scratch_prime_code_address, 33);
+    assert_eq!(proposal.scratch_encode_code_address, 45);
+    assert_eq!(proposal.low_store_code_address, 50);
+    assert_eq!(proposal.high_store_code_address, 51);
+    assert_eq!(proposal.halt_code_address, 52);
+    assert_eq!(proposal.zero_pair.source[86], 125);
+    assert!(graphical_tail(125, 86));
+    assert!(
+        proposal
+            .zero_pair
+            .source
+            .iter()
+            .enumerate()
+            .all(|(at, &glyph)| { graphical_tail(glyph, at) })
+    );
+    let pristine = ProfileMachine::from_source(
+        profile,
+        &proposal.zero_pair.source,
+        Vec::new(),
+    )
+    .map_err(|error| format!("physical source load: {error:?}"))?;
+    let ones = crazy(7_174_416, 0);
+    assert_eq!(ones, 7_174_453);
+    let true_eof = profile.eof_word();
+    assert_eq!(encode_i32_cells(u32::MAX), [4_644_102, 299]);
+    // Exhaust the same two source-independent physical `p` truth tables
+    // without making every compilation perform 257 expensive 15M-word VM
+    // allocations. The separately checked guest vectors pin pointer routing.
+    for class in 0..=256u16 {
+        let raw = u8::try_from(class).map_or(true_eof, u32::from);
+        assert_eq!(crazy(ones, crazy(ones, raw)), raw, "class {class}");
+        if class == 256 {
+            assert_ne!([raw, 0], encode_i32_cells(u32::MAX));
+        } else {
+            assert_eq!([raw, 0], encode_i32_cells(raw));
+        }
+    }
+    for class in [0u16, 1, 2, 3, 127, 128, 255, 256] {
+        let input = u8::try_from(class).ok();
+        let stream = input.into_iter().collect::<Vec<_>>();
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            pristine.memory().to_vec(),
+            stream,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("physical byte-pair state: {error:?}"))?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(53, &mut |step| trace.push(*step)).map_err(
+                |error| format!("physical byte-pair run: {error:?}")
+            )?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 53,
+            },
+            "class {class}",
+        );
+        assert_eq!(trace.len(), 53);
+        assert_eq!(trace[14].decoded, Some(b'p'));
+        assert_eq!(trace[17].decoded, Some(b'p'));
+        assert_eq!(trace[33].decoded, Some(b'p'));
+        assert_eq!(
+            trace[33].before.registers.data_pointer,
+            proposal.scratch_data_address
+        );
+        assert_eq!(trace[33].after.registers.accumulator, ones);
+        assert_eq!(trace[37].decoded, Some(b'/'));
+        assert_eq!(
+            trace[37].input,
+            Some(input.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        assert_eq!(trace[38].decoded, Some(b'j'));
+        assert_eq!(trace[38].after.registers.data_pointer, 7_174_454);
+        assert_eq!(trace[45].decoded, Some(b'p'));
+        assert_eq!(
+            trace[45].before.registers.data_pointer,
+            proposal.scratch_data_address
+        );
+        let raw = input.map_or(true_eof, u32::from);
+        let intermediate = crazy(ones, raw);
+        assert_eq!(trace[45].after.registers.accumulator, intermediate);
+        assert_eq!(trace[50].decoded, Some(b'p'));
+        assert_eq!(trace[50].before.registers.data_pointer, 7_174_419);
+        assert_eq!(trace[50].after.registers.accumulator, raw);
+        assert_eq!(
+            trace[50].memory_delta.data.map(|delta| delta.after),
+            Some(raw)
+        );
+        assert_eq!(trace[51].decoded, Some(b'*'));
+        assert_eq!(trace[51].before.registers.data_pointer, 7_174_420);
+        assert_eq!(trace[51].after.registers.accumulator, 0);
+        // This is a genuine physical rotate, even when the zero result is
+        // idempotent and the VM does not report a changed-value delta.
+        assert!(
+            trace[51]
+                .memory_reads
+                .data
+                .is_some_and(|read| read.value == 0)
+        );
+        assert_eq!(trace[52].decoded, Some(b'v'));
+        assert_eq!(vm.memory_word(7_174_417), Ok(0));
+        assert_eq!(vm.memory_word(7_174_418), Ok(0));
+        assert_eq!(vm.memory_word(7_174_419), Ok(raw));
+        assert_eq!(vm.memory_word(7_174_420), Ok(0));
+        assert_eq!(
+            vm.memory_word(proposal.scratch_data_address),
+            Ok(intermediate)
+        );
+        assert_eq!(vm.input_consumed(), usize::from(input.is_some()));
+        assert!(vm.output().is_empty());
+        if input.is_none() {
+            assert_ne!(
+                [raw, 0],
+                encode_i32_cells(u32::MAX),
+                "a true N15 EOF is not the signed-C23 result"
+            );
+        } else {
+            assert_eq!([raw, 0], encode_i32_cells(raw));
+        }
+    }
+    // A skipped scratch fold leaves the raw accumulator but not the
+    // two-stage injective inverse; it must not look like a byte store.
+    let mut no_fold = proposal.zero_pair.source.clone();
+    no_fold[45] = encode(b'o', 45)?;
+    let mut broken = ProfileMachine::from_source(profile, &no_fold, vec![255])
+        .map_err(|error| format!("mutated guest: {error:?}"))?;
+    assert_eq!(
+        broken
+            .run(53)
+            .map_err(|error| format!("mutated guest replay: {error:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 53,
+        },
+    );
+    assert_ne!(broken.memory_word(7_174_419), Ok(255));
+    // A no-op in place of the second result's `*` leaves the same literal
+    // value but does not execute the source-required physical write.
+    let mut no_high_write = proposal.zero_pair.source;
+    no_high_write[51] = encode(b'o', 51)?;
+    let mut missing =
+        ProfileMachine::from_source(profile, &no_high_write, vec![0x80])
+            .map_err(|error| format!("missing-write guest: {error:?}"))?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        missing
+            .run_traced(53, &mut |step| trace.push(*step))
+            .map_err(|error| format!("missing-write replay: {error:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 53,
+        },
+    );
+    assert_eq!(missing.memory_word(7_174_420), Ok(0));
+    assert_eq!(trace[51].decoded, Some(b'o'));
+    assert!(trace[51].memory_reads.data.is_none());
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_byte_pair_source(
+            historical_profile()
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
+
+// These are source-authenticated *placement reservations*, not target CFG
+// execution. The genuine guest proves C50/C51 stores on successful bytes,
+// while EOF and unvisited blocks still prevent source-C publication.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "original C23 CFG and exact physical input-store sites"
+)]
+fn original_checksum_byte_pair_has_distinct_placed_input_stores()
+-> Result<(), String> {
+    use std::str;
+
+    use layout::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeFunctionEntryAnchor,
+        GuestCodeFunctionEntryPlacement, GuestCodeOperationAnchor,
+        GuestCodeOperationEffect,
+        plan_source_locked_cfg_with_function_entry_anchors,
+    };
+
+    const FROZEN: &str =
+        include_str!("compiler/typed-ir/golden/mutable-eof-checksum.hex");
+    let digits = FROZEN
+        .trim_end()
+        .strip_prefix("malbolge-typed-ir-v1:")
+        .ok_or("missing original checksum typed wire")?;
+    let (pairs, remainder) = digits.as_bytes().as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err("odd source checksum hex digits".into());
+    }
+    let wire = pairs
+        .iter()
+        .map(|bytes| {
+            let hex =
+                str::from_utf8(bytes).map_err(|error| error.to_string())?;
+            u8::from_str_radix(hex, 16).map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let guest =
+        layout::build_adjacent_c32_zero_c37_byte_pair_source(current_profile())
+            .map_err(|error| format!("guest route: {error:?}"))?;
+    let entries = [GuestCodeFunctionEntryAnchor {
+        block: 0,
+        code_address: 0,
+        function: 0,
+    }];
+    let operations = [GuestCodeOperationAnchor {
+        block: 0,
+        code_address: 37,
+        function: 0,
+        ordinal: 1,
+    }];
+    let effects = [
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: guest.zero_pair.zero_low_code_address,
+            effect_index: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: guest.zero_pair.zero_high_code_address,
+            effect_index: 1,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: guest.low_store_code_address,
+            effect_index: 1,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: guest.high_store_code_address,
+            effect_index: 2,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    let plan = plan_source_locked_cfg_with_function_entry_anchors(
+        &GuestCodeFunctionEntryPlacement {
+            canonical: &wire,
+            control_anchors: &[],
+            effect_anchors: &effects,
+            frame_base: guest.zero_pair.zero_low_address,
+            function_entries: &entries,
+            operation_anchors: &operations,
+            phi_anchors: &[],
+            phi_entries: &[],
+            phi_exits: &[],
+            source_cells: 120,
+        },
+    )
+    .map_err(|error| format!("full-checksum sparse placement: {error:?}"))?;
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    assert_eq!(plan.relocated.state_placements[0].base, 7_174_417);
+    assert_eq!(plan.relocated.state_placements[0].end_exclusive, 7_174_460);
+    assert_eq!(guest.scratch_data_address, 7_174_460);
+    let input_stores = plan
+        .operation_effect_sites
+        .iter()
+        .filter_map(|site| {
+            if (site.function, site.block, site.ordinal) != (0, 0, 1) {
+                return None;
+            }
+            match site.effect {
+                GuestCodeOperationEffect::Store { destination, .. } => {
+                    Some((site.code_address, destination))
+                },
+                GuestCodeOperationEffect::Input { .. }
+                | GuestCodeOperationEffect::Output { .. }
+                | GuestCodeOperationEffect::Compute => None,
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(input_stores, [(50, 7_174_419), (51, 7_174_420),]);
+    // The C15/C19/C20 preparatory writes are not authenticated getchar
+    // output effects. An allowed *placement* never authorizes their guest
+    // journal as complete source-C CFG translation or signed EOF state.
+    assert!(!plan.operation_effect_sites.iter().any(|site| {
+        (site.function, site.block, site.ordinal) == (0, 0, 1)
+            && [15, 19, 20].contains(&site.code_address)
+    }));
+    let mut collided = effects;
+    collided[3].code_address = collided[2].code_address;
+    assert!(
+        plan_source_locked_cfg_with_function_entry_anchors(
+            &GuestCodeFunctionEntryPlacement {
+                canonical: &wire,
+                control_anchors: &[],
+                effect_anchors: &collided,
+                frame_base: guest.zero_pair.zero_low_address,
+                function_entries: &entries,
+                operation_anchors: &operations,
+                phi_anchors: &[],
+                phi_entries: &[],
+                phi_exits: &[],
+                source_cells: 120,
+            },
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
 // The unchanged seven-block source-C checksum is the authority for the
 // first two literal result cells and the first input opcode, not the N15
 // builder's internal labels. This still does not link C23 result storage,
