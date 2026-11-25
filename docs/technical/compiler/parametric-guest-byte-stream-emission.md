@@ -14888,3 +14888,36 @@ The same five frozen vectors reach first input in 1,117,645 steps
 remains 2,318,854 cells. This shortcut does not change the
 100,000-step source publication bound or establish C checksum
 admission.
+
+The installed near-frame shortcuts can also be used while normalizing
+and committing the seed-directory and target-page banks. These
+operations already run after the common roots are installed, but
+previously used the generic anchored walk. Reusing the fast path
+preserves the destinations, page stores and even reset words.
+It saves another 4,539 steps, reaching first input at 1,113,106
+with unchanged source extent. All 23 physical and 38 source-recurrent
+tests pass; the physical ceiling is now 1,115,000.
+
+A temporary VM trace counted decoded operations before and after
+the last of the 80 paired-seed return commits. It also checked the
+materialized checksum tables at first input. The earlier
+frame-directory version and the fast-page version differ only in
+the first segment's walks and relocations:
+
+| Segment | Walks | Rotations | Data relocations | Crazy | Code relocations |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Before last return, old | 296,703 | 16,073 | 26,071 | 12,363 | 1 |
+| Before last return, new | 292,075 | 16,073 | 26,160 | 12,363 | 1 |
+| After last return, both | 678,215 | 8,005 | 49,909 | 30,304 | 1 |
+
+The current sequence executes 970,290 walks and 142,816 other
+instructions. Even eliminating every walk would leave that
+sequence 42,816 instructions above the 100,000-step publication
+limit before input. This is a measured property of this witness,
+not a lower bound on a different implementation. The largest
+remaining repeated post-installation walk is from M7,174,474
+to M7,174,489 (1,471 instances, 22,065 steps); the shared-target
+phase still accounts for 766,434 steps, including 88,219 non-walk
+operations. Future work should reduce materialization and reload
+effects rather than rely exclusively on shorter walks. Temporary
+trace instrumentation was removed.

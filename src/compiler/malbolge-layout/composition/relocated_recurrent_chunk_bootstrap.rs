@@ -585,6 +585,20 @@ pub(super) fn go_target(
     emitter.walk(address)
 }
 
+// Use only after the near-frame shortcuts and the selected root
+// have been installed. The page bank itself may still be virgin.
+fn fast_store_anchored(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    (root, base): (u32, u32),
+) -> Result<(), BuildError> {
+    fast_go(emitter, root)?;
+    emitter.jump(base)?;
+    emitter.walk(address)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    after_store(emitter)
+}
+
 fn fast_store(
     emitter: &mut Emitter<'_>,
     address: u32,
@@ -943,15 +957,15 @@ fn initialize_seed_directory(
     scratch: &mut ChunkWord,
 ) -> Result<SeedDirectory, BuildError> {
     let directory = seed_directory(extra)?;
-    let directory_anchor = [(SEED_DIRECTORY, DIRECTORY_BANK)];
+    let directory_anchor = (SEED_DIRECTORY, DIRECTORY_BANK);
     for &(address, base) in &directory {
-        rotate(emitter, NEAR_ZERO)?;
-        store_anchored(emitter, address, &directory_anchor)?;
+        fast_rotate(emitter, NEAR_ZERO)?;
+        fast_store_anchored(emitter, address, directory_anchor)?;
         scratch.synthesize(
             emitter,
             profile_crazy(ALL_ONES, previous(base)?, 15),
         )?;
-        store_anchored(emitter, address, &directory_anchor)?;
+        fast_store_anchored(emitter, address, directory_anchor)?;
     }
     Ok(directory)
 }
@@ -1021,12 +1035,11 @@ fn initialize_target_pages(
     }
     pages.sort_unstable_by_key(|&(_, _, _, base)| base);
     for (slot, bank, root, base) in pages {
-        let anchor = [(root, bank)];
         scratch.synthesize(
             emitter,
             profile_crazy(ALL_ONES, previous(base)?, 15),
         )?;
-        store_anchored(emitter, slot, &anchor)?;
+        fast_store_anchored(emitter, slot, (root, bank))?;
     }
     Ok(())
 }
@@ -1037,8 +1050,8 @@ fn normalize_page_bank(
     mut pending: Vec<u32>,
 ) -> Result<(), BuildError> {
     while !pending.is_empty() {
-        rotate(emitter, NEAR_ZERO)?;
-        emitter.go(root)?;
+        fast_rotate(emitter, NEAR_ZERO)?;
+        fast_go(emitter, root)?;
         emitter.jump(bank)?;
         for &slot in &pending {
             emitter.walk(slot)?;

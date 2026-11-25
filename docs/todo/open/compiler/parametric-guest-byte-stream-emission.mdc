@@ -378,6 +378,13 @@ Replay checks three post-prefix stores, 1,102 selections and four
 omitted-effect refusals. First input falls to 1,117,645 steps;
 all 23 physical and 38 source-recurrent tests pass under the
 1,119,000-step physical ceiling, with source extent unchanged.
+Reusing the fast path for seed-directory and target-page installation
+saves 4,539 more steps (first input 1,113,106; physical ceiling
+1,115,000). The 23 physical and 38 source-recurrent tests pass.
+A fresh trace counts 970,290 walks and 142,816 other instructions;
+the shared-target phase alone needs 88,219 non-walk operations.
+The unchanged instruction sequence cannot meet the publication
+limit even with all walks eliminated.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.
