@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_156_000;
+const BOOT_BUDGET: usize = 1_140_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -136,7 +136,7 @@ impl TargetRouteAudit {
             || self.normalized.len() != 288
             || !self.zeroed.is_empty()
             || self.normalization_visits != 552
-            || self.selections != 8_734
+            || self.selections != 8_085
             || self.pending.is_some()
         {
             return Err(format!(
@@ -335,12 +335,12 @@ impl TargetClusterAudit {
     fn finish(mut self, vm: &ProfileMachine) -> Result<[u32; 4], String> {
         self.flush()?;
         check_materialized_tables(vm)?;
-        if self.groups != 318
-            || self.visits != 8_216
-            || self.even_targets.len() != 2_202
-            || self.zeroed.len() != 646
-            || self.resets != 8_268
-            || self.normalized.len() != 4_194
+        if self.groups != 176
+            || self.visits != 9_314
+            || self.even_targets.len() != 2_225
+            || self.zeroed.len() != 175
+            || self.resets != 7_619
+            || self.normalized.len() != 4_701
             || self.commits != self.normalized
             || self.pending_target.is_some()
         {
@@ -367,7 +367,7 @@ impl TargetClusterAudit {
         let mut previous = None;
         for (index, visit) in self.run.drain(..).enumerate() {
             if previous.is_some_and(|last: u32| {
-                visit.address <= last || visit.address.saturating_sub(last) > 16
+                visit.address <= last || visit.address.saturating_sub(last) > 64
             }) || self.normalized.contains(&visit.address)
                 || visit.old
                     != if self.zeroed.contains(&visit.address) {
@@ -2789,7 +2789,7 @@ fn relocated_recurrent_checksum_shared_reads_preserve_seeds()
 -> Result<(), String> {
     let guest = source()?;
     let (counts, sites) = audit_shared_reads(&guest)?;
-    if counts != [328, 2, 12] {
+    if counts != [344, 2, 7] {
         return Err(format!(
             "incorrect shortened seed read census: {counts:?}"
         ));

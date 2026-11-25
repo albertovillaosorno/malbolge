@@ -14838,3 +14838,29 @@ count falls to 1,155,507 (1,038 steps saved), with the same source
 extent and recurrent routes. All 22 physical checksum tests pass;
 the physical regression ceiling is now 1,156,000, not the
 100,000-step publication bound.
+
+A bounded shared-target sweep experiment retained the same destinations
+and even-reset protection. The previous three sweeps joined candidates
+with gaps of at most 16 cells. Four alternatives were replayed on the
+five frozen binary vectors:
+
+| Maximum gap | Sweeps | Steps to first input |
+| ---: | ---: | ---: |
+| 16 (baseline) | 3 | 1,155,507 |
+| 32 | 3 | 1,147,746 |
+| 64 | 3 | 1,144,917 |
+| 64 | 5 | 1,138,667 |
+| 128 | 5 | 1,141,723 |
+
+The 64-cell, five-sweep schedule is retained. Its independently traced
+176 clusters execute 9,314 alternating normalization stores and
+authenticate 4,701 final commits, including the even-cell protection
+checks for 2,225 visited even targets. The 175 remaining zeroed
+targets are restored before final commit. Shared resets fall from
+8,268 to 7,619; independently selected minimum-cost target routes
+fall from 8,734 to 8,085. All 22 physical checksum tests and 38
+source-recurrent tests pass, including omitted-store, omitted-reset,
+and omitted-route controls. The physical regression ceiling becomes
+1,140,000 steps; source extent and the 100,000-step publication ceiling
+are unchanged. This finite sweep comparison does not establish an
+optimal schedule or source-C publication.

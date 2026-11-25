@@ -1528,7 +1528,7 @@ fn normalize_target_clusters(
         true
     });
     let mut normalized = BTreeSet::new();
-    for _ in 0..3u32 {
+    for _ in 0..5u32 {
         candidates = normalize_target_sweep(
             emitter,
             anchors,
@@ -1547,7 +1547,7 @@ fn normalize_target_sweep(
 ) -> Result<Vec<u32>, BuildError> {
     let mut zeroed = Vec::new();
     for cluster in
-        candidates.chunk_by(|&left, &right| right.saturating_sub(left) <= 16)
+        candidates.chunk_by(|&left, &right| right.saturating_sub(left) <= 64)
     {
         if cluster.len() < 3 {
             continue;
