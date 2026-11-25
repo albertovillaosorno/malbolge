@@ -29,11 +29,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use malbolge::{ProfileMachine, ProfileStepTrace, current_profile};
 
 use super::{
-    Effect, Error, ProjectedIo, SourceInputWalkState, SourceRecurrentIoProbe,
-    SourceRecurrentIoProof, TernaryCfgFunction, TernaryCfgScalarKind,
-    TernaryCfgTerminator, TernaryOperation, admit_probe, known_source_binary,
-    known_source_cast, known_source_shift, known_source_threshold,
-    project_function, replay_guest,
+    Effect, Error, ProjectedIo, ReplayAudits, SourceInputWalkState,
+    SourceRecurrentIoProbe, SourceRecurrentIoProof, TernaryCfgFunction,
+    TernaryCfgScalarKind, TernaryCfgTerminator, TernaryOperation, admit_probe,
+    known_source_binary, known_source_cast, known_source_shift,
+    known_source_threshold, project_function, replay_guest,
 };
 
 /// Proposed encoding of one unsigned source loop-phi in two physical words.
@@ -437,8 +437,15 @@ pub fn verify_source_recurrent_state(
     };
     let plan = StatePlan::new(function, probe)?;
     let projection = project_function(function, probe.io.input, Some(&plan))?;
-    let replay =
-        replay_guest(probe.io, &projection, cfg.source_sha256, Some(probe))?;
+    let replay = replay_guest(
+        probe.io,
+        &projection,
+        cfg.source_sha256,
+        &ReplayAudits {
+            guard: None,
+            state: Some(probe),
+        },
+    )?;
     let trace = replay.state.ok_or(Error::InvalidStateBinding)?;
     Ok(SourceRecurrentStateProof {
         checkpoints: trace.checkpoints,

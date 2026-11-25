@@ -14184,3 +14184,21 @@ bound. The 2,206,054- and 2,168,454-cell candidates refused
 construction with `NoLoadableZero`. Retain the faster
 2,318,854-cell geometry (2,102,518 steps); source size alone
 is not a reliable predictor of execution cost.
+
+A separate signed-input guard replay derives the canonical signed phi
+and its inequality to the materialized minus-one constant. The two
+incoming phi values must each originate in the corresponding source
+predecessor's signed read. Both source read sites cover all 256 byte
+values and true EOF across 513 independently evaluated paths.
+For each reached read, a fresh normative VM must execute the lossless
+raw-input capture, all six ordered classifier folds, and the actual
+data-dependent jump to the successful-byte landing or either EOF
+landing before the next observable effect. The receipt records the
+source signed bits, predicate and successor identities, physical
+raw and encoded words, fold results and indices, and the actual
+dispatch landing and index. All five frozen full-image runs pass;
+wrong source/geometry, reordered classifier cells, wrong landings
+and omission of the shared capture instruction refuse. This evidence
+does not attest the complete two-word C23 signed SSA representation,
+all physical edges, or publication under the original step ceiling.
+Evidence: `tests/compiler/source_recurrent_guard.rs`.

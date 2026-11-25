@@ -223,11 +223,19 @@ Low-only patches and adjacent and mask-pair direct scratch returns
 now reach first input in 2,102,518 steps under a 2,120,000-step bound
 without increasing the 2,318,854-cell source. Both kinds of real jump
 are independently observed, and omitted pointer stores refuse.
+A signed-guard replay now independently binds the canonical signed
+input phi and minus-one predicate to the real lossless capture, six
+ordered classifier folds and actual class-dependent data jump.
+All 256 bytes at both source read sites, true EOF and the five frozen
+full-image runs pass. Wrong bindings and omitted folds refuse.
+This is finite guard correspondence, not full signed SSA storage
+or unrestricted source control verification.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:
 `tests/compiler/relocated_recurrent_checksum.rs`,
 `tests/compiler/source_recurrent_io.rs`,
 `tests/compiler/source_recurrent_state.rs`,
+`tests/compiler/source_recurrent_guard.rs`,
 `tests/compiler/relocated_recurrent_nibble.rs`,
 `tests/compiler/relocated_recurrent_mod4.rs`,
 `tests/compiler/relocated_recurrent_indexed.rs`,

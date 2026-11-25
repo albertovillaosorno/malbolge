@@ -285,11 +285,13 @@ pub use source_input_state_trace::{
 };
 pub use source_input_trace::source_recurrent_io::{
     MAX_RECURRENT_IO_SOURCE_CELLS, MAX_RECURRENT_IO_STEPS,
-    SourceRecurrentIoEffect, SourceRecurrentIoError,
+    SourceRecurrentGuardCheckpoint, SourceRecurrentGuardProbe,
+    SourceRecurrentGuardProof, SourceRecurrentIoEffect, SourceRecurrentIoError,
     SourceRecurrentIoObservation, SourceRecurrentIoProbe,
     SourceRecurrentIoProof, SourceRecurrentStateCheckpoint,
     SourceRecurrentStateProbe, SourceRecurrentStateProof,
-    verify_source_recurrent_io, verify_source_recurrent_state,
+    verify_source_recurrent_guard, verify_source_recurrent_io,
+    verify_source_recurrent_state,
 };
 pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,

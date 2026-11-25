@@ -30,6 +30,8 @@
 //! must actually perform precisely the same ordered I/O and halt. This is
 //! not a physical SSA/control certificate or a compiler publication gate.
 
+#[path = "source_recurrent_guard.rs"]
+mod source_recurrent_guard;
 #[path = "source_recurrent_state.rs"]
 mod source_recurrent_state;
 
@@ -38,6 +40,11 @@ use std::collections::BTreeMap;
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
     current_profile,
+};
+use source_recurrent_guard::{GuardPlan, GuardTrace, SourceGuardValue};
+pub use source_recurrent_guard::{
+    SourceRecurrentGuardCheckpoint, SourceRecurrentGuardProbe,
+    SourceRecurrentGuardProof, verify_source_recurrent_guard,
 };
 use source_recurrent_state::{SourceCheckpointValue, StatePlan, StateTrace};
 pub use source_recurrent_state::{
@@ -126,6 +133,8 @@ pub struct SourceRecurrentIoProof {
 pub enum SourceRecurrentIoError {
     /// Full guest execution did not halt within the declared ceiling.
     GuestBudgetExhausted,
+    /// A physical signed-input capture or EOF guard does not match the source.
+    GuestGuardMismatch,
     /// Missing, additional, reordered or different physical I/O.
     GuestIoMismatch,
     /// A carried state word differs from the independently evaluated source.
@@ -134,6 +143,8 @@ pub enum SourceRecurrentIoError {
     GuestTerminationMismatch,
     /// Canonical typed source failed independent admission.
     InvalidCanonicalSource,
+    /// The proposed signed input phi, guard or physical placement is invalid.
+    InvalidGuardBinding,
     /// Normative VM loading or execution failed.
     InvalidGuestExecution,
     /// Invalid resource bound, non-graphical source or excessive input.
@@ -156,17 +167,20 @@ type PhysicalIo = (Effect, u32);
 struct ProjectedIo {
     block: u32,
     effect: Effect,
+    guard: Option<SourceGuardValue>,
     ordinal: u32,
     state: Option<SourceCheckpointValue>,
 }
 
 struct ProjectionJournal<'plan> {
     events: Vec<ProjectedIo>,
+    guard_plan: Option<&'plan GuardPlan>,
     state_plan: Option<&'plan StatePlan>,
 }
 
 struct ReplayJournal {
     failed: Option<Error>,
+    guard: Option<GuardTrace>,
     last_code: Option<u32>,
     observations: Vec<SourceRecurrentIoObservation>,
     source_sha256: [u8; 32],
@@ -174,7 +188,14 @@ struct ReplayJournal {
     trace_index: usize,
 }
 
+#[derive(Default)]
+struct ReplayAudits<'probe, 'source> {
+    guard: Option<&'probe SourceRecurrentGuardProbe<'source>>,
+    state: Option<&'probe SourceRecurrentStateProbe<'source>>,
+}
+
 struct ReplayProof {
+    guard: Option<GuardTrace>,
     io: SourceRecurrentIoProof,
     state: Option<StateTrace>,
 }
@@ -215,10 +236,14 @@ impl ReplayJournal {
         {
             return Err(Error::GuestIoMismatch);
         }
+        if let Some(guard) = self.guard.as_ref() {
+            guard.finish(&projected.events)?;
+        }
         if let Some(audit) = self.state.as_ref() {
             audit.finish(vm)?;
         }
         Ok(ReplayProof {
+            guard: self.guard,
             io: SourceRecurrentIoProof {
                 bytes_consumed: projected.bytes_consumed,
                 guest_halt_address: self
@@ -234,9 +259,14 @@ impl ReplayJournal {
         })
     }
 
-    const fn new(state: Option<StateTrace>, source_sha256: [u8; 32]) -> Self {
+    const fn new(
+        state: Option<StateTrace>,
+        guard: Option<GuardTrace>,
+        source_sha256: [u8; 32],
+    ) -> Self {
         Self {
             failed: None,
+            guard,
             last_code: None,
             observations: Vec::new(),
             source_sha256,
@@ -268,6 +298,9 @@ impl ReplayJournal {
             projected,
             &mut self.observations,
         )?;
+        if let Some(guard) = self.guard.as_mut() {
+            guard.observe(step, self.trace_index, event)?;
+        }
         if let Some(audit) = self.state.as_mut() {
             audit.observe(step, self.trace_index, event)?;
         }
@@ -378,6 +411,7 @@ fn project_reached_operation(
         journal.events.push(ProjectedIo {
             block: state.block,
             effect,
+            guard: None,
             ordinal: u32::try_from(state.operation)
                 .map_err(|_error| Error::UnsupportedSourceExecution)?,
             state: checkpoint,
@@ -392,9 +426,19 @@ fn project_function(
     input: &[u8],
     state_plan: Option<&StatePlan>,
 ) -> Result<SourceProjection, Error> {
+    project_function_with_guard(function, input, state_plan, None)
+}
+
+fn project_function_with_guard(
+    function: &TernaryCfgFunction,
+    input: &[u8],
+    state_plan: Option<&StatePlan>,
+    guard_plan: Option<&GuardPlan>,
+) -> Result<SourceProjection, Error> {
     let mut state = SourceInputWalkState::entry(function.entry);
     let mut journal = ProjectionJournal {
         events: Vec::new(),
+        guard_plan,
         state_plan,
     };
     for step in 1..=MAX_SOURCE_INPUT_CFG_SEARCH_STATES {
@@ -418,11 +462,17 @@ fn project_function(
                 &mut journal,
             )?;
         } else if let Some(target) = next_target(&state, block.terminator)? {
+            if let Some(plan) = journal.guard_plan {
+                plan.checkpoint(&state, target, &mut journal.events)?;
+            }
             // Shared source semantics take every phi input from the old
             // state before committing any destination (parallel edge copy).
             state = source_successor_state(function, &state, target)
                 .ok_or(Error::UnsupportedSourceExecution)?;
         } else {
+            if journal.guard_plan.is_some() {
+                GuardPlan::finish(&journal.events)?;
+            }
             return Ok(SourceProjection {
                 bytes_consumed: state.consumed,
                 events: journal.events,
@@ -498,7 +548,7 @@ fn replay_guest(
     probe: SourceRecurrentIoProbe<'_>,
     projected: &SourceProjection,
     source_sha256: [u8; 32],
-    state_probe: Option<&SourceRecurrentStateProbe<'_>>,
+    audits: &ReplayAudits<'_, '_>,
 ) -> Result<ReplayProof, Error> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
@@ -506,10 +556,12 @@ fn replay_guest(
         probe.input.to_vec(),
     )
     .map_err(|_error| Error::InvalidGuestExecution)?;
-    let state = state_probe
+    let state = audits
+        .state
         .map(|proposal| StateTrace::new(proposal, &vm))
         .transpose()?;
-    let mut journal = ReplayJournal::new(state, source_sha256);
+    let guard = audits.guard.map(GuardTrace::new).transpose()?;
+    let mut journal = ReplayJournal::new(state, guard, source_sha256);
     let outcome = vm
         .run_traced(probe.step_budget, &mut |step| {
             journal.observe(step, projected);
@@ -559,8 +611,13 @@ pub fn verify_source_recurrent_io(
         return Err(Error::UnsupportedSourceExecution);
     };
     let projected = project_function(function, probe.input, None)?;
-    replay_guest(probe, &projected, cfg.source_sha256, None)
-        .map(|proof| proof.io)
+    replay_guest(
+        probe,
+        &projected,
+        cfg.source_sha256,
+        &ReplayAudits::default(),
+    )
+    .map(|proof| proof.io)
 }
 
 #[cfg(test)]
