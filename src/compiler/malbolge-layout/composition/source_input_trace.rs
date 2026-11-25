@@ -53,6 +53,9 @@ use super::typed_cfg_adapter::ternary::{
     TernaryCfgFunction, TernaryCfgTerminator, TernaryOperation,
 };
 
+#[path = "source_recurrent_io.rs"]
+pub(super) mod source_recurrent_io;
+
 /// Physical probe code is intentionally small and entirely graphical.
 pub const MAX_SOURCE_INPUT_TRACE_CELLS: usize = 4096;
 /// Finite physical prefix ceiling; this is not an unbounded C execution gate.

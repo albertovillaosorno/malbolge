@@ -14119,3 +14119,20 @@ mixed and truncated vectors halt in 446, 11,859, 11,859, 46,098 and
 100,000-step publication budget before any input or output. This is
 full-byte recurrent arithmetic, not independent source-C CFG
 admission; the original compiler still refuses publication.
+
+A separate bounded source-recurrent I/O checker evaluates the original
+canonical typed CFG with known scalar values and simultaneous phi copies,
+then runs the complete physical image in a fresh normative VM. The two
+logical input sites (block 0 operation 1 and block 5 operation 2) may
+match the same recurrent physical input address at distinct trace indices.
+The five original C23 vectors match all ordered read, true EOF, output
+and halt effects, including the bootstrap. An independent byte model
+agrees with the source evaluation for all 65,536 two-byte streams and
+all 256 one-byte EOF paths. Missing, extra, reordered and incorrect
+physical I/O, invalid canonical input and insufficient budget refuse.
+The experimental envelope is three million graphical cells and guest
+steps, 512 I/O events, and 16,384 source steps. This is finite
+observational evidence, not an independently verified physical SSA frame
+or a proof of unrestricted source equivalence. The strict source-site
+checker and the 100,000-step publication limit remain unchanged.
+Evidence: `tests/compiler/source_recurrent_io.rs`.

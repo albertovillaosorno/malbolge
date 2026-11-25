@@ -283,6 +283,12 @@ pub use source_input_state_trace::{
     SourceInputStoreCell, SourceInputStoreObservation, SourceInputStoredProof,
     verify_source_input_site_stored_results,
 };
+pub use source_input_trace::source_recurrent_io::{
+    MAX_RECURRENT_IO_SOURCE_CELLS, MAX_RECURRENT_IO_STEPS,
+    SourceRecurrentIoEffect, SourceRecurrentIoError,
+    SourceRecurrentIoObservation, SourceRecurrentIoProbe,
+    SourceRecurrentIoProof, verify_source_recurrent_io,
+};
 pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,
     SourceBranchLanding, SourceInputIoEvent, SourceInputPrefixProof,
