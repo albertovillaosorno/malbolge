@@ -31,6 +31,9 @@ pub mod layout;
 #[path = "compiler/relocated_eof_branch.rs"]
 mod relocated_eof_branch;
 
+#[path = "compiler/relocated_eof_source_binding.rs"]
+mod relocated_eof_source_binding;
+
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 

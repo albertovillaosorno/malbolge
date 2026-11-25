@@ -82,6 +82,20 @@ finite physical evidence, not source-C predicate storage, a source
 return certificate, or universal equivalence outside its inputs.
 See `tests/compiler/relocated_eof_branch.rs`.
 
+The new `verify_address_selected_source_return` gate joins one proven
+physical case to the exact original seven-block source plan. It binds
+C118 to the source conditional and both successor entries (C120/C126),
+then requires a unique source return at the reached halt C142. The
+empty-input replay authenticates C53 as the first source getchar and
+C141 as the original ByteOutput, with matching values and chronology
+on one source return path. The byte arm is refused: C120 belongs to
+the loop-body entry, not the later getchar reserved at C94. A collision
+check rejects reassigning that later input to C120. Forged branch
+directions, input counts, output sites, halt sites and replay identities
+also refuse. This is a necessary I/O/control witness for empty input,
+not a proof of source operand storage, arithmetic, phi copies or a
+complete source CFG. See `tests/compiler/relocated_eof_source_binding.rs`.
+
 ### Source-known narrow C23 scalar casts (2026-11-24)
 
 The bounded source-CFG return checker now preserves exact typed `i8`/`u8`

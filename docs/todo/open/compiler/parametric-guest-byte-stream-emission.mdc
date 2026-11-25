@@ -53,11 +53,15 @@ controls. The paired address-selection gate now replays each byte
 against EOF, verifies the shared input, live selector, read-only
 D route and invariant downstream operand histories, and refuses
 forged claims. The existing pointer-value writer gate still refuses
-these encrypted operands. Next: normalize signed EOF, bind the
-relocated effects to source control, implement arithmetic and
-phi/backedge, and rerun the unchanged whole checksum. Scratch frame writes and the incomplete byte arm prohibit
-publication. Evidence: `tests/compiler/relocated_eof_branch.rs` and the
-P2 technical contract.
+these encrypted operands. The source-return join now binds the actual
+C118 branch, C53 getchar, C141 ByteOutput and C142 halt to the original
+source plan for empty input. The byte arm remains refused: C120 is a
+loop-body entry, not the later getchar reserved at C94. Next: normalize
+signed EOF, authorize source operand stores, implement arithmetic and
+phi/backedge, and rerun the unchanged whole checksum. Scratch frame
+writes and the incomplete byte arm prohibit publication. Evidence:
+`tests/compiler/relocated_eof_branch.rs`,
+`tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 
 A fresh source-loaded C23 **empty-EOF-only operand experiment** uses
 two real C58/C59 guest `p` writes to set the original source output SSA

@@ -47,6 +47,7 @@
 pub mod typed_cfg_adapter;
 
 mod address_selected_indirect_source;
+mod address_selected_source_return;
 mod bounded_revisit;
 mod byte_exact_input_reentry;
 mod byte_exact_input_store;
@@ -74,6 +75,10 @@ pub use address_selected_indirect_source::{
     AddressSelectedIndirectCase, AddressSelectedIndirectCaseProof,
     AddressSelectedIndirectError, AddressSelectedIndirectProbe,
     AddressSelectedIndirectProof, verify_address_selected_indirect_guest,
+};
+pub use address_selected_source_return::{
+    AddressSelectedSourceReturnError, AddressSelectedSourceReturnProbe,
+    verify_address_selected_source_return,
 };
 pub use bounded_revisit::{
     BoundedGuestDataRegion, BoundedGuestRegionsError, BoundedRevisitDataWrite,

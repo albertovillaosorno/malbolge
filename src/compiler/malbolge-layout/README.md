@@ -41,6 +41,14 @@ outcomes and a real route mutation are refused; the original strict
 guest-written-pointer verifier remains unchanged. The new evidence
 does not certify the source-C predicate or a complete return path.
 
+`verify_address_selected_source_return` separately checks one proven
+case against source-locked control and I/O reservations. The original
+checksum's empty-input execution matches C53 getchar, C118 false
+branch to C126, C141 ByteOutput and the unique C142 return. The byte
+arm is rejected because its C120 read is not the source's later
+getchar. This join still cannot authorize any source operand store,
+arithmetic, phi copy, or complete source translation.
+
 ### Real first C23 input-result byte pair, still not signed EOF (2026-11-24)
 
 `build_adjacent_c32_zero_c37_byte_pair_source` extends the original
