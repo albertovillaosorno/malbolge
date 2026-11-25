@@ -37,8 +37,10 @@ mod source_recurrent_terminal_trace;
 use std::collections::BTreeMap;
 
 use malbolge::{
-    ProfileMachine, ProfileStepTrace, TraceInput, current_profile,
-    decode_profile_instruction, profile_crazy,
+    ProfileMachine, ProfileMemoryRead, ProfileMemoryWrite, ProfileStepTrace,
+    StepOutcome, Termination, TraceInput, current_profile,
+    decode_profile_instruction, encrypt_profile_cell, profile_crazy,
+    profile_rotate,
 };
 use source_recurrent_bootstrap_trace::{BootstrapReceipt, BootstrapTableTrace};
 use source_recurrent_commit_trace::{CommitGeometry, CommitTrace};
@@ -541,6 +543,9 @@ impl TransitionTrace {
         {
             return Err(Error::GuestTransitionMismatch);
         }
+        if self.started {
+            verify_access_roles(trace, self.source_extent)?;
+        }
         self.control.observe(trace, index, projected_event)?;
         self.terminal.observe(trace, index, projected_event)?;
         if let Some(event) = projected_event {
@@ -779,4 +784,121 @@ fn lookup_values(
         inverse_rotation(high_mask),
         inverse_rotation(low_mask),
     ])
+}
+
+fn verify_access_data(
+    trace: &ProfileStepTrace,
+    opcode: u8,
+    data: ProfileMemoryRead,
+) -> Result<(), Error> {
+    let mismatch = Error::GuestTransitionMismatch;
+    let before = trace.before.registers;
+    let after = trace.after.registers;
+    let profile = current_profile();
+    let value = match opcode {
+        b'p' => {
+            profile_crazy(data.value, before.accumulator, profile.word_trits())
+        },
+        b'*' => profile_rotate(data.value, profile.memory_words()),
+        b'i' | b'j' => {
+            return if trace.memory_delta.data.is_none()
+                && before.accumulator == after.accumulator
+            {
+                Ok(())
+            } else {
+                Err(mismatch)
+            };
+        },
+        _ => return Err(mismatch),
+    };
+    if after.accumulator != value
+        || trace.memory_delta.data
+            != (data.value != value).then_some(ProfileMemoryWrite {
+                address: data.address,
+                before: data.value,
+                after: value,
+            })
+    {
+        return Err(mismatch);
+    }
+    Ok(())
+}
+
+fn verify_access_encryption(
+    trace: &ProfileStepTrace,
+    opcode: u8,
+    cell: u32,
+) -> Result<(), Error> {
+    let mismatch = Error::GuestTransitionMismatch;
+    let before = trace.before.registers;
+    let after = trace.after.registers;
+    if opcode == b'v' {
+        return if trace.result
+            == Ok(StepOutcome::Terminated(Termination::HaltInstruction))
+            && trace.memory_reads.encryption.is_none()
+            && trace.memory_delta.encryption.is_none()
+            && before == after
+        {
+            Ok(())
+        } else {
+            Err(mismatch)
+        };
+    }
+    let target = if opcode == b'i' {
+        after.code_pointer.checked_sub(1).ok_or(mismatch)?
+    } else {
+        before.code_pointer
+    };
+    let read = trace.memory_reads.encryption.ok_or(mismatch)?;
+    let encrypted = encrypt_profile_cell(read.value).ok_or(mismatch)?;
+    if trace.result != Ok(StepOutcome::Continued)
+        || read.address != target
+        || (target == before.code_pointer && read.value != cell)
+        || trace.memory_delta.encryption
+            != (read.value != encrypted).then_some(ProfileMemoryWrite {
+                address: target,
+                before: read.value,
+                after: encrypted,
+            })
+    {
+        return Err(mismatch);
+    }
+    Ok(())
+}
+
+// The recurrent envelopes execute in source memory and read expanded data.
+// Check semantic access roles even when replay begins at a checkpoint and
+// the full bootstrap address/value journal is not present.
+fn verify_access_roles(
+    trace: &ProfileStepTrace,
+    source_extent: u32,
+) -> Result<(), Error> {
+    let mismatch = Error::GuestTransitionMismatch;
+    let before = trace.before.registers;
+    let cell = trace.fetched_cell.ok_or(mismatch)?;
+    let opcode = trace.decoded.ok_or(mismatch)?;
+    if trace.memory_reads.fetch
+        != Some(ProfileMemoryRead {
+            address: before.code_pointer,
+            value: cell,
+        })
+        || decode_profile_instruction(cell, before.code_pointer) != Some(opcode)
+    {
+        return Err(mismatch);
+    }
+    verify_access_encryption(trace, opcode, cell)?;
+    if !matches!(opcode, b'i' | b'j' | b'p' | b'*') {
+        return if trace.memory_reads.data.is_none()
+            && trace.memory_delta.data.is_none()
+        {
+            Ok(())
+        } else {
+            Err(mismatch)
+        };
+    }
+    let data = trace.memory_reads.data.ok_or(mismatch)?;
+    if data.address != before.data_pointer || data.address < source_extent {
+        return Err(mismatch);
+    }
+    verify_access_data(trace, opcode, data)
 }

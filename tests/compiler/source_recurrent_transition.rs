@@ -404,6 +404,68 @@ fn refuse_control_trace(
     Ok(())
 }
 
+fn check_access_mutations(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+    traces: &[ProfileStepTrace],
+) -> Result<(), String> {
+    let (index, inert) = traces
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, trace)| trace.decoded == Some(b'o'))
+        .ok_or("missing actual inert instruction")?;
+    let mut no_fetch = inert;
+    no_fetch.memory_reads.fetch = None;
+    let mut wrong_fetch = inert;
+    let fetch = wrong_fetch
+        .memory_reads
+        .fetch
+        .as_mut()
+        .ok_or("missing actual fetch")?;
+    fetch.address = fetch.address.saturating_add(1);
+    let mut extra_data = inert;
+    extra_data.memory_reads.data = Some(ProfileMemoryRead {
+        address: inert.before.registers.data_pointer,
+        value: 0,
+    });
+    for changed in [no_fetch, wrong_fetch, extra_data] {
+        refuse_control_trace(probe, projected, traces, (index, changed))?;
+    }
+    Ok(())
+}
+
+fn check_terminal_access_mutations(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+    traces: &[ProfileStepTrace],
+) -> Result<(), String> {
+    let (index, terminal) = traces
+        .iter()
+        .copied()
+        .enumerate()
+        .find(|(_, trace)| {
+            trace.before.registers.code_pointer >= probe.terminal_address
+                && trace.memory_delta.encryption.is_some()
+        })
+        .ok_or("missing actual terminal encryption")?;
+    let mut no_read = terminal;
+    no_read.memory_reads.encryption = None;
+    let mut no_write = terminal;
+    no_write.memory_delta.encryption = None;
+    let mut wrong_read = terminal;
+    let read = wrong_read
+        .memory_reads
+        .encryption
+        .as_mut()
+        .ok_or("missing terminal encryption read")?;
+    read.address = read.address.saturating_add(1);
+    for changed in [no_read, no_write, wrong_read] {
+        refuse_control_trace(probe, projected, traces, (index, changed))?;
+    }
+    Ok(())
+}
+
 fn check_control_mutations(
     probe: &SourceRecurrentTransitionProbe<'_>,
     projected: &SourceProjection,
@@ -692,14 +754,9 @@ fn verify_extra_reads(
         .finish(outcome, projected, vm)
         .map_err(|error| format!("actual trace: {error:?}"))?;
     for (index, journal) in results.enumerate() {
-        // The first two reads fail immediately. An unused route-tape word
-        // is in the broad candidate range, but not in the admitted route.
-        let expected = if index == 2 {
-            None
-        } else {
-            Some(Error::GuestTransitionMismatch)
-        };
-        if journal.failed != expected {
+        // The exact opcode access-role check now also refuses the unused
+        // candidate read immediately: this inert step cannot read data.
+        if journal.failed != Some(Error::GuestTransitionMismatch) {
             return Err(format!("wrong immediate result for control {index}"));
         }
         if !matches!(
@@ -786,6 +843,8 @@ fn source_recurrent_transition_rejects_control_trace_mutations()
         .finish(outcome, &projected, &vm)
         .map_err(|error| format!("unmodified control: {error:?}"))?;
     check_control_mutations(&probe, &projected, &traces)?;
+    check_access_mutations(&probe, &projected, &traces)?;
+    check_terminal_access_mutations(&probe, &projected, &traces)?;
     check_initial_entry_mutations(&guest, &probe, &projected)
 }
 

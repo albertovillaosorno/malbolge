@@ -410,6 +410,10 @@ outside the admitted data footprint, including impossible carry slots
 and unused route candidates; three read-mutation controls preserve the
 actual empty-input I/O but fail the proof. The five frozen guest replays
 and four unvisited-materialization regressions pass.
+The recurrent checker additionally verifies fetch, opcode-dependent data
+access and encryption roles in both source-loaded and checkpoint replays.
+Six trace-mutation controls refuse; all five frozen full replays and 512
+terminal-byte/phase forks pass. No guest instruction budget is changed.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

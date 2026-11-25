@@ -15012,3 +15012,19 @@ frozen full-guest replays and the four unvisited-materialization
 regressions pass. This closes the address footprint for observed data
 accesses; it does not attest arbitrary source frames or remove the
 100,000-step publication limit.
+
+A separate post-input access-role check now applies to both source-loaded
+proofs and bounded checkpoint forks. Every fetch must identify the
+actual code address and fetched word. Only `i`, `j`, `p` and `*` may
+read expanded data through the current D register. Crazy and rotation
+results and changed-word receipts are checked even outside specialized
+store sites. Continued steps require the actual XLAT2 read and delta
+at the fetched cell (or indirect-transfer predecessor); halt must not
+read or encrypt a cell after its fetch. Two red-first checkpoint
+controls exposed accepted missing fetch and missing terminal encryption
+reads. The repaired proof rejects six fetch, extraneous data and
+terminal encryption mutations, without changing the underlying guest.
+The prior three extra-read controls now all refuse immediately, before
+route-map reconciliation. All five source-loaded vectors and 512
+terminal-byte/phase checkpoint forks pass. These are physical trace
+checks, not general SSA placement or source publication.
