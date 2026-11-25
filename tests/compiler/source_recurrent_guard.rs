@@ -45,7 +45,7 @@ const BYTE: u32 = 7_180_651;
 const EOF_EVEN: u32 = 7_179_922;
 const EOF_ODD: u32 = 7_178_464;
 
-fn proposal<'source>(
+pub(in super::super) fn proposal<'source>(
     wire: &'source [u8],
     stream: &'source [u8],
     guest: &'source RelocatedRecurrentChecksumSource,

@@ -32,6 +32,8 @@
 
 #[path = "source_recurrent_guard.rs"]
 mod source_recurrent_guard;
+#[path = "source_recurrent_loop.rs"]
+mod source_recurrent_loop;
 #[path = "source_recurrent_state.rs"]
 mod source_recurrent_state;
 
@@ -45,6 +47,10 @@ use source_recurrent_guard::{GuardPlan, GuardTrace, SourceGuardValue};
 pub use source_recurrent_guard::{
     SourceRecurrentGuardCheckpoint, SourceRecurrentGuardProbe,
     SourceRecurrentGuardProof, verify_source_recurrent_guard,
+};
+pub use source_recurrent_loop::{
+    SourceRecurrentLoopCheckpoint, SourceRecurrentLoopProbe,
+    SourceRecurrentLoopProof, verify_source_recurrent_loop,
 };
 use source_recurrent_state::{SourceCheckpointValue, StatePlan, StateTrace};
 pub use source_recurrent_state::{
@@ -97,7 +103,7 @@ pub struct SourceRecurrentIoObservation {
 }
 
 /// One finite, isolated recurrent I/O replay request.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceRecurrentIoProbe<'source> {
     /// Canonical, independently admitted typed source.
     pub canonical: &'source [u8],
@@ -137,6 +143,8 @@ pub enum SourceRecurrentIoError {
     GuestGuardMismatch,
     /// Missing, additional, reordered or different physical I/O.
     GuestIoMismatch,
+    /// The physical guard and carried-state receipts cannot be paired.
+    GuestLoopMismatch,
     /// A carried state word differs from the independently evaluated source.
     GuestStateMismatch,
     /// Guest halt did not correspond to the source's void return.
@@ -147,6 +155,8 @@ pub enum SourceRecurrentIoError {
     InvalidGuardBinding,
     /// Normative VM loading or execution failed.
     InvalidGuestExecution,
+    /// Inconsistent source, input, header or physical loop placement.
+    InvalidLoopBinding,
     /// Invalid resource bound, non-graphical source or excessive input.
     InvalidProbeBound,
     /// The proposed phi, input sites or split-state representation is invalid.
@@ -469,6 +479,9 @@ fn project_function_with_guard(
             // state before committing any destination (parallel edge copy).
             state = source_successor_state(function, &state, target)
                 .ok_or(Error::UnsupportedSourceExecution)?;
+            if let Some(plan) = journal.state_plan {
+                plan.merge(&state, &journal.events)?;
+            }
         } else {
             if journal.guard_plan.is_some() {
                 GuardPlan::finish(&journal.events)?;

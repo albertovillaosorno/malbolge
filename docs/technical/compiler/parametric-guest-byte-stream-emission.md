@@ -14202,3 +14202,16 @@ and omission of the shared capture instruction refuse. This evidence
 does not attest the complete two-word C23 signed SSA representation,
 all physical edges, or publication under the original step ceiling.
 Evidence: `tests/compiler/source_recurrent_guard.rs`.
+
+The two loop-header bindings can also be checked in one fresh replay.
+The canonical source must evaluate both incoming phi values and the
+merged unsigned value, and the two proposals must agree on the source,
+guest, input, limit, header and shared physical read. Carried-state
+words cannot alias the capture, classifier or dispatch destinations.
+Each combined receipt pairs the stores and unsigned state before a
+real read with the signed value, classifier and branch after that
+same read. Both recurrent stores must follow the previous dispatch.
+All five original streams pass; incompatible proposals and omitted,
+reordered or prematurely placed checkpoint receipts refuse. No full
+source-frame or unrestricted control certificate is asserted.
+Evidence: `tests/compiler/source_recurrent_loop.rs`.

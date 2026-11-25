@@ -117,7 +117,7 @@ pub(super) struct GuardPlan {
     false_target: u32,
     header: u32,
     literal: u32,
-    phi: u32,
+    pub(super) phi: u32,
     reads: GuardSites,
     true_target: u32,
 }
@@ -178,7 +178,10 @@ impl GuardPlan {
         }
     }
 
-    fn new(function: &TernaryCfgFunction, header: u32) -> Result<Self, Error> {
+    pub(super) fn new(
+        function: &TernaryCfgFunction,
+        header: u32,
+    ) -> Result<Self, Error> {
         let block = function
             .blocks
             .iter()
@@ -419,7 +422,7 @@ impl GuardGeometry {
 }
 
 pub(super) struct GuardTrace {
-    checkpoints: Vec<SourceRecurrentGuardCheckpoint>,
+    pub(super) checkpoints: Vec<SourceRecurrentGuardCheckpoint>,
     geometry: GuardGeometry,
     pending: Option<PendingGuard>,
 }
@@ -666,4 +669,4 @@ pub fn verify_source_recurrent_guard(
 
 #[cfg(test)]
 #[path = "../../../../tests/compiler/source_recurrent_guard.rs"]
-mod source_recurrent_guard_tests;
+pub(super) mod source_recurrent_guard_tests;

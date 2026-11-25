@@ -73,7 +73,7 @@ fn encoding() -> [[u32; 16]; 2] {
     ]
 }
 
-fn proposal<'source>(
+pub(in super::super) fn proposal<'source>(
     canonical: &'source [u8],
     input: &'source [u8],
     guest: &'source RelocatedRecurrentChecksumSource,

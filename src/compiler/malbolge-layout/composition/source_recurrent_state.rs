@@ -101,6 +101,8 @@ pub(super) struct SourceCheckpointValue {
 }
 
 pub(super) struct StatePlan {
+    header: u32,
+    phi: u32,
     sites: StateSites,
 }
 
@@ -113,7 +115,7 @@ struct TrackedCell {
 
 pub(super) struct StateTrace {
     cells: [TrackedCell; 2],
-    checkpoints: Vec<SourceRecurrentStateCheckpoint>,
+    pub(super) checkpoints: Vec<SourceRecurrentStateCheckpoint>,
     encoding: [[u32; 16]; 2],
     input_address: u32,
 }
@@ -145,7 +147,25 @@ impl StatePlan {
         Ok(Some(SourceCheckpointValue { source_value, value }))
     }
 
-    fn new(
+    pub(super) fn merge(
+        &self,
+        state: &SourceInputWalkState,
+        events: &[ProjectedIo],
+    ) -> Result<(), Error> {
+        if state.block != self.header {
+            return Ok(());
+        }
+        let checkpoint = events
+            .last()
+            .and_then(|event| event.state)
+            .ok_or(Error::InvalidStateBinding)?;
+        if state.known.get(&self.phi) != Some(&u32::from(checkpoint.value)) {
+            return Err(Error::InvalidStateBinding);
+        }
+        Ok(())
+    }
+
+    pub(super) fn new(
         function: &TernaryCfgFunction,
         probe: &SourceRecurrentStateProbe<'_>,
     ) -> Result<Self, Error> {
@@ -186,7 +206,11 @@ impl StatePlan {
         if all_reads != sites.len() {
             return Err(Error::InvalidStateBinding);
         }
-        Ok(Self { sites })
+        Ok(Self {
+            header: probe.loop_header,
+            phi: probe.phi_result,
+            sites,
+        })
     }
 }
 
@@ -389,7 +413,7 @@ fn read_site(
     Ok((predecessor, read.ok_or(Error::InvalidStateBinding)?))
 }
 
-fn validate_geometry(
+pub(super) fn validate_geometry(
     probe: &SourceRecurrentStateProbe<'_>,
 ) -> Result<(), Error> {
     let [low, high] = probe.words;
@@ -458,4 +482,4 @@ pub fn verify_source_recurrent_state(
 
 #[cfg(test)]
 #[path = "../../../../tests/compiler/source_recurrent_state.rs"]
-mod source_recurrent_state_tests;
+pub(super) mod source_recurrent_state_tests;
