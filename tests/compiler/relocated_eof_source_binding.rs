@@ -28,6 +28,7 @@ use std::str;
 
 use malbolge::{TraceInput, current_profile};
 
+use super::layout::typed_cfg_adapter::state_operations::GuestOperationBlock;
 use super::layout::typed_cfg_adapter::state_relocation::{
     GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeEdgeKind,
     GuestCodeEdgePadPlacement, GuestCodeEffectAnchor, GuestCodeInputAnchor,
@@ -765,5 +766,85 @@ fn relocated_composed_eof_binds_source_return_only() -> Result<(), String> {
         ..probe
     };
     assert!(verify_address_selected_source_return(&physical, &byte).is_err());
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "original source SSA pair reservations"
+)]
+fn check_iteration_operations(
+    blocks: &[GuestOperationBlock],
+    guest: &super::layout::RelocatedFirstIterationSource,
+) -> Result<(), String> {
+    let body = blocks
+        .iter()
+        .find(|block| block.function == 0 && block.block == 5)
+        .ok_or("missing body")?;
+    for (ordinal, addresses) in [(1, guest.masked_pair), (2, guest.second_pair)]
+    {
+        let write = body
+            .instructions
+            .get(ordinal)
+            .and_then(|op| op.write)
+            .ok_or("missing source write")?;
+        assert_eq!(
+            write.words, 2,
+            "source operation requires a signed or unsigned pair"
+        );
+        let low = FRAME.checked_add(write.offset).ok_or("overflow")?;
+        assert_eq!(
+            addresses,
+            [low, low.checked_add(1).ok_or("overflow")?],
+            "physical pair must match original source reservation"
+        );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "original SSA and phi reservation binding"
+)]
+#[test]
+fn first_iteration_matches_source_edge_reservations() -> Result<(), String> {
+    let wire = checksum_wire()?;
+    let prelink =
+        super::layout::typed_cfg_adapter::prepare_canonical_dynamic_cfg(&wire)
+            .map_err(|error| format!("prelink: {error:?}"))?;
+    let guest = super::layout::build_relocated_first_iteration_source(
+        current_profile(),
+    )
+    .map_err(|error| format!("iteration source: {error:?}"))?;
+    check_iteration_operations(&prelink.operation_blocks, &guest)?;
+    let edge = prelink
+        .cell_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .ok_or("missing backedge")?;
+    let [second_low, second_high] = guest.second_pair;
+    let [mask_low, mask_high] = guest.masked_pair;
+    assert_eq!(edge.snapshots.len(), 4);
+    assert_eq!(edge.commits.len(), 4);
+    for ((copy, source), destination) in edge
+        .snapshots
+        .iter()
+        .zip([second_low, second_high, mask_low, mask_high])
+        .zip(guest.phi_snapshot_words)
+    {
+        assert_eq!(FRAME.checked_add(copy.source), Some(source));
+        assert_eq!(FRAME.checked_add(copy.destination), Some(destination));
+    }
+    for ((copy, source), destination) in edge
+        .commits
+        .iter()
+        .zip(guest.phi_snapshot_words)
+        .zip(guest.phi_header_words)
+    {
+        assert_eq!(FRAME.checked_add(copy.source), Some(source));
+        assert_eq!(FRAME.checked_add(copy.destination), Some(destination));
+    }
     Ok(())
 }

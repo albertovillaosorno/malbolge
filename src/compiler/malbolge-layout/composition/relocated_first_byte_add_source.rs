@@ -8,7 +8,7 @@
 //   - LICENSE
 // Boundary-Contract:
 // - Owns:
-//   - First-iteration physical byte addition and EOF return.
+//   - First-iteration physical arithmetic, second read and one phi edge.
 // - Must-Not:
 //   - Claim general checksum arithmetic, source-frame admission or a loop.
 // - Allows:
@@ -20,9 +20,18 @@
 // - Merge-When:
 //   - Complete checksum lowering owns both continuations.
 // - Summary:
-//   - Emit a bounded ternary carry circuit for the first byte.
+//   - Emit bounded first-iteration and one-shot header probes.
+
+#[path = "relocated_first_iteration_source.rs"]
+mod relocated_first_iteration_source;
 
 use malbolge::ProfileDescriptor;
+use relocated_first_iteration_source::{
+    IterationSites, MaskTapes, emit_iteration,
+};
+pub use relocated_first_iteration_source::{
+    RelocatedFirstIterationSource, build_relocated_first_iteration_source,
+};
 
 use super::super::LinearOpcode::{
     CrazyData, Halt, NoOperation, OutputByte, RelocateDataPointer, RotateData,
@@ -48,18 +57,42 @@ const ANCHOR: u32 = 7_174_497;
 const MERGED: u32 = 7_174_527;
 const JOIN: u32 = 7_174_515;
 const COUNT: u32 = 168;
+const ORIGINAL: Geometry = Geometry {
+    bounds: BOUNDS,
+    byte_entry: 50_000,
+    cells: 355_194,
+    count: COUNT,
+    eof_entry: 350_000,
+    even_entry: 80_000,
+    join_entry: 85_000,
+    odd_entry: 82_000,
+    scratch: SCRATCH,
+};
 
 // Postfix circuits: left/right/0/2 load operands, s saves A, p combines.
 // Each digit computes sum modulo three or carry independently.
 const SUM: &[u8] = b"xsxs2ppsysxppsxsyps2pp";
 const CARRY: &[u8] = b"0s0sxpsysxs0pppp";
 
+#[derive(Clone, Copy)]
+struct Geometry {
+    bounds: TapeBounds,
+    byte_entry: usize,
+    cells: usize,
+    count: u32,
+    eof_entry: usize,
+    even_entry: usize,
+    join_entry: usize,
+    odd_entry: usize,
+    scratch: u32,
+}
+
 /// Bounded first-iteration image, not a complete checksum loop.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RelocatedFirstByteAddSource {
     /// Actual even/odd merged-result stores.
     pub arm_store_code_addresses: [u32; 2],
-    /// Byte halt.
+    /// Byte-path halt (after second EOF for the first-iteration variant).
     pub byte_halt_code_address: u32,
     /// True EOF halt.
     pub eof_halt_code_address: u32,
@@ -77,19 +110,44 @@ pub struct RelocatedFirstByteAddSource {
     pub zero_pair: [u32; 2],
 }
 
+type BuiltSource = (RelocatedFirstByteAddSource, Option<IterationSites>);
+
 struct Adder<'emitter, 'profile> {
+    count: u32,
     cursor: u32,
     emitter: &'emitter mut Emitter<'profile>,
+    scratch: u32,
 }
 
 impl Adder<'_, '_> {
+    fn add(
+        &mut self,
+        mut left: u32,
+        mut right: u32,
+        rounds: u32,
+    ) -> Result<u32, BuildError> {
+        for _ in 0..rounds {
+            self.evaluate(SUM, left, right)?;
+            let sum = self.copy()?;
+            self.evaluate(CARRY, left, right)?;
+            let carry = self.copy()?;
+            for _ in 0u32..14 {
+                self.go(carry)?;
+                let _: u32 = self.emitter.linear(RotateData)?;
+            }
+            (left, right) = (sum, carry);
+        }
+        self.load(left)?;
+        Ok(left)
+    }
+
     fn copy(&mut self) -> Result<u32, BuildError> {
-        let mut address = SCRATCH;
+        let mut address = self.scratch;
         for _ in 0u32..2 {
-            if self.cursor >= COUNT {
+            if self.cursor >= self.count {
                 return Err(LAYOUT);
             }
-            address = scratch_address(self.cursor)?;
+            address = scratch_address(self.scratch, self.cursor)?;
             self.cursor = self.cursor.checked_add(1).ok_or(LAYOUT)?;
             self.go(address)?;
             let _: u32 = self.emitter.linear(CrazyData)?;
@@ -124,17 +182,24 @@ impl Adder<'_, '_> {
         Ok(())
     }
 
+    const fn finish(&self) -> Result<(), BuildError> {
+        if self.cursor != self.count {
+            return Err(LAYOUT);
+        }
+        Ok(())
+    }
+
     fn go(&mut self, target: u32) -> Result<(), BuildError> {
         let emitter = &mut *self.emitter;
         if emitter.data > target {
             emitter.reset()?;
         }
-        if emitter.data < SCRATCH && target >= SCRATCH {
+        if emitter.data < self.scratch && target >= self.scratch {
             if emitter.data > ANCHOR {
                 emitter.reset()?;
             }
             emitter.walk(ANCHOR)?;
-            emitter.jump(SCRATCH)?;
+            emitter.jump(self.scratch)?;
         }
         emitter.walk(target)
     }
@@ -143,52 +208,39 @@ impl Adder<'_, '_> {
         if [ZERO, ONES, TWOS].contains(&address) {
             self.go(address)?;
             let _: u32 = self.emitter.linear(RotateData)?;
-        } else {
-            // Two involutive folds with all twos preserve the operand.
-            for _ in 0u32..2 {
-                self.go(TWOS)?;
-                let _: u32 = self.emitter.linear(RotateData)?;
-                self.go(address)?;
-                let _: u32 = self.emitter.linear(CrazyData)?;
+            return Ok(());
+        }
+        // Two involutive folds with all twos preserve the operand.
+        for _ in 0u32..2 {
+            self.go(TWOS)?;
+            let _: u32 = self.emitter.linear(RotateData)?;
+            if address < TWOS {
+                // M7174490 is not a virgin reset pointer.
+                self.emitter.walk(7_174_492)?;
+                self.emitter.jump(FRAME)?;
             }
+            self.go(address)?;
+            let _: u32 = self.emitter.linear(CrazyData)?;
         }
         Ok(())
     }
 
-    fn run(&mut self) -> Result<u32, BuildError> {
+    fn prepare(&mut self) -> Result<(), BuildError> {
         self.load(ZERO)?;
-        for slot in 0..COUNT {
-            let address = scratch_address(slot)?;
+        for slot in 0..self.count {
+            let address = scratch_address(self.scratch, slot)?;
             self.go(address)?;
             let _: u32 = self.emitter.linear(CrazyData)?;
             self.emitter.walk(address.checked_add(2).ok_or(LAYOUT)?)?;
             let _: u32 = self.emitter.linear(CrazyData)?;
         }
-        let (mut left, mut right) = (MERGED, THREE);
-        // Six rounds suffice for byte + 3; carry never leaves the low six
-        // trits.
-        for _ in 0u32..6 {
-            self.evaluate(SUM, left, right)?;
-            let sum = self.copy()?;
-            self.evaluate(CARRY, left, right)?;
-            let carry = self.copy()?;
-            for _ in 0u32..14 {
-                self.go(carry)?;
-                let _: u32 = self.emitter.linear(RotateData)?;
-            }
-            (left, right) = (sum, carry);
-        }
-        if self.cursor != COUNT {
-            return Err(LAYOUT);
-        }
-        self.load(left)?;
-        Ok(left)
+        Ok(())
     }
 }
 
-fn scratch_address(slot: u32) -> Result<u32, BuildError> {
+fn scratch_address(base: u32, slot: u32) -> Result<u32, BuildError> {
     slot.checked_mul(4)
-        .and_then(|offset| SCRATCH.checked_add(offset))
+        .and_then(|offset| base.checked_add(offset))
         .ok_or(LAYOUT)
 }
 
@@ -223,37 +275,67 @@ fn arm(
 ///
 /// # Errors
 /// Refuses unsupported profiles and exhausted physical layouts.
+pub fn build_relocated_first_byte_add_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedFirstByteAddSource, BuildError> {
+    build(profile, ORIGINAL, false).map(|(addition, _)| addition)
+}
+
+fn before(entry: usize) -> Result<u32, BuildError> {
+    u32::try_from(entry.checked_sub(1).ok_or(LAYOUT)?).map_err(|_error| LAYOUT)
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "auditable physical sequence"
 )]
-pub fn build_relocated_first_byte_add_source(
+fn build(
     profile: &ProfileDescriptor,
-) -> Result<RelocatedFirstByteAddSource, BuildError> {
+    geometry: Geometry,
+    masked: bool,
+) -> Result<BuiltSource, BuildError> {
     let prefix = composed_prefix(profile)?;
     let [raw, high] = prefix.input_pair;
     let mut emitter = Emitter {
         data: 7_174_418,
         profile,
         source: prefix.source,
-        source_cells: 355_194,
-        tape_bounds: BOUNDS,
+        source_cells: geometry.cells,
+        tape_bounds: geometry.bounds,
     };
-    let mut plan = TapePlan::with_bounds(BOUNDS);
-    let byte = plan.tape(49_999, false)?;
-    let eof = plan.tape(349_999, false)?;
+    let mut plan = TapePlan::with_bounds(geometry.bounds);
+    let byte = plan.tape(before(geometry.byte_entry)?, false)?;
+    let eof = plan.tape(before(geometry.eof_entry)?, false)?;
     let parity = ParityTapes::allocate(&mut plan)?;
-    let constants = [14_348_906, 3, 7_177_000, 79_999, 81_999, 84_999]
-        .into_iter()
-        .map(|value| plan.tape(value, false))
-        .collect::<Result<Vec<_>, _>>()?;
+    let constants = [
+        14_348_906,
+        3,
+        geometry.scratch.checked_sub(1).ok_or(LAYOUT)?,
+        before(geometry.even_entry)?,
+        before(geometry.odd_entry)?,
+        before(geometry.join_entry)?,
+    ]
+    .into_iter()
+    .map(|value| plan.tape(value, false))
+    .collect::<Result<Vec<_>, _>>()?;
+    let mask_tapes = if masked {
+        Some(MaskTapes::allocate(&mut plan)?)
+    } else {
+        None
+    };
     let [lo, hi] = encode_i32_cells(u32::MAX);
     let eof_low = plan.tape(lo, false)?;
     let eof_high = plan.tape(hi, false)?;
+    if plan.next_slot > geometry.scratch {
+        return Err(LAYOUT);
+    }
     emitter.prepare_odd_pairs(&[
         POINTER, NORMALIZER, PARITY, ONES, 7_174_485, TWOS, THREE, ANCHOR,
         7_174_501, 7_174_511, JOIN, 7_174_519, 7_174_523, MERGED, 7_174_535,
     ])?;
+    if masked {
+        MaskTapes::prepare(&mut emitter)?;
+    }
     emitter.prepare_tape(&plan)?;
     let _: u32 = emitter.store_tape(&byte, 7_174_485, ZERO)?;
     let _: u32 = emitter.store_tape(&eof, 7_174_535, ZERO)?;
@@ -265,13 +347,16 @@ pub fn build_relocated_first_byte_add_source(
         let _: u32 = emitter.append(NoOperation)?;
     }
     let _: u32 = emitter.append_indirect()?;
-    emitter.pad_to_entry(50_000, 7_174_486)?;
+    emitter.pad_to_entry(geometry.byte_entry, 7_174_486)?;
     parity.store(&mut emitter, ZERO)?;
     for (tape, address) in constants
         .iter()
         .zip([TWOS, THREE, ANCHOR, 7_174_501, 7_174_511, JOIN])
     {
         let _: u32 = emitter.store_tape(tape, address, ZERO)?;
+    }
+    if let Some(tapes) = mask_tapes {
+        tapes.store(&mut emitter)?;
     }
     let _lookup = emit_parity_lookup(&mut emitter, raw)?;
     emitter.append_route(b"ojojoojjjjoojoj")?;
@@ -282,19 +367,31 @@ pub fn build_relocated_first_byte_add_source(
     emitter.append_route(b"oooojojojoooooooooooooooooooooooj")?;
     emitter.append_route(b"oooooooooooooooooooooooooooooooooooooooooooo")?;
     let parity_branch_code_address = emitter.append_indirect()?;
-    emitter.pad_to_entry(80_000, 7_174_502)?;
+    emitter.pad_to_entry(geometry.even_entry, 7_174_502)?;
     let even = arm(&mut emitter, raw, 7_174_519)?;
-    emitter.pad_to_entry(82_000, 7_174_512)?;
+    emitter.pad_to_entry(geometry.odd_entry, 7_174_512)?;
     let odd = arm(&mut emitter, raw, 7_174_523)?;
-    emitter.pad_to_entry(85_000, 7_174_516)?;
-    let sum_address = Adder {
+    emitter.pad_to_entry(geometry.join_entry, 7_174_516)?;
+    let mut adder = Adder {
+        count: geometry.count,
         cursor: 0,
         emitter: &mut emitter,
-    }
-    .run()?;
-    let _: u32 = emitter.linear(OutputByte)?;
-    let byte_halt_code_address = emitter.append(Halt)?;
-    emitter.pad_to_entry(350_000, 7_174_536)?;
+        scratch: geometry.scratch,
+    };
+    adder.prepare()?;
+    let sum_address = adder.add(MERGED, THREE, 6)?;
+    let (mask_sites, byte_halt_code_address) = if masked {
+        let iteration =
+            emit_iteration(&mut adder, sum_address, &eof_low, &eof_high)?;
+        let halt = iteration.eof_halt();
+        (Some(iteration), halt)
+    } else {
+        let _: u32 = adder.emitter.linear(OutputByte)?;
+        let halt = adder.emitter.append(Halt)?;
+        (None, halt)
+    };
+    adder.finish()?;
+    emitter.pad_to_entry(geometry.eof_entry, 7_174_536)?;
     emitter.prepare_pair()?;
     let _: u32 = emitter.store_tape(&eof_low, raw, ZERO)?;
     let _: u32 = emitter.store_tape(&eof_high, high, ZERO)?;
@@ -306,15 +403,18 @@ pub fn build_relocated_first_byte_add_source(
     let _: u32 = emitter.linear(CrazyData)?;
     let _: u32 = emitter.linear(OutputByte)?;
     let eof_halt_code_address = emitter.append(Halt)?;
-    Ok(RelocatedFirstByteAddSource {
-        arm_store_code_addresses: [even, odd],
-        byte_halt_code_address,
-        eof_halt_code_address,
-        input_pair: prefix.input_pair,
-        merged_address: MERGED,
-        parity_branch_code_address,
-        source: emitter.finish()?,
-        sum_address,
-        zero_pair: prefix.zero_pair,
-    })
+    Ok((
+        RelocatedFirstByteAddSource {
+            arm_store_code_addresses: [even, odd],
+            byte_halt_code_address,
+            eof_halt_code_address,
+            input_pair: prefix.input_pair,
+            merged_address: MERGED,
+            parity_branch_code_address,
+            source: emitter.finish()?,
+            sum_address,
+            zero_pair: prefix.zero_pair,
+        },
+        mask_sites,
+    ))
 }

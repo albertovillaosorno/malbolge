@@ -13285,3 +13285,42 @@ bytes and true EOF pass normative replay. Byte runs consume one input
 and halt in 165,467 steps; EOF normalizes the signed pair and returns zero
 in 43,121 steps. Output truncation is not a canonical masked frame store.
 This is not general XOR/add lowering, a loop, or source-frame admission.
+
+### Canonical mask, second read and one-shot header edge
+
+A separate 1,129,848-cell physical image extends the first-iteration
+carry probe. Seven further ternary carry rounds add 473 (`3^6 - 256`)
+to the unmasked sum. Trit six selects the unchanged or wrapped low-six
+trit result through C780229, landing at C850000 or C860000. The joined
+continuation stores `[masked, 0]` at M7174451/452 (original block 5,
+value 18). This is a genuine modulo-256 word, not output truncation.
+
+A second physical input classifies the raw N15 EOF word by its top trit,
+restores that word, and selects C940000 (byte) or C960000 (EOF). Both
+normalize the signed pair at M7174453/454 (block 5, value 19) and transfer
+backward to a distinct virgin C900000 continuation. The original 5-to-1
+edge reservation is used: snapshot the four current/checksum source
+words into M7174456..459, then commit all four into M7174431..434. The
+next header distinguishes the canonical high words 0 and 299 by trit
+five. EOF selects C1010000, reads the committed checksum, stores the
+output operand and emits it; a successful second byte selects C1000000
+and halts without output or a third read. First EOF still returns zero.
+
+The boundary trace checks real input order, arithmetic, transfers,
+canonical stores, ordered snapshots and commits, and terminal output.
+A separate typed-prelink test checks the original pair and edge offsets.
+Two no-op omissions of the checksum-high snapshot or commit preserve
+stdout but fail the physical edge checks. Explicit native VM censuses
+cover every first byte followed by EOF and every second byte after first
+byte 255 (512 cases, not all two-byte combinations). One-byte paths halt
+in 699,283 steps (698,059 on wrap); successful second-byte paths halt in
+687,936 steps (686,712 on wrap); initial EOF takes 100,749 steps.
+
+The scratch/tape overlap is rejected. These physical copies require
+virgin destinations and temporarily change and restore operands during
+crazy reads. C900000 has never been executed before the transfer; this
+is not a reusable physical header or an independently admitted source
+edge. The first parity arms still use the initial-zero identities. The
+unchanged original C23 checksum remains unlinked and unpublished.
+Next: genuine nonzero-checksum XOR/add, reusable state and encryption
+visits, complete source operation/edge admission, and publication.

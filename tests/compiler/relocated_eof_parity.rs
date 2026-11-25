@@ -22,6 +22,9 @@
 // - Summary:
 //   - Authenticate mutually exclusive EOF and byte continuations.
 
+#[path = "relocated_first_iteration.rs"]
+mod relocated_first_iteration;
+
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
     current_profile, decode_profile_instruction, historical_profile,

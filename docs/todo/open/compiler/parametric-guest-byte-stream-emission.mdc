@@ -41,6 +41,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The 1,129,848-cell first-iteration candidate now materializes the
+canonical modulo-256 checksum at its original SSA pair, performs a
+second real input, and transfers both normalized second-read classes
+backward into a first-visit header. Four actual snapshots and four
+commits match the original 5-to-1 phi reservations. Second EOF returns
+the committed checksum; a second byte halts before its arithmetic.
+Boundary traces, omitted-store controls, and both 256-value byte
+marginal censuses pass. This is not yet a reusable loop or source-frame
+certificate: destinations are virgin and loads temporarily mutate and
+restore operands. The original C23 checksum remains unpublished.
+Next: nonzero-checksum XOR/add, repeated code and storage visits, and
+complete independent source-effect admission. Evidence:
+`tests/compiler/relocated_first_iteration.rs`,
+`tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
+
 A single **47,814-cell composed physical image** now prepares shared
 marker tapes and genuinely writes both continuation pointers. C20353
 dispatches by the live first-input class to C30000 (byte) or C45000
