@@ -40,6 +40,7 @@ use super::{
 // five three-trit chunks of each N15 word. Scratch rotations bring each
 // chunk into the same low-trit position.
 const CHUNK_SCRATCH: u32 = 7_174_441;
+const CHUNK_NEXT: u32 = CHUNK_SCRATCH + 1;
 const CHUNK_TWOS: u32 = CHUNK_SCRATCH + 2;
 const CHUNK_RETURN: u32 = CHUNK_SCRATCH + 4;
 const CHUNK_ANCHOR: u32 = ANCHOR_START;
@@ -114,7 +115,7 @@ impl ChunkWord {
         let patch_end = emitter.data;
         let patch = emitter.source.split_off(start);
         emitter.data = data;
-        let fresh_result = chunk_word(emitter, value);
+        let fresh_result = chunk_word(emitter, value, true);
         if patch_result.is_ok()
             && (fresh_result.is_err()
                 || patch.len() < emitter.source.len().saturating_sub(start))
@@ -163,10 +164,11 @@ fn chunk_access(
 fn reset_chunk_word(
     emitter: &mut Emitter<'_>,
     address: u32,
+    fast: bool,
 ) -> Result<(), BuildError> {
     // An all-one accumulator maps each trit to either zero or two.
     // The second fold uses that same result as both operands.
-    rotate(emitter, NEAR_ONES)?;
+    chunk_rotate(emitter, NEAR_ONES, fast)?;
     chunk_access(emitter, address, LinearOpcode::CrazyData)?;
     chunk_access(emitter, address, LinearOpcode::CrazyData)
 }
@@ -174,11 +176,12 @@ fn reset_chunk_word(
 fn read_chunk_mask(
     emitter: &mut Emitter<'_>,
     index: u32,
+    fast: bool,
 ) -> Result<(), BuildError> {
     let address = CHUNK_BANK
         .checked_add(index.checked_mul(4).ok_or(LAYOUT)?)
         .ok_or(LAYOUT)?;
-    rotate(emitter, NEAR_ONES)?;
+    chunk_rotate(emitter, NEAR_ONES, fast)?;
     emitter.go(CHUNK_ANCHOR)?;
     emitter.jump(CHUNK_BANK)?;
     emitter.walk(address)?;
@@ -191,9 +194,14 @@ fn read_chunk_mask(
 fn apply_chunk_column(
     emitter: &mut Emitter<'_>,
     column: u32,
+    fast: bool,
 ) -> Result<(), BuildError> {
-    read_chunk_mask(emitter, column)?;
-    emitter.go(CHUNK_SCRATCH)?;
+    read_chunk_mask(emitter, column, fast)?;
+    if fast {
+        emitter.jump(CHUNK_SCRATCH)?;
+    } else {
+        emitter.go(CHUNK_SCRATCH)?;
+    }
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(CHUNK_TWOS)?;
     let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
@@ -205,7 +213,9 @@ fn apply_chunk_column(
 
 fn advance_chunk(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
     for _ in 0..3u32 {
-        emitter.go(CHUNK_RETURN)?;
+        if emitter.data != CHUNK_NEXT {
+            emitter.go(CHUNK_RETURN)?;
+        }
         emitter.jump(CHUNK_SCRATCH)?;
         let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
     }
@@ -215,8 +225,9 @@ fn advance_chunk(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
 fn chunk_word(
     emitter: &mut Emitter<'_>,
     mut value: u32,
+    fast: bool,
 ) -> Result<(), BuildError> {
-    reset_chunk_word(emitter, CHUNK_SCRATCH)?;
+    reset_chunk_word(emitter, CHUNK_SCRATCH, fast)?;
     let mut uniform = true;
     for _ in 0..5u32 {
         // On an all-one low chunk, the first mask fold and the all-two
@@ -228,7 +239,7 @@ fn chunk_word(
             let column =
                 profile_crazy(ALL_ONES, profile_crazy(part, ALL_TWOS, 15), 15)
                     .rem_euclid(27);
-            apply_chunk_column(emitter, column)?;
+            apply_chunk_column(emitter, column, fast)?;
             uniform = false;
         }
         if uniform {
@@ -271,19 +282,47 @@ fn patch_columns(mut before: u32, mut after: u32) -> [u32; 2] {
     columns
 }
 
+fn patch_chunk(
+    emitter: &mut Emitter<'_>,
+    before: u32,
+    after: u32,
+) -> Result<(), BuildError> {
+    for column in patch_columns(before.rem_euclid(27), after.rem_euclid(27)) {
+        if column != 26 {
+            apply_chunk_column(emitter, column, true)?;
+        }
+    }
+    Ok(())
+}
+
+fn reload_chunk(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    // The caller may have changed A while normalizing a target.
+    // Read and restore the unchanged scratch with two all-two folds.
+    for _ in 0..2u32 {
+        fast_rotate(emitter, NEAR_TWOS)?;
+        chunk_access(emitter, CHUNK_SCRATCH, LinearOpcode::CrazyData)?;
+    }
+    Ok(())
+}
+
 fn patch_word(
     emitter: &mut Emitter<'_>,
     mut before: u32,
     mut after: u32,
 ) -> Result<(), BuildError> {
-    for _ in 0..5u32 {
-        let columns =
-            patch_columns(before.rem_euclid(27), after.rem_euclid(27));
-        for column in columns {
-            if column != 26 {
-                apply_chunk_column(emitter, column)?;
-            }
+    // A low-only change already leaves the scratch in its canonical
+    // orientation. The final mask fold produces the desired accumulator,
+    // so rotating through all fifteen trits would merely reload it.
+    if before.div_euclid(27) == after.div_euclid(27) {
+        if before == after {
+            return reload_chunk(emitter);
         }
+        patch_chunk(emitter, before, after)?;
+        emitter.walk(CHUNK_RESET)?;
+        return Ok(());
+    }
+    for _ in 0..5u32 {
+        patch_chunk(emitter, before, after)?;
         before = before.div_euclid(27);
         after = after.div_euclid(27);
         advance_chunk(emitter)?;
@@ -293,6 +332,18 @@ fn patch_word(
         return Err(LAYOUT);
     }
     Ok(())
+}
+
+fn chunk_rotate(
+    emitter: &mut Emitter<'_>,
+    target: u32,
+    fast: bool,
+) -> Result<(), BuildError> {
+    if fast {
+        fast_rotate(emitter, target)
+    } else {
+        rotate(emitter, target)
+    }
 }
 
 fn fast_go(emitter: &mut Emitter<'_>, target: u32) -> Result<(), BuildError> {
@@ -488,7 +539,7 @@ fn synthesize_mask_word(
     } else {
         return Err(LAYOUT);
     };
-    reset_chunk_word(emitter, CHUNK_SCRATCH)?;
+    reset_chunk_word(emitter, CHUNK_SCRATCH, false)?;
     if base == ALL_TWOS {
         rotate(emitter, NEAR_TWOS)?;
         chunk_access(emitter, CHUNK_SCRATCH, LinearOpcode::CrazyData)?;
@@ -511,7 +562,7 @@ fn synthesize_mask_word(
             if !ELEMENTARY_COLUMNS.contains(&elementary) {
                 return Err(LAYOUT);
             }
-            apply_chunk_column(emitter, elementary)?;
+            apply_chunk_column(emitter, elementary, false)?;
         }
     }
     Ok(())
@@ -530,6 +581,27 @@ fn initialize_chunk_masks(
         store_anchored(emitter, address, &anchors)?;
         synthesize_mask_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
         store_anchored(emitter, address, &anchors)?;
+    }
+    Ok(())
+}
+
+// Install an immutable direct scratch return after each mask pair, only
+// after the frame's fast reset has been initialized. The special
+// pointer seed at index 27 retains its virgin reset, as do the even
+// cells after each prefix.
+fn initialize_chunk_returns(
+    emitter: &mut Emitter<'_>,
+) -> Result<(), BuildError> {
+    let anchor = [(CHUNK_ANCHOR, CHUNK_BANK)];
+    for index in 0..27u32 {
+        let address = CHUNK_BANK
+            .checked_add(index.checked_mul(4).ok_or(LAYOUT)?)
+            .and_then(|base| base.checked_add(3))
+            .ok_or(LAYOUT)?;
+        fast_rotate(emitter, NEAR_ZERO)?;
+        store_anchored(emitter, address, &anchor)?;
+        read_chunk_mask(emitter, 27, true)?;
+        store_anchored(emitter, address, &anchor)?;
     }
     Ok(())
 }
@@ -636,12 +708,18 @@ fn prepare_chunk_bank(
     prepare_near_constants(emitter)?;
     rotate(emitter, NEAR_ZERO)?;
     crazy(emitter, NEAR_ONES)?;
-    reset_chunk_word(emitter, CHUNK_TWOS)?;
+    reset_chunk_word(emitter, CHUNK_TWOS, false)?;
     rotate(emitter, NEAR_TWOS)?;
     chunk_access(emitter, CHUNK_TWOS, LinearOpcode::CrazyData)?;
-    reset_chunk_word(emitter, CHUNK_RETURN)?;
-    read_chunk_mask(emitter, 27)?;
+    reset_chunk_word(emitter, CHUNK_RETURN, false)?;
+    read_chunk_mask(emitter, 27, false)?;
     chunk_access(emitter, CHUNK_RETURN, LinearOpcode::CrazyData)?;
+    // The adjacent even loader word is reserved for direct scratch
+    // revisits. Every ordinary reset still uses a different virgin cell.
+    rotate(emitter, NEAR_ZERO)?;
+    chunk_access(emitter, CHUNK_NEXT, LinearOpcode::CrazyData)?;
+    read_chunk_mask(emitter, 27, false)?;
+    chunk_access(emitter, CHUNK_NEXT, LinearOpcode::CrazyData)?;
     initialize_chunk_masks(emitter, &masks)?;
 
     Ok(tape_end)
@@ -651,12 +729,13 @@ fn initialize_chunk_roots(
     emitter: &mut Emitter<'_>,
     roots: SeedDirectory,
 ) -> Result<ChunkWord, BuildError> {
-    reset_chunk_word(emitter, FRAME)?;
+    reset_chunk_word(emitter, FRAME, false)?;
     let frame_seed = profile_crazy(ALL_ONES, previous(NEAR_ONES)?, 15);
-    chunk_word(emitter, frame_seed)?;
+    chunk_word(emitter, frame_seed, false)?;
     emitter.go(FRAME)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(CHUNK_RESET)?;
+    initialize_chunk_returns(emitter)?;
     let mut scratch = ChunkWord { value: frame_seed };
     for (address, value) in roots {
         fast_rotate(emitter, NEAR_ZERO)?;

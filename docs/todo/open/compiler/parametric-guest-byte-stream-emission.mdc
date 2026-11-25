@@ -219,6 +219,10 @@ All five frozen full-image replays and 65,536 two-byte source paths
 pass. Forged state bindings, loader-only coincidence and omitted
 bootstrap stores refuse. This does not bind all original SSA cells,
 normalize signed input storage, or prove full physical control.
+Low-only patches and adjacent and mask-pair direct scratch returns
+now reach first input in 2,102,518 steps under a 2,120,000-step bound
+without increasing the 2,318,854-cell source. Both kinds of real jump
+are independently observed, and omitted pointer stores refuse.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:
 `tests/compiler/relocated_recurrent_checksum.rs`,

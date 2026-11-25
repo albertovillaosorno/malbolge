@@ -14154,3 +14154,16 @@ authentication of the complete original SSA frame, the source signed
 input representation, or every physical operation and control edge.
 The publication budget and compiler refusal are unchanged. Evidence:
 `tests/compiler/source_recurrent_state.rs`.
+
+The same 2,318,854-cell image now reaches the first input in 2,102,518
+steps (133,887 fewer), under a tightened 2,120,000-step boot bound.
+A low-only patch avoids the redundant full rotation; an unchanged
+scratch is read and restored by two all-two folds. The adjacent
+scratch cell and the 27 ordinary mask-pair return cells hold the
+actual scratch predecessor. The special pointer seed retains its
+virgin return, as do the reset cells after each mask prefix. The
+ordinary returns are established only after the fast frame reset;
+independent replay finds both kinds of executed direct jumps and
+refuses omission of their physical pointer stores. All 11 physical
+checksum tests and nine independent source-recurrent tests pass.
+This remains outside the 100,000-step publication budget.

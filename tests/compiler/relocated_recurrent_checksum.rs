@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 2_250_000;
+const BOOT_BUDGET: usize = 2_120_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -716,6 +716,9 @@ fn census() -> Result<Vec<u8>, String> {
 // Every mask remains immutable after synthesizing the page and seed
 // banks, including the special return-pointer mask at the final pair.
 fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
+    if word(vm, 7_174_442)? != 7_174_440 || word(vm, 7_174_445)? != 7_174_440 {
+        return Err("incorrect scratch return pointers".to_owned());
+    }
     for index in 0..28u32 {
         let address = plus(7_176_601, mul(index, 4)?)?;
         let prefix = word(vm, address)?;
@@ -729,7 +732,12 @@ fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
             || independent_crazy(prefix, ONES) != prefix
             || independent_crazy(value, prefix) != value
             || word(vm, plus(address, 1)?)? != 7_174_416
-            || word(vm, plus(address, 3)?)? != 7_174_416
+            || word(vm, plus(address, 3)?)?
+                != if index == 27 {
+                    7_174_416
+                } else {
+                    7_174_440
+                }
         {
             return Err(format!("wrong immutable chunk mask M{address}"));
         }
@@ -1104,6 +1112,70 @@ fn relocated_recurrent_checksum_omitted_derived_chunk_mask_refuses()
         && check_chunk_mask_bank(&mutated).is_ok()
     {
         return Err("accepted omitted derived chunk mask".to_owned());
+    }
+    Ok(())
+}
+
+// Find both kinds of direct scratch returns from actual executed jumps.
+fn audit_scratch_returns(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<[u32; 2], String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut adjacent = None;
+    let mut mask = None;
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        let adjacent_candidate = address == 7_174_442;
+        let mask_candidate = (7_176_604..=7_176_708).contains(&address)
+            && address.is_multiple_of(4);
+        let direct = (adjacent_candidate || mask_candidate)
+            && word(&vm, address)? == 7_174_440
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'j');
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature bootstrap termination".to_owned());
+        }
+        if direct {
+            if vm.registers().data_pointer != 7_174_441 {
+                return Err("wrong direct scratch destination".to_owned());
+            }
+            if adjacent_candidate {
+                adjacent = Some(address);
+            } else {
+                mask = Some(address);
+            }
+            if let (Some(adjacent_address), Some(mask_address)) =
+                (adjacent, mask)
+            {
+                return Ok([adjacent_address, mask_address]);
+            }
+        }
+    }
+    Err("missing executed scratch return".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_scratch_returns_refuse()
+-> Result<(), String> {
+    let guest = source()?;
+    for address in audit_scratch_returns(&guest)? {
+        let site = materialization_site(&guest, (address, 7_174_440))?;
+        let modified = omit_site(&guest, site)?;
+        if let Ok(mutated) = boot(&modified)
+            && check_chunk_mask_bank(&mutated).is_ok()
+        {
+            return Err(format!("accepted omitted scratch return M{address}"));
+        }
     }
     Ok(())
 }
