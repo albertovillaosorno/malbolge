@@ -127,7 +127,8 @@ fn check_control_counts(
     {
         return Err("wrong initial state order".to_owned());
     }
-    if proof.bootstrap_table_words != 2_514
+    if proof.bootstrap_auxiliary_words != 37
+        || proof.bootstrap_table_words != 2_514
         || proof.bootstrap_route_words != 4_716
         || proof.bootstrap_unreachable_words != 256
         || proof.bootstrap_table_last_store_index >= first_input
@@ -1022,6 +1023,44 @@ fn source_recurrent_transition_rejects_unvisited_output_contribution()
         .saturating_add(10_935u32);
     let low = probe.tables[1].saturating_add(5).saturating_add(405u32);
     for address in [high, low, low.saturating_add(1)] {
+        let value = boot
+            .memory_word(address)
+            .map_err(|error| error.to_string())?;
+        omitted_table_store(&guest, &wire, (address, value))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_unvisited_auxiliary_words()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[], &guest)?;
+    let loop_proof = verify_source_recurrent_loop(&probe.loop_probe)
+        .map_err(|error| format!("empty loop: {error:?}"))?;
+    let selected = loop_proof
+        .checkpoints
+        .first()
+        .ok_or("missing EOF")?
+        .guard
+        .guest_landing;
+    let unused = probe
+        .loop_probe
+        .guard
+        .eof_landings
+        .into_iter()
+        .find(|landing| *landing != selected)
+        .ok_or("missing alternate EOF")?;
+    let boot = terminal_boot(&guest)?;
+    for address in [
+        unused,
+        unused.saturating_add(1),
+        unused.saturating_add(2),
+        probe.route.raw_restore_words[1][1],
+        probe.route.lookup_constants[4],
+    ] {
         let value = boot
             .memory_word(address)
             .map_err(|error| error.to_string())?;

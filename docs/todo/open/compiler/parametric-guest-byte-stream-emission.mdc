@@ -326,8 +326,13 @@ source-recurrent, 20 physical checksum and three C23 pipeline tests pass.
 All 32 EOF contribution values and their 32 scratch-return links now
 also require actual stores and independent split-field residue checks.
 The table receipt increases to 2,514 words. Three omitted unvisited
-terminal stores refuse; all 33 source-recurrent tests pass. Other
-bootstrap storage remains outside the receipt.
+terminal stores refuse; all 33 source-recurrent tests pass.
+The auxiliary receipt additionally requires 37 uniform constants,
+raw restore words, both EOF landing records and shared terminal
+operands. Five unvisited omissions preserve empty I/O but refuse;
+only the three actual terminal rotations may change these operands.
+All 34 source-recurrent tests pass. Other mutable bootstrap storage
+remains outside the receipt.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

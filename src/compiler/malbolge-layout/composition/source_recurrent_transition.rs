@@ -161,6 +161,8 @@ pub struct SourceRecurrentTerminalCheckpoint {
 /// Finite paired loop proof with the ordered factored byte transitions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceRecurrentTransitionProof {
+    /// Required rotation operands, immutable restore seeds and EOF links.
+    pub bootstrap_auxiliary_words: usize,
     /// Required immutable main, bridge and byte-route words materialized by
     /// real guest stores.
     pub bootstrap_route_words: usize,
@@ -632,6 +634,7 @@ fn finish_transition(
     let (
         bootstrap_table_words,
         bootstrap_route_words,
+        bootstrap_auxiliary_words,
         bootstrap_unreachable_words,
         bootstrap_table_last_store_index,
     ) = transition.bootstrap_receipt()?;
@@ -652,6 +655,7 @@ fn finish_transition(
         return Err(Error::GuestTransitionMismatch);
     }
     Ok(SourceRecurrentTransitionProof {
+        bootstrap_auxiliary_words,
         bootstrap_route_words,
         bootstrap_table_last_store_index,
         bootstrap_table_words,

@@ -20,11 +20,15 @@
 // - Merge-When:
 //   - General source-frame verification owns bootstrap data admission.
 
+#[path = "source_recurrent_bootstrap_auxiliary.rs"]
+mod source_recurrent_bootstrap_auxiliary;
+
 use std::collections::BTreeMap;
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
     decode_profile_instruction, encrypt_profile_cell, profile_crazy,
+    profile_rotate,
 };
 
 use super::source_recurrent_control_trace::BootstrapRoute;
@@ -37,19 +41,29 @@ const OUTPUT_SPLIT: u32 = 2_187;
 
 #[derive(Clone, Copy)]
 enum Expected {
+    Auxiliary(u32),
     Continuation(usize),
     Exact(u32),
     OutputHigh { nibble: u32, site: u32 },
     OutputLow { nibble: u32, site: u32 },
     Prefix(u32),
     RouteCandidate,
+    TerminalRotation { value: u32, site: u32 },
     Untouched,
 }
 
 impl Expected {
+    const fn is_auxiliary(self) -> bool {
+        matches!(self, Self::Auxiliary(_) | Self::TerminalRotation { .. })
+    }
+
     fn matches(self, value: u32) -> bool {
         match self {
-            Self::Exact(expected) => value == expected,
+            Self::Auxiliary(expected)
+            | Self::Exact(expected)
+            | Self::TerminalRotation { value: expected, .. } => {
+                value == expected
+            },
             Self::OutputHigh { nibble, .. } => high_contribution(value, nibble),
             Self::OutputLow { nibble, .. } => low_contribution(value, nibble),
             Self::Prefix(seed) => {
@@ -67,8 +81,24 @@ impl Expected {
             Self::OutputHigh { site, .. } | Self::OutputLow { site, .. } => {
                 Some(site)
             },
-            Self::Continuation(_)
+            Self::Auxiliary(_)
+            | Self::Continuation(_)
             | Self::Exact(_)
+            | Self::Prefix(_)
+            | Self::RouteCandidate
+            | Self::TerminalRotation { .. }
+            | Self::Untouched => None,
+        }
+    }
+
+    const fn rotation_site(self) -> Option<u32> {
+        match self {
+            Self::TerminalRotation { site, .. } => Some(site),
+            Self::Auxiliary(_)
+            | Self::Continuation(_)
+            | Self::Exact(_)
+            | Self::OutputHigh { .. }
+            | Self::OutputLow { .. }
             | Self::Prefix(_)
             | Self::RouteCandidate
             | Self::Untouched => None,
@@ -78,9 +108,9 @@ impl Expected {
 
 #[derive(Clone, Copy)]
 struct Cell {
+    consumed: bool,
     expected: Expected,
     last_store: Option<usize>,
-    output_consumed: bool,
     value: u32,
 }
 
@@ -90,14 +120,31 @@ impl Cell {
         trace: &ProfileStepTrace,
         (site, value): (u32, u32),
     ) -> Result<(), Error> {
-        if self.output_consumed
+        if self.consumed
             || trace.before.registers.code_pointer != site
             || trace.before.registers.accumulator
                 != current_profile().eof_word()
         {
             return Err(Error::GuestTransitionMismatch);
         }
-        self.output_consumed = true;
+        self.consumed = true;
+        self.value = value;
+        Ok(())
+    }
+
+    const fn consume_rotation(
+        &mut self,
+        trace: &ProfileStepTrace,
+        (site, value): (u32, u32),
+        opcode: u8,
+    ) -> Result<(), Error> {
+        if self.consumed
+            || opcode != b'*'
+            || trace.before.registers.code_pointer != site
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        self.consumed = true;
         self.value = value;
         Ok(())
     }
@@ -108,16 +155,25 @@ impl Cell {
         index: usize,
         initialized: bool,
     ) -> Result<(), Error> {
-        if matches!(self.expected, Expected::Untouched)
-            || trace.decoded != Some(b'p')
-        {
+        if matches!(self.expected, Expected::Untouched) {
             return Err(Error::GuestTransitionMismatch);
         }
-        let value = crazy(self.value, trace.before.registers.accumulator);
-        verify_store(trace, self.value, value)?;
+        let (opcode, value) = match trace.decoded {
+            Some(b'p') => {
+                (b'p', crazy(self.value, trace.before.registers.accumulator))
+            },
+            Some(b'*') if initialized && self.expected.is_auxiliary() => (
+                b'*',
+                profile_rotate(self.value, current_profile().memory_words()),
+            ),
+            _ => return Err(Error::GuestTransitionMismatch),
+        };
+        verify_store(trace, self.value, value, opcode)?;
         if initialized {
             if let Some(site) = self.expected.output_site() {
                 self.consume_output(trace, (site, value))?;
+            } else if let Some(site) = self.expected.rotation_site() {
+                self.consume_rotation(trace, (site, value), opcode)?;
             } else if self.value != value {
                 return Err(Error::GuestTransitionMismatch);
             }
@@ -130,8 +186,9 @@ impl Cell {
 }
 
 type TablePlan = BTreeMap<u32, Expected>;
-// (table words, route words, unreachable slots, last materializing step).
-pub(super) type BootstrapReceipt = (usize, usize, usize, usize);
+// (table words, route words, auxiliary words, unreachable slots,
+// last materializing step).
+pub(super) type BootstrapReceipt = (usize, usize, usize, usize, usize);
 
 pub(super) struct BootstrapTableTrace {
     cells: BTreeMap<u32, Cell>,
@@ -143,6 +200,7 @@ pub(super) struct BootstrapTableTrace {
 impl BootstrapTableTrace {
     fn complete(&self, index: usize) -> Result<BootstrapReceipt, Error> {
         let mut materialized = 0usize;
+        let mut auxiliary = 0usize;
         let mut unreachable = 0usize;
         let mut last = 0usize;
         for cell in self.cells.values() {
@@ -160,10 +218,14 @@ impl BootstrapTableTrace {
             if !cell.expected.matches(cell.value) {
                 return Err(Error::GuestTransitionMismatch);
             }
-            materialized = materialized.saturating_add(1);
+            if cell.expected.is_auxiliary() {
+                auxiliary = auxiliary.saturating_add(1);
+            } else {
+                materialized = materialized.saturating_add(1);
+            }
             last = last.max(store);
         }
-        Ok((materialized, 0, unreachable, last))
+        Ok((materialized, 0, auxiliary, unreachable, last))
     }
 
     pub(super) fn finish(
@@ -171,14 +233,18 @@ impl BootstrapTableTrace {
         vm: &ProfileMachine,
         route: &BootstrapRoute,
     ) -> Result<(), Error> {
-        let (tables, _, unreachable, mut last) = self.receipt()?;
+        let (tables, _, auxiliary, unreachable, mut last) = self.receipt()?;
         let input = self.first_input.ok_or(Error::GuestTransitionMismatch)?;
-        if self
-            .cells
-            .values()
-            .filter(|cell| cell.output_consumed)
+        let consumed = self.cells.values().filter(|cell| cell.consumed);
+        if consumed
+            .clone()
+            .filter(|cell| cell.expected.output_site().is_some())
             .count()
             != 2
+            || consumed
+                .filter(|cell| cell.expected.rotation_site().is_some())
+                .count()
+                != 3
         {
             return Err(Error::GuestTransitionMismatch);
         }
@@ -212,7 +278,8 @@ impl BootstrapTableTrace {
                 .ok_or(Error::GuestTransitionMismatch)?;
             last = last.max(store);
         }
-        self.receipt = Some((tables, route.words.len(), unreachable, last));
+        self.receipt =
+            Some((tables, route.words.len(), auxiliary, unreachable, last));
         Ok(())
     }
 
@@ -230,6 +297,9 @@ impl BootstrapTableTrace {
         low_table(geometry, &mut plan)?;
         high_table(geometry, &mut plan)?;
         output_table(probe, &mut plan)?;
+        source_recurrent_bootstrap_auxiliary::auxiliary_words(
+            probe, &mut plan,
+        )?;
         for address in route_addresses {
             if address < source_extent {
                 return Err(Error::InvalidTransitionBinding);
@@ -238,13 +308,18 @@ impl BootstrapTableTrace {
         }
         let mut cells = BTreeMap::new();
         for (address, expected) in plan {
+            if address < source_extent
+                || address >= current_profile().memory_words()
+            {
+                return Err(Error::InvalidTransitionBinding);
+            }
             let value = vm
                 .memory_word(address)
                 .map_err(|_error| Error::InvalidTransitionBinding)?;
             let _previous = cells.insert(address, Cell {
+                consumed: false,
                 expected,
                 last_store: None,
-                output_consumed: false,
                 value,
             });
         }
@@ -552,6 +627,7 @@ fn verify_store(
     trace: &ProfileStepTrace,
     old: u32,
     value: u32,
+    opcode: u8,
 ) -> Result<(), Error> {
     let before = trace.before.registers;
     let after = trace.after.registers;
@@ -562,7 +638,7 @@ fn verify_store(
         encrypt_profile_cell(cell).ok_or(Error::GuestTransitionMismatch)?;
     if trace.profile != current_profile()
         || trace.result != Ok(StepOutcome::Continued)
-        || decode_profile_instruction(cell, site) != Some(b'p')
+        || decode_profile_instruction(cell, site) != Some(opcode)
         || trace
             .memory_reads
             .fetch

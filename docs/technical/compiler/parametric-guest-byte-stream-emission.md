@@ -14682,3 +14682,20 @@ tracked values. Three omitted high/low contribution and scratch-link
 controls preserve empty-input I/O but refuse the proof. All 33
 source-recurrent tests pass, including the five full frozen guests.
 The 4,716 route words and 256 untouched slots remain required.
+
+The auxiliary bootstrap receipt now requires 37 additional words: all
+15 recurrent uniform rotation operands, four immutable raw restore
+words, both three-word EOF landing records, and twelve shared terminal
+selector/return operands. Their exact values follow independently from
+the admitted geometry and ternary transformations, rather than from the
+builder's word plan. Each requires an actual pre-input crazy store.
+After entry, only identity arithmetic may touch the immutable words.
+Exactly three nonuniform terminal rotation operands are consumed at
+their specified sites; the alternate EOF carry operand stays unchanged.
+Five omission controls (the alternate EOF entry, carry and continuation,
+one raw restore seed and one lookup constant) preserve empty-input I/O
+but refuse the extended proof. The table/route receipts remain at
+2,514/4,716 words. All 34 source-recurrent, 20 physical checksum and
+three C23 pipeline tests pass, with the original publication refusal.
+Complete mutable-frame admission and the 100,000-step publication gate
+remain unresolved.
