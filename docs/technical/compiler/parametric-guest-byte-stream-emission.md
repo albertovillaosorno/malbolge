@@ -14464,3 +14464,25 @@ in 1,660,583 steps (8,090 fewer); the physical regression ceiling is
 1,665,000 steps. The 15 physical checksum and 13 source-transition
 tests pass. The original 100,000-step source-C publication gate remains
 unchanged.
+
+The direct-materialization variant removes the singleton seed slots
+altogether. Its first value-ordered pass combines shared seed stores
+and the 254 singleton target stores, synthesizing the singleton inverse
+in the same chunk scratch. A conservative virgin-cell return skips every
+planned target in this pass; the subsequent address-ordered shared
+pass also excludes the already-installed singleton targets. The
+scratch's unchanged-word reload now uses its local uniform-two word
+and direct return for both restoring folds. The independent trace
+checks the real scratch producer, target normalization and commit,
+uniqueness of the final value, and every early virgin reset, including
+that those reset cells remain absent from the final target set. Omitting
+either a real direct commit or its return refuses the trace.
+
+The 2,318,854-cell image reaches first input in 1,589,394 steps
+(71,189 fewer), with a 1,595,000-step physical regression bound.
+Two experimental alternatives were slower: synthesizing all targets
+directly took 2,062,019 steps, and extending the direct pass to all
+unpaired values took 1,646,752 steps in the measured variants. The
+singleton-only pass retains shared reads for repeated values. All 15
+physical checksum tests and 13 source-transition tests pass; the
+original 100,000-step source-C publication gate remains unchanged.

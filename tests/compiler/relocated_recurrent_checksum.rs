@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_665_000;
+const BOOT_BUDGET: usize = 1_595_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -60,8 +60,7 @@ type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
 type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
-type SeedConsumption = (u32, u32);
-type SingleSeedReceipt = (usize, u32);
+type DirectTargetReceipt = (usize, [u32; 2]);
 
 #[derive(Default)]
 struct DirectSeedAudit {
@@ -123,21 +122,77 @@ impl DirectSeedAudit {
 }
 
 #[derive(Default)]
-struct SingleSeedAudit {
-    consumed: BTreeMap<u32, SeedConsumption>,
+struct DirectTargetAudit {
+    commits: BTreeMap<u32, u32>,
+    last_producer: Option<u32>,
     mutation: Option<u32>,
-    pending: Option<SeedConsumption>,
+    normalized: BTreeSet<u32>,
+    pending_reset: Option<u32>,
+    reset_mutation: Option<u32>,
+    resets: BTreeSet<u32>,
     targets: BTreeMap<u32, u32>,
 }
 
-impl SingleSeedAudit {
-    fn finish(&self, vm: &ProfileMachine) -> Result<SingleSeedReceipt, String> {
-        if self.pending.is_some() || self.consumed.is_empty() {
-            return Err("incomplete destructive seed use".to_owned());
+impl DirectTargetAudit {
+    fn direct_store(
+        &mut self,
+        trace: &ProfileStepTrace,
+        (old, value): (u32, u32),
+    ) -> Result<(), String> {
+        let address = trace.before.registers.data_pointer;
+        let acc = trace.before.registers.accumulator;
+        if self.commits.contains_key(&address) {
+            return Err("repeated direct target commit".to_owned());
         }
-        for (&seed, &(address, value)) in &self.consumed {
-            if word(vm, seed)? != independent_crazy(ONES, value)
-                || word(vm, address)? != value
+        let virgin = if address.is_multiple_of(2) {
+            7_174_416
+        } else {
+            37
+        };
+        match self.last_producer {
+            Some(7_174_471) if acc == 0 && old == virgin && value == ONES => {
+                if !self.normalized.insert(address) {
+                    return Err("repeated direct normalization".to_owned());
+                }
+            },
+            Some(7_174_441) if acc == independent_crazy(ONES, value) => {
+                let expected = if self.normalized.remove(&address) {
+                    ONES
+                } else {
+                    virgin
+                };
+                if old != expected {
+                    return Err(
+                        "incorrect direct target predecessor".to_owned()
+                    );
+                }
+                let _committed = self.commits.insert(address, value);
+                if old != value {
+                    let _site = self
+                        .mutation
+                        .get_or_insert(trace.before.registers.code_pointer);
+                }
+            },
+            _ => {
+                return Err(format!(
+                    "wrong direct producer M{address}: {:?}",
+                    self.last_producer
+                ));
+            },
+        }
+        self.pending_reset = Some(address);
+        Ok(())
+    }
+
+    fn finish(
+        &self,
+        vm: &ProfileMachine,
+    ) -> Result<DirectTargetReceipt, String> {
+        if self.pending_reset.is_some() || !self.normalized.is_empty() {
+            return Err("unfinished direct materialization".to_owned());
+        }
+        for (&address, &value) in &self.commits {
+            if word(vm, address)? != value
                 || self.targets.get(&address) != Some(&value)
                 || self
                     .targets
@@ -146,33 +201,68 @@ impl SingleSeedAudit {
                     .count()
                     != 1
             {
-                return Err(format!("nonunique destructive seed M{seed}"));
+                return Err(format!("nonunique direct target M{address}"));
             }
         }
-        Ok((
-            self.consumed.len(),
-            self.mutation.ok_or("missing mutation")?,
-        ))
+        for &reset in &self.resets {
+            if self.targets.contains_key(&reset)
+                || word(vm, reset)? != 7_174_416
+            {
+                return Err(format!("nonvirgin direct reset M{reset}"));
+            }
+        }
+        Ok((self.commits.len(), [
+            self.mutation.ok_or("missing direct commit")?,
+            self.reset_mutation.ok_or("missing direct reset")?,
+        ]))
     }
 
-    fn rotate(
+    fn reset(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let target = self.pending_reset.take().ok_or("missing reset target")?;
+        let trace = step(vm)?;
+        let address = trace.before.registers.data_pointer;
+        if address <= target
+            || !address.is_multiple_of(2)
+            || trace
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value))
+                != Some((address, 7_174_416))
+            || trace.after.registers.data_pointer != 7_174_417
+            || trace.after.registers.accumulator
+                != trace.before.registers.accumulator
+            || trace.memory_delta.data.is_some()
+        {
+            return Err(format!(
+                "incorrect virgin reset M{address} after M{target}"
+            ));
+        }
+        let _added = self.resets.insert(address);
+        let _previous = self
+            .reset_mutation
+            .get_or_insert(trace.before.registers.code_pointer);
+        Ok(())
+    }
+
+    fn scratch(
         &mut self,
         vm: &mut ProfileMachine,
-        address: u32,
+        opcode: Option<u8>,
     ) -> Result<(), String> {
-        if self.pending.is_some() || self.consumed.contains_key(&address) {
-            return Err("repeated destructive seed rotation".to_owned());
-        }
         let trace = step(vm)?;
-        let old = trace.memory_reads.data.ok_or("missing seed operand")?.value;
-        let inverse = rotate_right(old)?;
-        check_store(&trace, address, old, inverse)?;
-        self.pending = Some((address, inverse));
-        if trace.before.registers.accumulator != inverse {
-            let _previous = self
-                .mutation
-                .get_or_insert(trace.before.registers.code_pointer);
-        }
+        let old = trace
+            .memory_reads
+            .data
+            .ok_or("missing scratch operand")?
+            .value;
+        let address = trace.before.registers.data_pointer;
+        let value = if opcode == Some(b'p') {
+            independent_crazy(old, trace.before.registers.accumulator)
+        } else {
+            rotate_right(old)?
+        };
+        check_store(&trace, address, old, value)?;
+        self.last_producer = Some(address);
         Ok(())
     }
 
@@ -180,6 +270,7 @@ impl SingleSeedAudit {
         &mut self,
         vm: &mut ProfileMachine,
         address: u32,
+        early: bool,
     ) -> Result<(), String> {
         let trace = step(vm)?;
         let old = trace
@@ -190,15 +281,13 @@ impl SingleSeedAudit {
         let acc = trace.before.registers.accumulator;
         let value = independent_crazy(old, acc);
         check_store(&trace, address, old, value)?;
-        if let Some((seed, inverse)) = self.pending.take() {
-            if acc != inverse || independent_crazy(ONES, value) != inverse {
-                return Err(
-                    "destructive seed not consumed by target".to_owned()
-                );
-            }
-            let _previous = self.consumed.insert(seed, (address, value));
+        if early {
+            self.direct_store(&trace, (old, value))?;
+        } else if self.commits.contains_key(&address) {
+            return Err("direct target overwritten by shared phase".to_owned());
         }
         let _previous = self.targets.insert(address, value);
+        self.last_producer = Some(address);
         Ok(())
     }
 }
@@ -1414,29 +1503,24 @@ fn relocated_recurrent_checksum_omitted_scratch_returns_refuse()
     Ok(())
 }
 
-// The unpaired seeds occupy the remaining near-bank odd cells and the
-// separate extra bank. Neither range is a recurrent target allocation.
-fn single_seed_bank(address: u32) -> bool {
-    !address.is_multiple_of(2)
-        && ((7_174_931..7_174_970).contains(&address)
-            || (7_175_601..7_176_600).contains(&address))
-}
-
 fn materialized_target(address: u32) -> bool {
     (7_175_000..7_244_000).contains(&address)
         && !(7_175_601..=7_176_900).contains(&address)
 }
 
-fn audit_single_seeds(
+// Paired-return installation separates the early, value-ordered direct
+// materialization from the shared, address-ordered stores.
+fn audit_direct_targets(
     guest: &RelocatedRecurrentChecksumSource,
-) -> Result<SingleSeedReceipt, String> {
+) -> Result<DirectTargetReceipt, String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         &guest.capture.source,
         Vec::new(),
     )
     .map_err(|error| error.to_string())?;
-    let mut audit = SingleSeedAudit::default();
+    let mut audit = DirectTargetAudit::default();
+    let mut early = true;
     for _ in 0..BOOT_BUDGET {
         if is_input(&vm, guest)? {
             return audit.finish(&vm);
@@ -1447,15 +1531,29 @@ fn audit_single_seeds(
             word(&vm, registers.code_pointer)?,
             registers.code_pointer,
         );
-        if opcode == Some(b'*') && single_seed_bank(address) {
-            audit.rotate(&mut vm, address)?;
-        } else if opcode == Some(b'p') && materialized_target(address) {
-            audit.store(&mut vm, address)?;
+        if audit.pending_reset.is_some() {
+            match opcode {
+                Some(b'j') => {
+                    audit.reset(&mut vm)?;
+                    continue;
+                },
+                Some(b'o') => {},
+                _ => return Err("missing virgin target reset".to_owned()),
+            }
+        }
+        if opcode == Some(b'p') && seed_return_address(address) {
+            early = false;
+        }
+        if opcode == Some(b'p') && materialized_target(address) {
+            audit.store(&mut vm, address, early)?;
+        } else if early
+            && address == 7_174_441
+            && matches!(opcode, Some(b'p' | b'*'))
+        {
+            audit.scratch(&mut vm, opcode)?;
         } else {
-            if audit.pending.is_some() && !matches!(opcode, Some(b'o' | b'j'))
-                || opcode == Some(b'p') && audit.consumed.contains_key(&address)
-            {
-                return Err("unexpected destructive seed reuse".to_owned());
+            if matches!(opcode, Some(b'p' | b'*')) {
+                audit.last_producer = Some(address);
             }
             if vm.step().map_err(|error| error.to_string())?
                 != StepOutcome::Continued
@@ -1464,22 +1562,26 @@ fn audit_single_seeds(
             }
         }
     }
-    Err("missing destructive seed input".to_owned())
+    Err("missing direct-materialization input".to_owned())
 }
 
 #[test]
-fn relocated_recurrent_checksum_omitted_single_seed_rotation_refuses()
+fn relocated_recurrent_checksum_omitted_direct_target_effects_refuse()
 -> Result<(), String> {
     let guest = source()?;
-    let (count, site) = audit_single_seeds(&guest)?;
+    let (count, sites) = audit_direct_targets(&guest)?;
     if count != 254 {
-        return Err(format!(
-            "expected 254 destructive seeds, observed {count}"
-        ));
+        return Err(format!("expected 254 direct targets, observed {count}"));
     }
-    let modified = omit_site(&guest, site)?;
-    if audit_single_seeds(&modified).is_ok_and(|(actual, _)| actual == count) {
-        return Err("accepted omitted destructive seed rotation".to_owned());
+    for site in sites {
+        let modified = omit_site(&guest, site)?;
+        if audit_direct_targets(&modified)
+            .is_ok_and(|(actual, _)| actual == count)
+        {
+            return Err(
+                "accepted omitted direct materialization effect".to_owned()
+            );
+        }
     }
     Ok(())
 }

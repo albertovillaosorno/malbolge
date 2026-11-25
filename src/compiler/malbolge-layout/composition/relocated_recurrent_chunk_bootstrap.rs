@@ -134,13 +134,25 @@ struct SeedRouting<'directory> {
 
 #[derive(Clone, Copy)]
 enum ChunkSeedAccess {
+    // A one-use target receives its inverse directly from scratch.
+    Direct,
     Shared(SeedAccess),
-    SingleRotation(u32),
 }
 
 type ChunkSeedMap = BTreeMap<u32, ChunkSeedAccess>;
 type ChunkSeedPlan = (ChunkSeedMap, Vec<(u32, u32)>);
-type ChunkMaterialization<'seeds> = (&'seeds ChunkSeedMap, SeedRouting<'seeds>);
+type ChunkMaterialization<'seeds> = (
+    &'seeds ChunkSeedMap,
+    SeedRouting<'seeds>,
+    &'seeds BTreeSet<u32>,
+);
+
+type InitialMaterialization<'plan, 'scratch> = (
+    &'plan ChunkSeedMap,
+    &'plan SeedRouting<'plan>,
+    Vec<(u32, u32)>,
+    &'scratch mut ChunkWord,
+);
 
 struct ChunkWord {
     value: u32,
@@ -342,13 +354,15 @@ fn patch_chunk(
 }
 
 fn reload_chunk(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
-    // The caller may have changed A while normalizing a target.
-    // Read and restore the unchanged scratch with two all-two folds.
+    // Read and restore the unchanged scratch with two local all-two folds.
     for _ in 0..2u32 {
-        fast_rotate(emitter, NEAR_TWOS)?;
-        chunk_access(emitter, CHUNK_SCRATCH, LinearOpcode::CrazyData)?;
+        emitter.go(CHUNK_TWOS)?;
+        let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
+        emitter.walk(CHUNK_RETURN)?;
+        emitter.jump(CHUNK_SCRATCH)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     }
-    Ok(())
+    emitter.walk(CHUNK_RESET)
 }
 
 fn patch_word(
@@ -441,10 +455,35 @@ fn fast_store(
     emitter: &mut Emitter<'_>,
     address: u32,
     anchors: &[(TargetSlot, u32)],
+    reset: u32,
 ) -> Result<(), BuildError> {
     go_target(emitter, address, anchors)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
-    after_store(emitter)
+    emitter.walk(reset)
+}
+
+// A sorted-by-value materialization may revisit a lower target. Every
+// return must skip the even cells that have already become guest data.
+fn target_reset(
+    address: u32,
+    protected: &BTreeSet<u32>,
+    extra: (u32, u32),
+    limit: u32,
+) -> Result<u32, BuildError> {
+    let mut reset = address.checked_add(1).ok_or(LAYOUT)?;
+    if !reset.is_multiple_of(2) {
+        reset = reset.checked_add(1).ok_or(LAYOUT)?;
+    }
+    while protected.contains(&reset) {
+        reset = reset.checked_add(2).ok_or(LAYOUT)?;
+    }
+    if reset >= limit
+        || (extra.0..=DIRECTORY_END).contains(&reset)
+        || reset >= TARGET_BANKS[0]
+    {
+        return Err(LAYOUT);
+    }
+    Ok(reset)
 }
 
 fn seed_directory(extra: (u32, u32)) -> Result<SeedDirectory, BuildError> {
@@ -560,17 +599,7 @@ fn reorder_seed_group(
                 .push((address.checked_add(2).ok_or(LAYOUT)?, inverse));
             ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(address))
         } else if single_use.contains(&value) {
-            // A value used by exactly one target needs no restored
-            // inverse seed: one rotation recovers its accumulator.
-            let initial = inverse
-                .rem_euclid(4_782_969)
-                .checked_mul(3)
-                .and_then(|part| {
-                    part.checked_add(inverse.div_euclid(4_782_969))
-                })
-                .ok_or(LAYOUT)?;
-            plan.1.push((address, initial));
-            ChunkSeedAccess::SingleRotation(address)
+            ChunkSeedAccess::Direct
         } else {
             plan.1.push((address, inverse));
             ChunkSeedAccess::Shared(SeedAccess::Reversible(address))
@@ -632,11 +661,7 @@ fn fast_load(
         return emitter.jump(TARGET_RETURN);
     }
     let address = match seed {
-        ChunkSeedAccess::SingleRotation(address) => {
-            go_seed(emitter, address, routing)?;
-            let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
-            return after_store(emitter);
-        },
+        ChunkSeedAccess::Direct => return Err(LAYOUT),
         ChunkSeedAccess::Shared(SeedAccess::Reversible(address)) => address,
         ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(_)) => {
             return Err(LAYOUT);
@@ -791,7 +816,7 @@ fn initialize_seed_returns(
                 Some(prefix.checked_add(3).ok_or(LAYOUT))
             },
             ChunkSeedAccess::Shared(SeedAccess::Reversible(_))
-            | ChunkSeedAccess::SingleRotation(_) => None,
+            | ChunkSeedAccess::Direct => None,
         })
         .collect::<Result<Vec<_>, _>>()?;
     returns.sort_unstable();
@@ -1097,7 +1122,10 @@ pub(super) fn initialize_chunk_seeds(
         }
     }
     roots.sort_unstable_by_key(|&(_, value)| value);
-    if words.range(extra.0..=extra.1).next().is_some()
+    if words
+        .keys()
+        .any(|address| !(CAPTURE..emitter.tape_bounds.limit).contains(address))
+        || words.range(extra.0..=extra.1).next().is_some()
         || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
         || words.range(DIRECTORY_BANK..=DIRECTORY_END).next().is_some()
         || extra.1 >= CHUNK_BANK
@@ -1123,45 +1151,108 @@ pub(super) fn initialize_chunk_seeds(
         directory: &directory,
         extra,
     };
-    let (seed_addresses, mut seeds) =
+    let (seed_addresses, seeds) =
         reorder_seed_slots(seed_plan, &routing, &single_use)?;
-    seeds.sort_unstable_by_key(|&(_, value)| value);
-    for (address, value) in seeds {
-        fast_rotate(emitter, NEAR_ZERO)?;
-        store_seed(emitter, address, &routing)?;
-        scratch.synthesize(emitter, profile_crazy(ALL_ONES, value, 15))?;
-        store_seed(emitter, address, &routing)?;
-    }
     initialize_target_pages(emitter, anchors, &mut scratch)?;
+    let direct = initialize_materialization(
+        emitter,
+        words,
+        anchors,
+        (&seed_addresses, &routing, seeds, &mut scratch),
+    )?;
     initialize_seed_returns(emitter, &seed_addresses, &routing, &mut scratch)?;
-    materialize_chunk_words(emitter, words, anchors, (&seed_addresses, routing))
+    materialize_chunk_words(
+        emitter,
+        words,
+        anchors,
+        (&seed_addresses, routing, &direct),
+    )
+}
+
+fn initialize_materialization(
+    emitter: &mut Emitter<'_>,
+    words: &Words,
+    anchors: &[(TargetSlot, u32)],
+    (seed_addresses, routing, seeds, scratch): InitialMaterialization<'_, '_>,
+) -> Result<BTreeSet<u32>, BuildError> {
+    let protected = words.keys().copied().collect::<BTreeSet<_>>();
+    let direct = words
+        .iter()
+        .filter_map(|(&address, value)| {
+            matches!(seed_addresses.get(value), Some(ChunkSeedAccess::Direct))
+                .then_some(address)
+        })
+        .collect::<BTreeSet<_>>();
+    let mut schedule = seeds;
+    schedule.extend(
+        words
+            .iter()
+            .filter(|(address, _)| direct.contains(address))
+            .map(|(&address, &value)| (address, value)),
+    );
+    schedule.sort_unstable_by_key(|&(_, value)| value);
+    for (address, value) in schedule {
+        let inverse = profile_crazy(ALL_ONES, value, 15);
+        if direct.contains(&address) {
+            let reset = target_reset(
+                address,
+                &protected,
+                routing.extra,
+                emitter.tape_bounds.limit,
+            )?;
+            if needs_normalization(address, inverse, value) {
+                fast_rotate(emitter, NEAR_ZERO)?;
+                fast_store(emitter, address, anchors, reset)?;
+            }
+            scratch.synthesize(emitter, inverse)?;
+            fast_store(emitter, address, anchors, reset)?;
+        } else {
+            fast_rotate(emitter, NEAR_ZERO)?;
+            store_seed(emitter, address, routing)?;
+            scratch.synthesize(emitter, inverse)?;
+            store_seed(emitter, address, routing)?;
+        }
+    }
+    Ok(direct)
+}
+
+fn needs_normalization(address: u32, inverse: u32, value: u32) -> bool {
+    let virgin = if address.is_multiple_of(2) {
+        7_174_416
+    } else {
+        37
+    };
+    profile_crazy(virgin, inverse, 15) != value
 }
 
 fn materialize_chunk_words(
     emitter: &mut Emitter<'_>,
     words: &Words,
     anchors: &[(TargetSlot, u32)],
-    (seed_addresses, routing): ChunkMaterialization<'_>,
+    (seed_addresses, routing, direct): ChunkMaterialization<'_>,
 ) -> Result<(), BuildError> {
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.limit).contains(&address) {
             return Err(LAYOUT);
         }
-        let virgin = if address.is_multiple_of(2) {
-            7_174_416
-        } else {
-            37
-        };
+        if direct.contains(&address) {
+            continue;
+        }
+        let reset = target_reset(
+            address,
+            direct,
+            routing.extra,
+            emitter.tape_bounds.limit,
+        )?;
         let inverse = profile_crazy(ALL_ONES, value, 15);
-        // The local-column bootstrap leaves every target word virgin.
-        let normalized = profile_crazy(virgin, inverse, 15) != value;
+        let normalized = needs_normalization(address, inverse, value);
         if normalized {
             fast_rotate(emitter, NEAR_ZERO)?;
-            fast_store(emitter, address, anchors)?;
+            fast_store(emitter, address, anchors, reset)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
         fast_load(emitter, seed, normalized, &routing)?;
-        fast_store(emitter, address, anchors)?;
+        fast_store(emitter, address, anchors, reset)?;
     }
     Ok(())
 }
