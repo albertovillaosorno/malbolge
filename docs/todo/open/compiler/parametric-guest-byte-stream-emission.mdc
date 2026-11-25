@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The guarded parity candidate now has a separate **real code transfer**
+variant. C5644 reads the computed Boolean at M7,174,477; a read-only
+data route selects M20=123 or M80=118, and C5686 jumps to C124 (even)
+or C119 (odd). All 256 byte classes reach their physical halt without
+output in 5,681 instructions; true EOF still bypasses parity at C120.
+Two paired full-image proofs and forged-landing refusals pass. Both
+arms still require real arithmetic, signed EOF composition, source
+frame effects and a backedge before whole-program publication.
+
 A separate **5,796-cell guarded live parity candidate** reverses the
 physical C118 branch, so bytes enter C126 and EOF halts at C120 without
 output or normalization. It constructs masks from marker tapes and

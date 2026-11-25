@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Parity-selected physical code transfer (2026-11-24)
+
+A separate 5,796-cell candidate retains the guarded byte-parity
+calculation but replaces its marker output with a genuine conditional
+indirect transfer. C5583 resets D through the virgin cell following
+M7,174,477; C5644 reads the computed Boolean and selects D=1 or D=2.
+The subsequent read-only route reaches M20=123 on even inputs and
+M80=118 on odd inputs. C5686 transfers to the distinct virgin halt
+sites C124 and C119 respectively. All 256 successful bytes consume
+one input, preserve the raw pair and halt without output in 5,681
+normative instructions; true EOF still halts at C120 in 120 steps
+without reaching the parity store or transfer.
+
+The independent paired full-image proof accepts 0 versus 1 and 254
+versus 255, including exact selector writes and distinct invariant
+pointer histories. A forged landing is refused. This proves physical
+parity-dependent control, not the source-C checksum arms, signed EOF
+composition, a source-frame certificate or whole-program publication.
+Evidence: `tests/compiler/relocated_live_parity.rs`.
+
 ### Guarded live byte parity through loader classes (2026-11-24)
 
 The separate 5,796-cell `build_relocated_live_parity_source` candidate

@@ -12,6 +12,18 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Parity-selected physical code transfer (2026-11-24)
+
+`build_relocated_live_parity_branch_source` preserves the guarded parity
+computation and replaces its output with a read-only D route. C5644
+reads the Boolean at M7,174,477, selecting D=1 or D=2; C5686 reads
+M20=123 (even) or M80=118 (odd) and jumps to C124 or C119. Every
+successful byte reaches its real halt in 5,681 instructions without
+output and true EOF halts at C120 in 120 steps. Both byte-boundary
+paired full-image proofs authenticate the selector and pointer
+histories; forged landings refuse. No source-C arithmetic, signed EOF
+composition or publication is admitted.
+
 ### Guarded live byte parity (2026-11-24)
 
 `build_relocated_live_parity_source` emits a separate 5,796-cell probe.

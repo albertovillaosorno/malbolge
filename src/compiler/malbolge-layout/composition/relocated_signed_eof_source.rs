@@ -31,7 +31,9 @@
 mod relocated_live_parity_source;
 use malbolge::{ProfileDescriptor, current_profile};
 pub use relocated_live_parity_source::{
-    RelocatedLiveParitySource, build_relocated_live_parity_source,
+    RelocatedLiveParityBranchSource, RelocatedLiveParitySource,
+    build_relocated_live_parity_branch_source,
+    build_relocated_live_parity_source,
 };
 
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;

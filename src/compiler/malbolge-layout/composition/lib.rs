@@ -123,8 +123,9 @@ pub use code_cell_trace::{
     SourcePhysicalCodeFetch, SourcePhysicalDataRead, SourcePhysicalDataWrite,
     SourcePhysicalEncryptionWrite, SourcePhysicalImageTrace,
     SourcePhysicalImageTraceError, SourcePhysicalIoEvent,
-    SourcePhysicalTraceBudget, SourcePhysicalWordEffect, verify_source_code_cell_trace,
-    verify_source_code_image_trace, verify_source_expanded_code_cell_trace,
+    SourcePhysicalTraceBudget, SourcePhysicalWordEffect,
+    verify_source_code_cell_trace, verify_source_code_image_trace,
+    verify_source_expanded_code_cell_trace,
     verify_source_expanded_code_cells_trace,
     verify_source_physical_image_trace,
     verify_source_physical_image_trace_with_budget,
@@ -222,7 +223,8 @@ pub use relocated_eof_branch_source::{
     RelocatedEofBranchSource, build_relocated_eof_branch_source,
 };
 pub use relocated_signed_eof_source::{
-    RelocatedLiveParitySource, RelocatedSignedEofBranchSource,
+    RelocatedLiveParityBranchSource, RelocatedLiveParitySource,
+    RelocatedSignedEofBranchSource, build_relocated_live_parity_branch_source,
     build_relocated_live_parity_source, build_relocated_signed_eof_source,
 };
 pub use signed_eof_branch_source::{
