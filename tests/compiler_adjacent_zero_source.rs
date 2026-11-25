@@ -1854,3 +1854,269 @@ fn physical_zero_pair_then_c37_getchar_has_genuine_input_and_data_effects()
     }
     Ok(())
 }
+
+// The unchanged seven-block source-C checksum is the authority for the
+// first two literal result cells and the first input opcode, not the N15
+// builder's internal labels. This still does not link C23 result storage,
+// the remaining operations, branches or its EOF loop.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "finite original-C23 source/guest zero and input witness"
+)]
+fn original_checksum_first_literal_and_input_have_physical_guest_sites()
+-> Result<(), String> {
+    use std::str;
+
+    use layout::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeFunctionEntryAnchor,
+        GuestCodeFunctionEntryPlacement, GuestCodeInputSemantics,
+        GuestCodeOperationAnchor, GuestCodeOperationEffect,
+        plan_source_locked_cfg_with_function_entry_anchors,
+    };
+
+    const FROZEN: &str =
+        include_str!("compiler/typed-ir/golden/mutable-eof-checksum.hex");
+    let digits = FROZEN
+        .trim_end()
+        .strip_prefix("malbolge-typed-ir-v1:")
+        .ok_or("missing original C23 checksum wire prefix")?;
+    let (pairs, remainder) = digits.as_bytes().as_chunks::<2>();
+    if !remainder.is_empty() {
+        return Err("odd number of checksum wire hex digits".into());
+    }
+    let wire = pairs
+        .iter()
+        .map(|bytes| {
+            let hex =
+                str::from_utf8(bytes).map_err(|error| error.to_string())?;
+            u8::from_str_radix(hex, 16).map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let profile = current_profile();
+    let guest = layout::build_adjacent_c32_zero_then_c37_input_source(profile)
+        .map_err(|error| format!("real zero source: {error:?}"))?;
+    let physical = ProfileMachine::from_source(profile, &guest.source, vec![])
+        .map_err(|error| format!("source load: {error:?}"))?;
+    let frame_base = guest.zero_low_address;
+    let effects = [
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: guest.zero_low_code_address,
+            effect_index: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: guest.zero_high_code_address,
+            effect_index: 1,
+            function: 0,
+            ordinal: 0,
+        },
+    ];
+    let entries = [GuestCodeFunctionEntryAnchor {
+        block: 0,
+        code_address: 0,
+        function: 0,
+    }];
+    let input_anchor = GuestCodeOperationAnchor {
+        block: 0,
+        code_address: 37,
+        function: 0,
+        ordinal: 1,
+    };
+    let plan = plan_source_locked_cfg_with_function_entry_anchors(
+        &GuestCodeFunctionEntryPlacement {
+            canonical: &wire,
+            control_anchors: &[],
+            effect_anchors: &effects,
+            frame_base,
+            function_entries: &entries,
+            operation_anchors: &[input_anchor],
+            phi_anchors: &[],
+            phi_entries: &[],
+            phi_exits: &[],
+            source_cells: 256,
+        },
+    )
+    .map_err(|error| format!("checksum source placement: {error:?}"))?;
+    let initializer = plan
+        .operation_effect_sites
+        .iter()
+        .filter(|site| (site.function, site.block, site.ordinal) == (0, 0, 0))
+        .collect::<Vec<_>>();
+    assert_eq!(initializer.len(), 2);
+    let inputs = plan
+        .operation_effect_sites
+        .iter()
+        .filter(|site| (site.function, site.block, site.ordinal) == (0, 0, 1))
+        .filter(|site| {
+            matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+        })
+        .collect::<Vec<_>>();
+    let [input_effect] = inputs.as_slice() else {
+        return Err("first source getchar has no unique input site".into());
+    };
+    assert_eq!(input_effect.code_address, 37);
+    assert!(matches!(
+        input_effect.effect,
+        GuestCodeOperationEffect::Input {
+            semantics: GuestCodeInputSemantics::SignedC23 { .. },
+            ..
+        }
+    ));
+    let input_stores = plan
+        .operation_effect_sites
+        .iter()
+        .filter(|site| (site.function, site.block, site.ordinal) == (0, 0, 1))
+        .filter(|site| {
+            matches!(site.effect, GuestCodeOperationEffect::Store { .. })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        input_stores.len(),
+        2,
+        "C23 requires two signed getchar words"
+    );
+    assert_eq!(plan.code_blocks[0].start, 0);
+    assert_eq!(plan.operation_sites[0].start, guest.zero_high_code_address);
+    assert_eq!(plan.relocated.state_placements[0].base, frame_base);
+
+    // Replay the entire initially graphical source with the normative N15 VM.
+    // Four stdin vectors exercise the source-anchored raw guest input site.
+    for input in [vec![], vec![0], vec![255], vec![0x80, 0]] {
+        let mut machine = ProfileMachine::from_state(
+            profile,
+            physical.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("VM state: {error:?}"))?;
+        let mut steps = Vec::new();
+        assert_eq!(
+            machine
+                .run_traced(39, &mut |step| steps.push(*step))
+                .map_err(|error| format!("VM replay: {error:?}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 39,
+            }
+        );
+        for effect in &initializer {
+            let GuestCodeOperationEffect::Store {
+                destination,
+                literal: Some(0),
+            } = effect.effect
+            else {
+                return Err(
+                    "first C23 instruction is not a literal zero".into()
+                );
+            };
+            let reached = steps
+                .iter()
+                .find(|step| {
+                    step.before.registers.code_pointer == effect.code_address
+                })
+                .ok_or("source literal effect was not reached")?;
+            assert_eq!(reached.decoded, Some(b'p'));
+            assert_eq!(reached.before.registers.data_pointer, destination);
+            assert_eq!(reached.after.registers.accumulator, 0);
+            assert_eq!(
+                reached
+                    .memory_delta
+                    .data
+                    .map(|write| (write.address, write.after)),
+                Some((destination, 0)),
+                "source literal must be a committed physical memory write",
+            );
+            assert_ne!(
+                reached.memory_delta.data.map(|write| write.before),
+                Some(0),
+                "source C32 initializer must replace a nonzero loader word",
+            );
+            assert_eq!(machine.memory_word(destination), Ok(0));
+        }
+        let read = steps
+            .iter()
+            .find(|step| {
+                step.before.registers.code_pointer == input_effect.code_address
+            })
+            .ok_or("source first input site was skipped")?;
+        assert_eq!(read.decoded, Some(b'/'));
+        assert!(read.memory_delta.data.is_none());
+        assert_eq!(
+            read.input,
+            Some(input.first().copied().map_or(
+                malbolge::TraceInput::EndOfInput,
+                malbolge::TraceInput::Byte,
+            ))
+        );
+        assert_eq!(machine.input_consumed(), usize::from(!input.is_empty()));
+        // Neither C38's physical halt nor the unvisited C39 can stand in
+        // for the two required signed C23 result stores, even on EOF.
+        for site in &input_stores {
+            let GuestCodeOperationEffect::Store { destination, .. } =
+                site.effect
+            else {
+                return Err("source getchar result is not a store".into());
+            };
+            assert!(!steps.iter().any(|step| {
+                step.before.registers.code_pointer == site.code_address
+                    && matches!(step.decoded, Some(b'p' | b'*'))
+                    && step.before.registers.data_pointer == destination
+            }));
+        }
+        assert_eq!(initializer[0].code_address, guest.zero_high_code_address);
+        assert_eq!(initializer[1].code_address, guest.zero_low_code_address);
+    }
+    // A graphical no-op at the original C17 low-store site preserves source
+    // admission and real termination but cannot implement the C23 literal.
+    let mut broken_source = guest.source.clone();
+    let last_store = usize::try_from(guest.zero_low_code_address)
+        .map_err(|error| error.to_string())?;
+    broken_source[last_store] = encode(b'o', last_store)?;
+    let mut broken =
+        ProfileMachine::from_source(profile, &broken_source, vec![])
+            .map_err(|error| format!("mutant source load: {error:?}"))?;
+    let mut broken_steps = Vec::new();
+    assert_eq!(
+        broken
+            .run_traced(39, &mut |step| broken_steps.push(*step))
+            .map_err(|error| format!("mutant guest replay: {error:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 39,
+        }
+    );
+    assert_eq!(broken_steps[last_store].decoded, Some(b'o'));
+    assert_ne!(broken.memory_word(guest.zero_low_address), Ok(0));
+    assert_eq!(broken.memory_word(guest.zero_high_address), Ok(0));
+    // Replacing the authentic C37 '/' with a graphical no-op preserves the
+    // earlier C32 initializer but can no longer discharge source getchar.
+    let mut no_input = guest.source.clone();
+    no_input[37] = encode(b'o', 37)?;
+    let mut missing =
+        ProfileMachine::from_source(profile, &no_input, vec![0xff])
+            .map_err(|error| format!("missing-input source load: {error:?}"))?;
+    let mut missing_steps = Vec::new();
+    assert_eq!(
+        missing
+            .run_traced(39, &mut |step| missing_steps.push(*step))
+            .map_err(|error| format!("missing input replay: {error:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 39,
+        }
+    );
+    assert_eq!(missing_steps[37].decoded, Some(b'o'));
+    assert_eq!(missing_steps[37].input, None);
+    assert_eq!(missing.input_consumed(), 0);
+    assert_eq!(missing.memory_word(guest.zero_low_address), Ok(0));
+    assert_eq!(missing.memory_word(guest.zero_high_address), Ok(0));
+    Ok(())
+}

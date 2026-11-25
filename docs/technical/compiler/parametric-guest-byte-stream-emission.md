@@ -925,6 +925,20 @@ preparation, phi pads or branch paths. This is source-authenticated geometry onl
 checksum, signed EOF conversion or successful P2 guest parity. Regression:
 `tests/compiler/source_dynamic_checksum.rs`.
 
+On 2026-11-24 the **exact original C23 checksum typed wire** was also
+bound in one test to this same actual graphical N15 prefix. The unchanged
+seven-block source-backed relocation places its first C32 zero literal at
+C14 (high word) and C17 (low word), and source `getchar()` at the physically
+executed C37 `/`. The normative 39-step VM writes both correct zero cells
+and performs that actual read on EOF, NUL, `0xff` and a trailing-input case.
+Graphical negative controls change C17 `p` into `o` (missing low result)
+or C37 `/` into `o` (missing input) without pretending either instruction
+executed. The source-authenticated input still owes **two separate C23
+signed result stores** which the physical program never executes: C38 is
+its real `v` halt. This source-linked **effect prefix** is neither a complete
+source block nor a linked C23 checksum guest and does not authorize target
+publication. Regression: `tests/compiler_adjacent_zero_source.rs`.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend
