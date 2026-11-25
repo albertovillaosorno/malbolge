@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_210_000;
+const BOOT_BUDGET: usize = 1_195_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -65,6 +65,183 @@ type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
 type DirectTargetReceipt = (usize, [u32; 2]);
 type ShortcutReceipt = ([u32; 3], usize);
+
+#[derive(Clone, Copy)]
+enum TargetRouteProgress {
+    Page(u32),
+    Walk(TargetRoute),
+}
+
+#[derive(Clone, Copy)]
+struct TargetRoute {
+    base: u32,
+    cost: u32,
+    root: u32,
+    slot: Option<u32>,
+}
+
+impl TargetRoute {
+    fn cost_at(self, address: u32) -> Option<u32> {
+        self.cost.checked_add(address.checked_sub(self.base)?)
+    }
+}
+
+#[derive(Default)]
+struct TargetRouteAudit {
+    entries: usize,
+    installed: BTreeSet<u32>,
+    page_site: Option<u32>,
+    pending: Option<TargetRouteProgress>,
+    root_site: Option<u32>,
+    selections: usize,
+}
+
+impl TargetRouteAudit {
+    fn end_walk(
+        &mut self,
+        vm: &mut ProfileMachine,
+        routes: &[TargetRoute],
+        (route, address, opcode): (TargetRoute, u32, Option<u8>),
+    ) -> Result<(), String> {
+        let selected = route.cost_at(address).ok_or("backward target route")?;
+        let cheapest = routes
+            .iter()
+            .filter_map(|candidate| candidate.cost_at(address))
+            .min()
+            .ok_or("uncovered target")?;
+        if selected != cheapest || !matches!(opcode, Some(b'p' | b'i')) {
+            return Err("nonminimum or unfinished target walk".to_owned());
+        }
+        if opcode == Some(b'i') {
+            routing(&step(vm)?, u32::MAX)?;
+            self.entries = self.entries.saturating_add(1);
+        } else {
+            advance_boot(vm)?;
+        }
+        self.selections = self.selections.saturating_add(1);
+        self.pending = None;
+        Ok(())
+    }
+
+    fn finish(self) -> Result<[u32; 2], String> {
+        if self.entries != 1
+            || self.selections != 8_734
+            || self.pending.is_some()
+        {
+            return Err(format!(
+                "incomplete target route audit: {}",
+                self.selections
+            ));
+        }
+        Ok([
+            self.root_site.ok_or("missing target root selection")?,
+            self.page_site.ok_or("missing target page selection")?,
+        ])
+    }
+
+    fn install(
+        &mut self,
+        vm: &mut ProfileMachine,
+        routes: &[TargetRoute],
+        (address, opcode): (u32, Option<u8>),
+    ) -> Result<(), String> {
+        advance_boot(vm)?;
+        if opcode == Some(b'p')
+            && let Some(route) =
+                routes.iter().find(|route| route.slot == Some(address))
+            && word(vm, address)?.checked_add(1) == Some(route.base)
+        {
+            let _inserted = self.installed.insert(address);
+        }
+        Ok(())
+    }
+
+    fn observe(
+        &mut self,
+        vm: &mut ProfileMachine,
+        routes: &[TargetRoute],
+    ) -> Result<(), String> {
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        let opcode = decode_profile_instruction(
+            word(vm, registers.code_pointer)?,
+            registers.code_pointer,
+        );
+        if self.installed.len() < 288 {
+            return self.install(vm, routes, (address, opcode));
+        }
+        match (self.pending, opcode) {
+            (Some(_), Some(b'o')) => routing(&step(vm)?, u32::MAX),
+            (Some(TargetRouteProgress::Page(root)), Some(b'j')) => {
+                self.page(vm, routes, (root, address))
+            },
+            (Some(TargetRouteProgress::Page(_)), _) => {
+                Err("unfinished target page selection".to_owned())
+            },
+            (Some(TargetRouteProgress::Walk(route)), _) => {
+                self.end_walk(vm, routes, (route, address, opcode))
+            },
+            (None, Some(b'j')) => {
+                if let Some(route) =
+                    routes.iter().find(|route| route.root == address)
+                {
+                    self.root(vm, *route)
+                } else {
+                    advance_boot(vm)
+                }
+            },
+            (None, _) => advance_boot(vm),
+        }
+    }
+
+    fn page(
+        &mut self,
+        vm: &mut ProfileMachine,
+        routes: &[TargetRoute],
+        (root, address): (u32, u32),
+    ) -> Result<(), String> {
+        let route = routes
+            .iter()
+            .find(|route| route.root == root && route.slot == Some(address))
+            .ok_or("unlisted target page selection")?;
+        let trace = step(vm)?;
+        routing(&trace, u32::MAX)?;
+        if trace.after.registers.data_pointer != route.base {
+            return Err("incorrect target page landing".to_owned());
+        }
+        let _site = self
+            .page_site
+            .get_or_insert(trace.before.registers.code_pointer);
+        self.pending = Some(TargetRouteProgress::Walk(*route));
+        Ok(())
+    }
+
+    fn root(
+        &mut self,
+        vm: &mut ProfileMachine,
+        route: TargetRoute,
+    ) -> Result<(), String> {
+        let trace = step(vm)?;
+        routing(&trace, u32::MAX)?;
+        let _site = self
+            .root_site
+            .get_or_insert(trace.before.registers.code_pointer);
+        self.pending = Some(if let Some(slot) = route.slot {
+            // The roots of the page banks select their respective first
+            // entry, before walking to a specific installed slot.
+            if trace.after.registers.data_pointer != slot {
+                return Err("incorrect target page root".to_owned());
+            }
+            TargetRouteProgress::Page(route.root)
+        } else {
+            if trace.after.registers.data_pointer != route.base {
+                return Err("incorrect direct target root".to_owned());
+            }
+            TargetRouteProgress::Walk(route)
+        });
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy)]
 struct ClusterVisit {
@@ -1435,7 +1612,13 @@ fn check_seed_returns(vm: &ProfileMachine) -> Result<(), String> {
 // The target pages point at distinct bases within the recurrent data
 // plan, not at their own bank or the bootstrap scratch space.
 fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
+    let _routes = target_directory(vm)?;
+    Ok(())
+}
+
+fn target_directory(vm: &ProfileMachine) -> Result<Vec<TargetRoute>, String> {
     let mut targets = BTreeSet::new();
+    let mut routes = Vec::new();
     for (root, bank) in [
         (7_174_491u32, 7_300_001u32),
         (7_174_493u32, 7_300_201u32),
@@ -1462,6 +1645,12 @@ fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
             {
                 return Err(format!("incorrect target directory M{slot}"));
             }
+            routes.push(TargetRoute {
+                base: target,
+                cost: plus(plus(root, mul(offset, 2)?)?, 1)?,
+                root,
+                slot: Some(slot),
+            });
         }
     }
     for root in (7_174_515..7_174_601).step_by(2) {
@@ -1472,9 +1661,56 @@ fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
         {
             return Err(format!("incorrect direct target M{root}"));
         }
+        routes.push(TargetRoute {
+            base: target,
+            cost: root,
+            root,
+            slot: None,
+        });
     }
     if targets.len() != 331 {
         return Err("missing target directory partition".to_owned());
+    }
+    Ok(routes)
+}
+
+fn advance_boot(vm: &mut ProfileMachine) -> Result<(), String> {
+    if vm.step().map_err(|error| error.to_string())? != StepOutcome::Continued {
+        return Err("premature bootstrap termination".to_owned());
+    }
+    Ok(())
+}
+
+fn audit_target_routes(
+    guest: &RelocatedRecurrentChecksumSource,
+    routes: &[TargetRoute],
+) -> Result<[u32; 2], String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = TargetRouteAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish();
+        }
+        audit.observe(&mut vm, routes)?;
+    }
+    Err("missing target-route first input".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_target_route_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let routes = target_directory(&boot(&guest)?)?;
+    for site in audit_target_routes(&guest, &routes)? {
+        let modified = omit_site(&guest, site)?;
+        if audit_target_routes(&modified, &routes).is_ok() {
+            return Err("accepted omitted target route".to_owned());
+        }
     }
     Ok(())
 }
@@ -2037,7 +2273,7 @@ fn relocated_recurrent_checksum_omitted_scratch_constants_refuses()
 -> Result<(), String> {
     let guest = source()?;
     let (sites, selections) = audit_scratch_constants(&guest)?;
-    if selections != 1_313 {
+    if selections != 1_323 {
         return Err(format!("unexpected shortcut count: {selections}"));
     }
     for site in sites {

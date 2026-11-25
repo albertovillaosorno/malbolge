@@ -14596,3 +14596,22 @@ checks 318 clusters, 8,216 clustered visits, 2,202 distinct even targets,
 store, an even store or a shared reset refuses. The new physical ceiling
 is 1,210,000 steps; all 19 physical checksum and 31 source-recurrent tests
 pass. The 100,000-step source-C publication limit is not changed.
+
+The target-directory planner now refines its greedy partitions in two
+bounded coordinate passes. For a target address, the physical route
+cost is the slot cost plus the forward distance from its base. Among
+eligible predecessors, maximizing base minus slot cost is equivalent to
+minimizing this cost. Removing one slot leaves a monotonic envelope;
+weighted prefix sums and a monotonic endpoint evaluate every possible
+replacement base without a nested scan of the affected suffix. The first
+base stays fixed, occupied bases are excluded and equal-cost ties retain
+the current base. This refines a deterministic weighted planning model,
+not a claim of global minimum guest execution time.
+
+The same 2,318,854-cell source reaches first input in 1,193,518 steps,
+8,894 fewer than the preceding layout. The physical ceiling is now
+1,195,000 steps. Independent VM replay reconstructs the 331 installed
+routes, checks 8,734 actual minimum-cost target selections, including the
+final entry, and rejects omitted root and page-selection jumps. The
+changed directory initialization uses 1,323 scratch-to-constants jumps.
+The 100,000-step source-C publication limit remains unchanged.

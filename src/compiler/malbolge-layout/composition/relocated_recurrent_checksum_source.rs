@@ -661,11 +661,133 @@ fn route_anchors(
         ));
     }
     partitions.sort_unstable_by_key(|&(size, base)| (Reverse(size), base));
-    let anchors = slots
+    let mut anchors: TargetAnchors = slots
         .into_iter()
         .zip(partitions.into_iter().map(|(_, base)| base))
         .collect();
+    improve_anchor_bases(&addresses, &mut anchors)?;
     Ok(anchors)
+}
+
+// A route through an eligible slot costs slot.cost() + address - base.
+// Thus every target chooses the maximum (base - slot.cost()) among
+// preceding bases. Refine the greedy partition using that actual metric,
+// not just distance to the most recent anchor. Keep the first base fixed
+// so every trial retains coverage, and bound the coordinate search.
+fn improve_anchor_bases(
+    addresses: &[(u32, u64)],
+    anchors: &mut TargetAnchors,
+) -> Result<(), BuildError> {
+    let first = addresses.first().ok_or(LAYOUT)?.0;
+    let mut weights = vec![0u64];
+    for &(_, weight) in addresses {
+        weights.push(
+            weights
+                .last()
+                .ok_or(LAYOUT)?
+                .checked_add(weight)
+                .ok_or(LAYOUT)?,
+        );
+    }
+    for _ in 0..2u32 {
+        for index in (0..anchors.len()).rev() {
+            let (slot, old_base) = *anchors.get(index).ok_or(LAYOUT)?;
+            if old_base == first {
+                continue;
+            }
+            let mut others = anchors
+                .iter()
+                .enumerate()
+                .filter(|&(other, _)| other != index)
+                .map(|(_, &(path, base))| {
+                    let score = u64::from(base)
+                        .checked_sub(path.cost())
+                        .ok_or(LAYOUT)?;
+                    Ok((base, score))
+                })
+                .collect::<Result<Vec<_>, BuildError>>()?;
+            others.sort_unstable();
+            let base = best_anchor_base(
+                addresses,
+                &others,
+                &weights,
+                (slot.cost(), old_base),
+            )?;
+            anchors.get_mut(index).ok_or(LAYOUT)?.1 = base;
+        }
+    }
+    Ok(())
+}
+
+fn best_anchor_base(
+    addresses: &[(u32, u64)],
+    others: &[(u32, u64)],
+    weights: &[u64],
+    (cost, old_base): (u64, u32),
+) -> Result<u32, BuildError> {
+    // Record the monotonic maximum of the other anchors and its weighted
+    // prefix sum. A trial only improves the range until that maximum
+    // catches its score. The right endpoint is monotonic as well.
+    let mut prior = others.iter().peekable();
+    let mut best = 0u64;
+    let mut baseline = Vec::with_capacity(addresses.len());
+    let mut weighted = vec![0u64];
+    for &(address, weight) in addresses {
+        let mut occupied = false;
+        while let Some(&&(base, score)) = prior.peek() {
+            if base > address {
+                break;
+            }
+            occupied |= base == address;
+            best = best.max(score);
+            let _consumed = prior.next();
+        }
+        baseline.push((best, occupied));
+        let term = best.checked_mul(weight).ok_or(LAYOUT)?;
+        weighted.push(
+            weighted
+                .last()
+                .ok_or(LAYOUT)?
+                .checked_add(term)
+                .ok_or(LAYOUT)?,
+        );
+    }
+    let mut winner = (0u64, old_base);
+    let mut end = 0usize;
+    for (index, (&(address, _), &(score, occupied))) in
+        addresses.iter().zip(&baseline).enumerate()
+    {
+        let candidate = u64::from(address).checked_sub(cost).ok_or(LAYOUT)?;
+        if occupied || candidate <= score {
+            continue;
+        }
+        end = end.max(index);
+        while baseline
+            .get(end)
+            .is_some_and(|&(value, _)| value < candidate)
+        {
+            end = end.checked_add(1).ok_or(LAYOUT)?;
+        }
+        let interval_weight = weights
+            .get(end)
+            .ok_or(LAYOUT)?
+            .checked_sub(*weights.get(index).ok_or(LAYOUT)?)
+            .ok_or(LAYOUT)?;
+        let old_score = weighted
+            .get(end)
+            .ok_or(LAYOUT)?
+            .checked_sub(*weighted.get(index).ok_or(LAYOUT)?)
+            .ok_or(LAYOUT)?;
+        let gain = candidate
+            .checked_mul(interval_weight)
+            .ok_or(LAYOUT)?
+            .checked_sub(old_score)
+            .ok_or(LAYOUT)?;
+        if gain > winner.0 || (gain == winner.0 && address == old_base) {
+            winner = (gain, address);
+        }
+    }
+    Ok(winner.1)
 }
 
 fn best_anchor_split(

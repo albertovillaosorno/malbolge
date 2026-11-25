@@ -306,6 +306,10 @@ Adaptive virgin-reset reservations allow even targets into the same
 sweeps. The independent replay checks 8,268 forward virgin reset jumps
 and 4,194 pre-normalized commits; first input takes 1,202,412 steps.
 All 19 physical checksum and 31 source-recurrent tests pass again.
+Two bounded target-anchor refinement passes reduce this to 1,193,518
+steps, with 8,734 independently checked minimum-cost physical routes.
+All 20 physical checksum tests pass. The same source extent and
+100,000-step publication ceiling remain.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

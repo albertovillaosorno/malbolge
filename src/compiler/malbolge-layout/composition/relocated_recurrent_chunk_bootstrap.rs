@@ -125,7 +125,7 @@ pub(super) enum TargetSlot {
 }
 
 impl TargetSlot {
-    fn cost(self) -> u64 {
+    pub(super) fn cost(self) -> u64 {
         match self {
             Self::Direct(anchor) => u64::from(anchor),
             Self::Page { bank, root, slot } => u64::from(root)
