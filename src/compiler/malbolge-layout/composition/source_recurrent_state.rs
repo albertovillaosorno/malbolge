@@ -26,7 +26,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use malbolge::{ProfileMachine, ProfileStepTrace, current_profile};
+use malbolge::{
+    ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
+    decode_profile_instruction, encrypt_profile_cell, profile_crazy,
+};
 
 use super::{
     Effect, Error, ProjectedIo, ReplayAudits, SourceInputWalkState,
@@ -113,10 +116,122 @@ struct TrackedCell {
     value: u32,
 }
 
+type IndexedStore = (usize, ProfileStepTrace);
+type StoreOperands = (u32, u32, u32);
+pub(super) type InitialNormalizations = [Option<usize>; 2];
+
+pub(super) struct InitialStateTrace {
+    invalid: bool,
+    last_index: Option<usize>,
+    loaded: [u32; 2],
+    words: [u32; 2],
+    writes: [Vec<IndexedStore>; 2],
+}
+
+impl InitialStateTrace {
+    pub(super) const fn new(words: [u32; 2], loaded: [u32; 2]) -> Self {
+        Self {
+            invalid: false,
+            last_index: None,
+            loaded,
+            words,
+            writes: [Vec::new(), Vec::new()],
+        }
+    }
+
+    pub(super) fn observe(&mut self, trace: &ProfileStepTrace, index: usize) {
+        if !matches!(trace.decoded, Some(b'p' | b'*')) {
+            return;
+        }
+        for (address, stores) in self.words.into_iter().zip(&mut self.writes) {
+            if trace.before.registers.data_pointer != address {
+                continue;
+            }
+            if stores.len() == 2
+                || self.last_index.is_some_and(|prior| prior >= index)
+            {
+                self.invalid = true;
+            } else {
+                stores.push((index, *trace));
+                self.last_index = Some(index);
+            }
+        }
+    }
+
+    pub(super) fn receipt(
+        &self,
+        checkpoint: &SourceRecurrentStateCheckpoint,
+        source: &[u8],
+    ) -> Result<InitialNormalizations, Error> {
+        if self.invalid {
+            return Err(Error::GuestStateMismatch);
+        }
+        let mut normalizations = [None; 2];
+        for (slot, result) in normalizations.iter_mut().enumerate() {
+            *result = self.verify_word(slot, checkpoint, source)?;
+        }
+        Ok(normalizations)
+    }
+
+    fn verify_word(
+        &self,
+        slot: usize,
+        checkpoint: &SourceRecurrentStateCheckpoint,
+        source: &[u8],
+    ) -> Result<Option<usize>, Error> {
+        let address = *self.words.get(slot).ok_or(Error::GuestStateMismatch)?;
+        let loaded = *self.loaded.get(slot).ok_or(Error::GuestStateMismatch)?;
+        let value = *checkpoint
+            .words
+            .get(slot)
+            .ok_or(Error::GuestStateMismatch)?;
+        let stores = self.writes.get(slot).ok_or(Error::GuestStateMismatch)?;
+        let (commit, preceding) =
+            stores.split_last().ok_or(Error::MissingGuestStateStore)?;
+        let ones = current_profile().eof_word().div_euclid(2);
+        let inverse = initial_crazy(ones, value);
+        let (old, normalization) = if initial_crazy(loaded, inverse) == value {
+            if !preceding.is_empty() {
+                return Err(Error::GuestStateMismatch);
+            }
+            (loaded, None)
+        } else {
+            let [normal] = preceding else {
+                return Err(Error::GuestStateMismatch);
+            };
+            if normal.0 >= commit.0 {
+                return Err(Error::GuestStateMismatch);
+            }
+            verify_initial_store(
+                &normal.1,
+                source,
+                address,
+                (loaded, 0, ones),
+            )?;
+            (ones, Some(normal.0))
+        };
+        if checkpoint.write_indices.get(slot) != Some(&commit.0)
+            || checkpoint.write_sites.get(slot)
+                != Some(&commit.1.before.registers.code_pointer)
+            || commit.0 >= checkpoint.trace_index
+        {
+            return Err(Error::GuestStateMismatch);
+        }
+        verify_initial_store(
+            &commit.1,
+            source,
+            address,
+            (old, inverse, value),
+        )?;
+        Ok(normalization)
+    }
+}
+
 pub(super) struct StateTrace {
     cells: [TrackedCell; 2],
     pub(super) checkpoints: Vec<SourceRecurrentStateCheckpoint>,
     encoding: [[u32; 16]; 2],
+    pub(super) initial: InitialStateTrace,
     input_address: u32,
 }
 
@@ -341,10 +456,14 @@ impl StateTrace {
         vm: &ProfileMachine,
     ) -> Result<Self, Error> {
         let [low, high] = probe.words;
+        let cells = [TrackedCell::new(low, vm)?, TrackedCell::new(high, vm)?];
+        let initial =
+            InitialStateTrace::new(probe.words, cells.map(|cell| cell.value));
         Ok(Self {
-            cells: [TrackedCell::new(low, vm)?, TrackedCell::new(high, vm)?],
+            cells,
             checkpoints: Vec::new(),
             encoding: probe.encoding,
+            initial,
             input_address: probe.input_address,
         })
     }
@@ -360,11 +479,85 @@ impl StateTrace {
         {
             self.checkpoint(read, step, index)?;
         }
+        if self.checkpoints.is_empty() {
+            self.initial.observe(step, index);
+        }
         for cell in &mut self.cells {
             cell.observe(step, index)?;
         }
         Ok(())
     }
+}
+
+fn initial_crazy(data: u32, accumulator: u32) -> u32 {
+    profile_crazy(data, accumulator, current_profile().word_trits())
+}
+
+fn verify_initial_store(
+    trace: &ProfileStepTrace,
+    source: &[u8],
+    address: u32,
+    (old, input, value): StoreOperands,
+) -> Result<(), Error> {
+    let before = trace.before.registers;
+    let after = trace.after.registers;
+    let site = before.code_pointer;
+    let cell = u32::from(
+        *source
+            .get(
+                usize::try_from(site)
+                    .map_err(|_error| Error::GuestStateMismatch)?,
+            )
+            .ok_or(Error::GuestStateMismatch)?,
+    );
+    let encrypted =
+        encrypt_profile_cell(cell).ok_or(Error::GuestStateMismatch)?;
+    if trace.profile != current_profile()
+        || trace.decoded != Some(b'p')
+        || decode_profile_instruction(cell, site) != Some(b'p')
+        || trace.fetched_cell != Some(cell)
+        || trace
+            .memory_reads
+            .fetch
+            .map(|read| (read.address, read.value))
+            != Some((site, cell))
+        || trace
+            .memory_reads
+            .encryption
+            .map(|read| (read.address, read.value))
+            != Some((site, cell))
+        || trace
+            .memory_delta
+            .encryption
+            .map(|delta| (delta.address, delta.before, delta.after))
+            != (cell != encrypted).then_some((site, cell, encrypted))
+        || trace.result != Ok(StepOutcome::Continued)
+        || before.data_pointer != address
+        || before.accumulator != input
+        || trace
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value))
+            != Some((address, old))
+        || initial_crazy(old, input) != value
+        || after.accumulator != value
+        || address.checked_add(1) != Some(after.data_pointer)
+        || site.checked_add(1) != Some(after.code_pointer)
+        || trace
+            .memory_delta
+            .data
+            .map(|delta| (delta.address, delta.before, delta.after))
+            != (old != value).then_some((address, old, value))
+        || trace.input.is_some()
+        || trace.output.is_some()
+        || trace.before.input_consumed != 0
+        || trace.after.input_consumed != 0
+        || trace.before.output_len != 0
+        || trace.after.output_len != 0
+    {
+        return Err(Error::GuestStateMismatch);
+    }
+    Ok(())
 }
 
 fn source_result(operation: &TernaryOperation) -> Option<u32> {

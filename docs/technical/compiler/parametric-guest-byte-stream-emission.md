@@ -14486,3 +14486,21 @@ unpaired values took 1,646,752 steps in the measured variants. The
 singleton-only pass retains shared reads for repeated values. All 15
 physical checksum tests and 13 source-transition tests pass; the
 original 100,000-step source-C publication gate remains unchanged.
+
+The finite source-transition receipt now separately authenticates the
+physical initialization of both selected unsigned-phi words. It keeps
+at most two actual arithmetic traces per word before the first source
+read and obtains the original predecessors from the fresh normative
+loader. The independently projected first state determines the two
+encoded target words. A word either accepts its inverse directly or
+requires exactly one zero-accumulator normalization to all ones before
+the final inverse commit. The verifier checks chronological indices,
+original graphical fetches and encryption, exact data operands and
+deltas, crazy results, register advances and absence of I/O. The last
+commit sites and indices must agree with the paired source checkpoint.
+The frozen low word needs no normalization; the high word needs one.
+Omitted, reordered, duplicated and corrupted initialization evidence,
+or an inconsistent source checkpoint, is refused. All 31 recurrent
+source I/O, guard, state, loop and transition tests pass, including the
+512 terminal forks. This bounded receipt does not yet authenticate the
+remaining bootstrap, all SSA storage or the publication resource gate.

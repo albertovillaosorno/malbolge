@@ -165,6 +165,8 @@ pub struct SourceRecurrentTransitionProof {
     pub control_calls: usize,
     /// Actual indirect and data-jump indices entering the first input.
     pub initial_entry_indices: [usize; 2],
+    /// Optional actual all-one normalization before each initial state commit.
+    pub initial_normalization_indices: [Option<usize>; 2],
     /// Signed/unsigned bindings and one complete I/O and halt receipt.
     pub loop_proof: SourceRecurrentLoopProof,
     /// All authenticated instructions from the first input through halt.
@@ -601,6 +603,7 @@ fn verify_pairs(
 fn finish_transition(
     loop_proof: SourceRecurrentLoopProof,
     transition: TransitionTrace,
+    initial_normalization_indices: [Option<usize>; 2],
 ) -> Result<SourceRecurrentTransitionProof, Error> {
     verify_pairs(&loop_proof, &transition.checkpoints)?;
     let terminal = transition.terminal.receipt()?;
@@ -635,6 +638,7 @@ fn finish_transition(
     Ok(SourceRecurrentTransitionProof {
         control_calls,
         initial_entry_indices,
+        initial_normalization_indices,
         loop_proof,
         post_input_steps,
         preparation_jumps,
@@ -683,6 +687,10 @@ pub fn verify_source_recurrent_transition(
     let state = replay.state.ok_or(Error::InvalidLoopBinding)?;
     let transition =
         replay.transition.ok_or(Error::InvalidTransitionBinding)?;
+    let first_state =
+        state.checkpoints.first().ok_or(Error::GuestStateMismatch)?;
+    let initial_normalization_indices =
+        state.initial.receipt(first_state, io.physical_source)?;
     let checkpoints =
         pair_checkpoints(guard.checkpoints, state.checkpoints, &replay.io)?;
     let loop_proof = SourceRecurrentLoopProof {
@@ -693,7 +701,7 @@ pub fn verify_source_recurrent_transition(
         unsigned_phi: loop_probe.state.phi_result,
         word_addresses: loop_probe.state.words,
     };
-    finish_transition(loop_proof, transition)
+    finish_transition(loop_proof, transition, initial_normalization_indices)
 }
 
 #[cfg(test)]

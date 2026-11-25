@@ -34,7 +34,10 @@ use super::super::source_recurrent_guard::source_recurrent_guard_tests;
 use super::super::source_recurrent_io_tests::{
     VECTORS, checksum, checksum_wire,
 };
-use super::super::source_recurrent_state::source_recurrent_state_tests;
+use super::super::source_recurrent_state::{
+    InitialNormalizations, InitialStateTrace, SourceRecurrentStateCheckpoint,
+    source_recurrent_state_tests,
+};
 use super::super::{
     ProjectedIo, ReplayJournal, SourceProjection, verify_source_recurrent_loop,
 };
@@ -48,6 +51,8 @@ use super::{
 };
 
 type IndexedEntry = (usize, [ProfileStepTrace; 3]);
+type InitialStores = Vec<(usize, ProfileStepTrace)>;
+type LoadedState = ([u32; 2], InitialStores);
 
 fn proposal<'source>(
     wire: &'source [u8],
@@ -104,6 +109,24 @@ fn check_control_counts(
         .ok_or("missing first input")?
         .guard
         .input_index;
+    let first = proof
+        .loop_proof
+        .checkpoints
+        .first()
+        .ok_or("missing initial state")?;
+    let [None, Some(normalization)] = proof.initial_normalization_indices
+    else {
+        return Err("wrong initial normalization receipt".to_owned());
+    };
+    if first
+        .state
+        .write_indices
+        .iter()
+        .any(|index| *index >= first_input)
+        || normalization >= first.state.write_indices[1]
+    {
+        return Err("wrong initial state order".to_owned());
+    }
     if proof.initial_entry_indices
         != [first_input.saturating_sub(2), first_input.saturating_sub(1)]
         || proof.control_calls != bytes.saturating_mul(65).saturating_add(9)
@@ -1053,6 +1076,105 @@ fn source_recurrent_transition_refuses_alias_and_swapped_arms()
         Err(Error::InvalidTransitionBinding)
     ) {
         return Err("swapped source arms accepted".to_owned());
+    }
+    Ok(())
+}
+
+fn initial_stores(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<LoadedState, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let [low, high] = guest.state;
+    let loaded = [
+        vm.memory_word(low).map_err(|error| error.to_string())?,
+        vm.memory_word(high).map_err(|error| error.to_string())?,
+    ];
+    let mut stores = Vec::new();
+    for index in 0..1_595_000usize {
+        if vm.registers().code_pointer == guest.capture.input {
+            return Ok((loaded, stores));
+        }
+        let outcome = vm
+            .step_traced(&mut |trace| {
+                if guest.state.contains(&trace.before.registers.data_pointer)
+                    && matches!(trace.decoded, Some(b'p' | b'*'))
+                {
+                    stores.push((index, *trace));
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        if outcome != StepOutcome::Continued {
+            return Err("initial-state bootstrap terminated".to_owned());
+        }
+    }
+    Err("missing initial-state input".to_owned())
+}
+
+fn initial_receipt(
+    guest: &RelocatedRecurrentChecksumSource,
+    checkpoint: &SourceRecurrentStateCheckpoint,
+    loaded: [u32; 2],
+    stores: &[(usize, ProfileStepTrace)],
+) -> Result<InitialNormalizations, Error> {
+    let mut audit = InitialStateTrace::new(guest.state, loaded);
+    for (index, trace) in stores {
+        audit.observe(trace, *index);
+    }
+    audit.receipt(checkpoint, &guest.capture.source)
+}
+
+#[test]
+fn source_recurrent_transition_refuses_initial_store_mutations()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[], &guest)?;
+    let proof = verify_source_recurrent_transition(&probe)
+        .map_err(|error| format!("initial proof: {error:?}"))?;
+    let checkpoint = &proof
+        .loop_proof
+        .checkpoints
+        .first()
+        .ok_or("missing first checkpoint")?
+        .state;
+    let (loaded, stores) = initial_stores(&guest)?;
+    let [low, normalization, high] = stores.as_slice() else {
+        return Err("expected three observed state stores".to_owned());
+    };
+    if initial_receipt(&guest, checkpoint, loaded, &stores)
+        != Ok(proof.initial_normalization_indices)
+    {
+        return Err("actual initialization refused".to_owned());
+    }
+    let mut wrong_operand = *high;
+    wrong_operand.1.memory_reads.data = None;
+    let mut missing_encryption = *low;
+    missing_encryption.1.memory_delta.encryption = None;
+    let mut missing_write = *high;
+    missing_write.1.memory_delta.data = None;
+    for mutated in [
+        vec![*low, *high],
+        vec![*normalization, *low, *high],
+        vec![*low, *high, *normalization],
+        vec![*low, *normalization, wrong_operand],
+        vec![missing_encryption, *normalization, *high],
+        vec![*low, *normalization, missing_write],
+        vec![*low, *normalization, *normalization, *high],
+    ] {
+        if initial_receipt(&guest, checkpoint, loaded, &mutated).is_ok() {
+            return Err("corrupt initial state receipt accepted".to_owned());
+        }
+    }
+    let mut wrong_checkpoint = *checkpoint;
+    wrong_checkpoint.write_indices[0] = low.0.saturating_add(1);
+    if initial_receipt(&guest, &wrong_checkpoint, loaded, &stores).is_ok() {
+        return Err("unbound source checkpoint accepted".to_owned());
     }
     Ok(())
 }
