@@ -163,6 +163,9 @@ pub struct SourceRecurrentTerminalCheckpoint {
 pub struct SourceRecurrentTransitionProof {
     /// Required rotation operands, immutable restore seeds and EOF links.
     pub bootstrap_auxiliary_words: usize,
+    /// Required initialized mutable operands, excluding the separately
+    /// authenticated carried-state pair.
+    pub bootstrap_frame_words: usize,
     /// Required immutable main, bridge and byte-route words materialized by
     /// real guest stores.
     pub bootstrap_route_words: usize,
@@ -635,6 +638,7 @@ fn finish_transition(
         bootstrap_table_words,
         bootstrap_route_words,
         bootstrap_auxiliary_words,
+        bootstrap_frame_words,
         bootstrap_unreachable_words,
         bootstrap_table_last_store_index,
     ) = transition.bootstrap_receipt()?;
@@ -656,6 +660,7 @@ fn finish_transition(
     }
     Ok(SourceRecurrentTransitionProof {
         bootstrap_auxiliary_words,
+        bootstrap_frame_words,
         bootstrap_route_words,
         bootstrap_table_last_store_index,
         bootstrap_table_words,

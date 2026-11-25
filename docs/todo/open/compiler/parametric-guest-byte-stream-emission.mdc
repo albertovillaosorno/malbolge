@@ -331,10 +331,15 @@ The auxiliary receipt additionally requires 37 uniform constants,
 raw restore words, both EOF landing records and shared terminal
 operands. Five unvisited omissions preserve empty I/O but refuse;
 only the three actual terminal rotations may change these operands.
-All 34 source-recurrent tests pass. Other mutable bootstrap storage
-remains outside the receipt.
-Next: authenticate the remaining bootstrap and all source-frame
-placements, then close the resource gap through a substantially more
+All 34 source-recurrent tests pass. The mutable frame extension now
+requires 12 additional initialized words, including all six classifier
+words. Independent finite digit-state closure checks every successful byte
+digit and jointly checks the two varying EOF digits; it rejects a mixed
+EOF landing after two correct byte dispatches. Four unused frame-store
+omissions preserve empty-input behavior but refuse the proof. All 37
+source-recurrent, 20 physical checksum and three C23 pipeline tests pass.
+Next: authenticate the remaining source-frame placements and physical
+control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:

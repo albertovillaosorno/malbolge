@@ -128,6 +128,7 @@ fn check_control_counts(
         return Err("wrong initial state order".to_owned());
     }
     if proof.bootstrap_auxiliary_words != 37
+        || proof.bootstrap_frame_words != 12
         || proof.bootstrap_table_words != 2_514
         || proof.bootstrap_route_words != 4_716
         || proof.bootstrap_unreachable_words != 256
@@ -1061,6 +1062,28 @@ fn source_recurrent_transition_rejects_unvisited_auxiliary_words()
         probe.route.raw_restore_words[1][1],
         probe.route.lookup_constants[4],
     ] {
+        let value = boot
+            .memory_word(address)
+            .map_err(|error| error.to_string())?;
+        omitted_table_store(&guest, &wire, (address, value))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_unvisited_frame_store()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[], &guest)?;
+    let boot = terminal_boot(&guest)?;
+    for address in probe
+        .route
+        .raw_pointers
+        .into_iter()
+        .chain(probe.scratch_words)
+    {
         let value = boot
             .memory_word(address)
             .map_err(|error| error.to_string())?;

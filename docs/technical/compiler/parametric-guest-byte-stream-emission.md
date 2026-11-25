@@ -14699,3 +14699,25 @@ but refuse the extended proof. The table/route receipts remain at
 three C23 pipeline tests pass, with the original publication refusal.
 Complete mutable-frame admission and the 100,000-step publication gate
 remain unresolved.
+
+The mutable bootstrap receipt now requires 12 further physical stores:
+the input capture, two raw selector pointers, two arithmetic scratch
+words, the output scratch and six classifier words. The first six values
+are derived independently from the admitted frame geometry. The classifier
+proof observes the six initialized words instead of accepting the emitter's
+seed constants. For each ternary position whose two EOF landings agree,
+it exhausts the reachable six-trit state closure under all successful byte
+digits and requires the same EOF result at every state. The two differing
+EOF positions are above the byte range; their synchronous states must be
+checked jointly to exclude mixed landing words. Both admitted EOF
+landings must occur and all byte transitions must preserve the byte arm.
+An omitted raw pointer or arithmetic scratch store preserves empty-input
+behavior but refuses the strengthened proof. Two seed controls demonstrate
+that the first EOF alone and independent marginal EOF sets are insufficient:
+one admits an incorrect byte dispatch; the other reaches a mixed EOF word
+after two correct byte dispatches. The carried checksum state remains a
+separate receipt. These checks are a classifier-state closure for the
+admitted shape, not a proof of arbitrary physical control paths or complete
+source-frame publication. The 100,000-step publication limit is unchanged.
+All 37 source-recurrent, 20 physical checksum and three C23 pipeline
+tests pass; source publication continues to refuse.
