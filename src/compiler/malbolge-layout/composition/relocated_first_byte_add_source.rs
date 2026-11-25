@@ -30,13 +30,14 @@ pub use relocated_first_iteration_source::{
     DirtyPhiCopySites, OddXorStepSites, RelocatedDirtyPhiSource,
     RelocatedFirstIterationSource, RelocatedSecondAddSource,
     RelocatedSecondEvenMaskSource, RelocatedSecondEvenReadSource,
-    RelocatedSecondOddHalfSource, RelocatedSecondOddUpdateSource,
-    RelocatedSecondOddXorSource, RelocatedSecondParityAddSource,
-    ScratchResetSite, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source, build_relocated_second_add_source,
-    build_relocated_second_even_mask_source,
+    RelocatedSecondOddHalfSource, RelocatedSecondOddReadSource,
+    RelocatedSecondOddUpdateSource, RelocatedSecondOddXorSource,
+    RelocatedSecondParityAddSource, ScratchResetSite,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source, build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
+    build_relocated_second_odd_read_source,
     build_relocated_second_odd_update_source,
     build_relocated_second_odd_xor_source,
     build_relocated_second_parity_add_source,
@@ -85,6 +86,9 @@ const ORIGINAL: Geometry = Geometry {
 // Each digit computes sum modulo three or carry independently.
 const SUM: &[u8] = b"xsxs2ppsysxppsxsyps2pp";
 const CARRY: &[u8] = b"0s0sxpsysxs0pppp";
+// Shorter circuits when the right operand contains only zero/one trits.
+const BOOLEAN_SUM: &[u8] = b"xs2psysxpsyps2pp";
+const BOOLEAN_CARRY: &[u8] = b"0s2sxpsypp";
 
 #[derive(Clone, Copy)]
 struct Geometry {
@@ -151,6 +155,50 @@ impl Adder<'_, '_> {
         }
         self.load(left)?;
         Ok(left)
+    }
+
+    // After the first round, carry is Boolean. The final round needs
+    // only SUM: the bounded caller proves its outgoing carry is zero.
+    fn add_bounded(
+        &mut self,
+        mut left: u32,
+        mut right: u32,
+        rounds: u32,
+        first_boolean: bool,
+    ) -> Result<u32, BuildError> {
+        for round in 0..rounds {
+            let boolean = first_boolean || round > 0;
+            self.evaluate(
+                if boolean {
+                    BOOLEAN_SUM
+                } else {
+                    SUM
+                },
+                left,
+                right,
+            )?;
+            let sum = self.copy()?;
+            if round.checked_add(1).ok_or(LAYOUT)? == rounds {
+                self.load(sum)?;
+                return Ok(sum);
+            }
+            self.evaluate(
+                if boolean {
+                    BOOLEAN_CARRY
+                } else {
+                    CARRY
+                },
+                left,
+                right,
+            )?;
+            let carry = self.copy()?;
+            for _ in 0u32..14 {
+                self.go(carry)?;
+                let _: u32 = self.emitter.linear(RotateData)?;
+            }
+            (left, right) = (sum, carry);
+        }
+        Err(LAYOUT)
     }
 
     fn copy(&mut self) -> Result<u32, BuildError> {

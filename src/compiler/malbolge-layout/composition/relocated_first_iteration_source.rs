@@ -250,7 +250,8 @@ const XOR_MASK_RESTORE: [u32; 4] = [7_174_937, 7_174_941, 7_174_945, 7_174_949];
 const XOR_MASK_COMPLEMENTS: [u32; 4] =
     [7_174_089, 14_348_178, 7_174_452, 14_348_904];
 const XOR_RECONSTRUCTION_COUNT: u32 = 128;
-const XOR_SUM_COUNT: u32 = 168;
+const XOR_SUM_COUNT: u32 = 120;
+const XOR_INCREMENT_COUNT: u32 = 92;
 // The odd increment overflows precisely for XOR bytes 253, 254 and 255.
 const XOR_UPDATE_FLAG: [u32; 2] = [7_174_953, 7_174_957];
 const XOR_UPDATE_STAY: u32 = 7_174_963;
@@ -285,6 +286,14 @@ const WITH_ODD_UPDATE: Geometry = Geometry {
     odd_entry: 962_000,
     ..WITH_ODD_XOR
 };
+const WITH_ODD_READ: Geometry = Geometry {
+    byte_entry: 240_000,
+    eof_entry: 4_710_000,
+    even_entry: 1_225_000,
+    join_entry: 1_230_000,
+    odd_entry: 1_227_000,
+    ..WITH_ODD_UPDATE
+};
 const WITH_SECOND_ADD: Geometry = Geometry {
     cells: 2_821_848,
     eof_entry: 2_800_000,
@@ -298,6 +307,7 @@ pub(super) enum IterationMode {
     SecondEvenMask,
     SecondEvenRead,
     SecondOddHalf,
+    SecondOddRead,
     SecondOddUpdate,
     SecondOddXor,
     SecondParityAdd,
@@ -305,7 +315,9 @@ pub(super) enum IterationMode {
 
 impl IterationMode {
     fn first_entry(self, entry: usize) -> Result<usize, BuildError> {
-        if self.has_odd_update() {
+        if self.has_odd_read() {
+            entry.checked_add(895_000).ok_or(LAYOUT)
+        } else if self.has_odd_update() {
             entry.checked_add(630_000).ok_or(LAYOUT)
         } else if self.has_odd_xor() {
             entry.checked_add(600_000).ok_or(LAYOUT)
@@ -321,16 +333,38 @@ impl IterationMode {
     const fn has_odd_half(self) -> bool {
         matches!(
             self,
-            Self::SecondOddHalf | Self::SecondOddXor | Self::SecondOddUpdate
+            Self::SecondOddHalf
+                | Self::SecondOddXor
+                | Self::SecondOddUpdate
+                | Self::SecondOddRead
         )
     }
 
     const fn has_odd_xor(self) -> bool {
-        matches!(self, Self::SecondOddXor | Self::SecondOddUpdate)
+        matches!(
+            self,
+            Self::SecondOddXor | Self::SecondOddUpdate | Self::SecondOddRead
+        )
     }
 
     const fn has_odd_update(self) -> bool {
-        matches!(self, Self::SecondOddUpdate)
+        matches!(self, Self::SecondOddUpdate | Self::SecondOddRead)
+    }
+
+    const fn has_odd_read(self) -> bool {
+        matches!(self, Self::SecondOddRead)
+    }
+
+    const fn update_entries(self) -> [usize; 3] {
+        if self.has_odd_read() {
+            [4_370_000, 4_385_000, 4_400_000]
+        } else {
+            [
+                XOR_UPDATE_STAY_ENTRY,
+                XOR_UPDATE_WRAP_ENTRY,
+                XOR_UPDATE_JOIN_ENTRY,
+            ]
+        }
     }
 
     const fn has_second_mask(self) -> bool {
@@ -344,6 +378,7 @@ impl IterationMode {
                 | Self::SecondEvenMask
                 | Self::SecondEvenRead
                 | Self::SecondOddHalf
+                | Self::SecondOddRead
                 | Self::SecondOddUpdate
                 | Self::SecondOddXor
         )
@@ -361,7 +396,9 @@ impl IterationMode {
             Self::SecondEvenMask => SECOND_MASK_HEADER_EOF_ENTRY,
             Self::SecondEvenRead => 4_150_000,
             Self::SecondOddHalf => 2_150_000,
-            Self::SecondOddXor | Self::SecondOddUpdate => 4_705_000,
+            Self::SecondOddXor
+            | Self::SecondOddUpdate
+            | Self::SecondOddRead => 4_705_000,
         }
     }
 
@@ -381,6 +418,37 @@ impl IterationMode {
         } else {
             Ok(entry)
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ThirdLayout {
+    offset: u32,
+    entries: [usize; 5],
+}
+
+impl ThirdLayout {
+    const EVEN: Self = Self {
+        offset: 0,
+        entries: [
+            THIRD_BYTE_ENTRY,
+            THIRD_EOF_ENTRY,
+            THIRD_JOIN_ENTRY,
+            THIRD_HEADER_BYTE_ENTRY,
+            THIRD_HEADER_EOF_ENTRY,
+        ],
+    };
+    const ODD: Self = Self {
+        offset: 76,
+        entries: [4_430_000, 4_450_000, 4_480_000, 4_550_000, 4_590_000],
+    };
+
+    const fn address(self, address: u32) -> u32 {
+        address + self.offset
+    }
+
+    fn words<const N: usize>(self, addresses: [u32; N]) -> [u32; N] {
+        addresses.map(|address| self.address(address))
     }
 }
 
@@ -568,6 +636,43 @@ pub struct RelocatedSecondEvenReadSource {
     pub third_phi_snapshots: [DirtyPhiCopySites; 4],
     /// Both normalizers' actual transfer to the dirty phi edge.
     pub third_phi_transfers: [u32; 2],
+}
+
+/// Physical third-read continuation for the completed odd second-byte arm.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondOddReadSource {
+    /// Bounded odd checksum update and earlier input evidence.
+    pub update: RelocatedSecondOddUpdateSource,
+    /// Third input and physical normalized-class dispatch.
+    pub third_input_code_address: u32,
+    /// Actual raw input class store.
+    pub third_class_store: u32,
+    /// Actual byte/EOF dispatch.
+    pub third_branch_code_address: u32,
+    /// Byte normalization dirty copies.
+    pub third_byte_stores: [DirtyPhiCopySites; 2],
+    /// EOF normalization resets.
+    pub third_eof_resets: [[u32; 3]; 2],
+    /// EOF normalization stores.
+    pub third_eof_stores: [u32; 2],
+    /// Both phi transfers.
+    pub third_phi_transfers: [u32; 2],
+    /// Four dirty phi snapshots.
+    pub third_phi_snapshots: [DirtyPhiCopySites; 4],
+    /// Four dirty phi commits.
+    pub third_phi_commits: [DirtyPhiCopySites; 4],
+    /// Committed-header class store.
+    pub third_header_class_store: u32,
+    /// Committed-header class dispatch.
+    pub third_header_branch_code_address: u32,
+    /// Terminal output operand store.
+    pub third_eof_output_store: u32,
+    /// Terminal EOF output instruction.
+    pub third_eof_output_code_address: u32,
+    /// Third EOF halt.
+    pub third_eof_halt_code_address: u32,
+    /// Third byte halt before arithmetic.
+    pub third_byte_halt_code_address: u32,
 }
 
 struct ThirdByteSites {
@@ -806,7 +911,9 @@ impl MaskTapes {
             constants.extend(Self::second_mask_constants(mode)?);
         }
         if mode.has_third_read() {
-            constants.extend(Self::third_constants()?);
+            constants.extend(Self::third_constants(ThirdLayout::EVEN)?);
+        } else if mode.has_odd_read() {
+            constants.extend(Self::third_constants(ThirdLayout::ODD)?);
         }
         if mode.has_odd_half() {
             constants.extend(Self::half_constants());
@@ -815,10 +922,11 @@ impl MaskTapes {
             constants.extend(Self::xor_constants()?);
         }
         if mode.has_odd_update() {
+            let [stay, wrap, join] = mode.update_entries();
             constants.extend([
-                (before(XOR_UPDATE_STAY_ENTRY)?, XOR_UPDATE_STAY, true),
-                (before(XOR_UPDATE_WRAP_ENTRY)?, XOR_UPDATE_WRAP, true),
-                (before(XOR_UPDATE_JOIN_ENTRY)?, XOR_UPDATE_JOIN, true),
+                (before(stay)?, XOR_UPDATE_STAY, true),
+                (before(wrap)?, XOR_UPDATE_WRAP, true),
+                (before(join)?, XOR_UPDATE_JOIN, true),
             ]);
         }
         let mut mask_tapes = Vec::new();
@@ -854,15 +962,15 @@ impl MaskTapes {
         addresses.extend(DOUBLE_SELECTED);
     }
 
-    fn extend_third_addresses(addresses: &mut Vec<u32>) {
-        addresses.extend(THIRD_RAW);
-        addresses.extend(THIRD_CLASS_MASKS);
-        addresses.extend(THIRD_CLASS);
-        addresses.extend([THIRD_BYTE, THIRD_EOF, THIRD_JOIN]);
-        addresses.extend(THIRD_HEADER_MASKS);
-        addresses.extend(THIRD_HEADER_RAW);
-        addresses.extend(THIRD_HEADER_FLAG);
-        addresses.extend([THIRD_HEADER_BYTE, THIRD_HEADER_EOF]);
+    fn extend_third_addresses(addresses: &mut Vec<u32>, layout: ThirdLayout) {
+        addresses.extend(layout.words(THIRD_RAW));
+        addresses.extend(layout.words(THIRD_CLASS_MASKS));
+        addresses.extend(layout.words(THIRD_CLASS));
+        addresses.extend(layout.words([THIRD_BYTE, THIRD_EOF, THIRD_JOIN]));
+        addresses.extend(layout.words(THIRD_HEADER_MASKS));
+        addresses.extend(layout.words(THIRD_HEADER_RAW));
+        addresses.extend(layout.words(THIRD_HEADER_FLAG));
+        addresses.extend(layout.words([THIRD_HEADER_BYTE, THIRD_HEADER_EOF]));
     }
 
     fn first_mask_addresses() -> Vec<u32> {
@@ -994,7 +1102,9 @@ impl MaskTapes {
             Self::extend_second_mask_addresses(&mut addresses);
         }
         if mode.has_third_read() {
-            Self::extend_third_addresses(&mut addresses);
+            Self::extend_third_addresses(&mut addresses, ThirdLayout::EVEN);
+        } else if mode.has_odd_read() {
+            Self::extend_third_addresses(&mut addresses, ThirdLayout::ODD);
         }
         if mode.has_odd_half() {
             for (low, bit) in HALF_LOW_MASKS.into_iter().zip(HALF_BIT_MASKS) {
@@ -1104,21 +1214,28 @@ impl MaskTapes {
         Ok(())
     }
 
-    fn third_constants() -> Result<[ConstantSpec; 13], BuildError> {
+    fn third_constants(
+        layout: ThirdLayout,
+    ) -> Result<[ConstantSpec; 13], BuildError> {
+        let [byte, eof, join, header_byte, header_eof] = layout.entries;
         Ok([
-            (0, THIRD_CLASS_MASKS[0], true),
-            (14_348_905, THIRD_CLASS_MASKS[1], false),
-            (14_348_905, THIRD_CLASS_MASKS[2], false),
-            (1, THIRD_CLASS_MASKS[3], true),
-            (before(THIRD_BYTE_ENTRY)?, THIRD_BYTE, true),
-            (before(THIRD_EOF_ENTRY)?, THIRD_EOF, true),
-            (before(THIRD_JOIN_ENTRY)?, THIRD_JOIN, true),
-            (1, THIRD_HEADER_MASKS[0], true),
-            (14_348_905, THIRD_HEADER_MASKS[1], false),
-            (14_348_905, THIRD_HEADER_MASKS[2], false),
-            (1, THIRD_HEADER_MASKS[3], true),
-            (before(THIRD_HEADER_BYTE_ENTRY)?, THIRD_HEADER_BYTE, true),
-            (before(THIRD_HEADER_EOF_ENTRY)?, THIRD_HEADER_EOF, true),
+            (0, layout.address(THIRD_CLASS_MASKS[0]), true),
+            (14_348_905, layout.address(THIRD_CLASS_MASKS[1]), false),
+            (14_348_905, layout.address(THIRD_CLASS_MASKS[2]), false),
+            (1, layout.address(THIRD_CLASS_MASKS[3]), true),
+            (before(byte)?, layout.address(THIRD_BYTE), true),
+            (before(eof)?, layout.address(THIRD_EOF), true),
+            (before(join)?, layout.address(THIRD_JOIN), true),
+            (1, layout.address(THIRD_HEADER_MASKS[0]), true),
+            (14_348_905, layout.address(THIRD_HEADER_MASKS[1]), false),
+            (14_348_905, layout.address(THIRD_HEADER_MASKS[2]), false),
+            (1, layout.address(THIRD_HEADER_MASKS[3]), true),
+            (
+                before(header_byte)?,
+                layout.address(THIRD_HEADER_BYTE),
+                true,
+            ),
+            (before(header_eof)?, layout.address(THIRD_HEADER_EOF), true),
         ])
     }
 }
@@ -1580,7 +1697,8 @@ impl IterationEmitter<'_, '_, '_> {
         };
         let sum_resets = IterationEmitter { adder: &mut sum }
             .reset_scratch(XOR_SUM_COUNT)?;
-        let xor = sum.add(XOR_NIBBLES[0][1], XOR_NIBBLES[1][1], 6)?;
+        let xor =
+            sum.add_bounded(XOR_NIBBLES[0][1], XOR_NIBBLES[1][1], 6, false)?;
         // Persist the true result at a separate traced word.
         let xor_copy = IterationEmitter { adder: &mut sum }.copy_dirty_word(
             xor,
@@ -1621,7 +1739,11 @@ impl IterationEmitter<'_, '_, '_> {
         Ok((flag, residual))
     }
 
-    fn odd_update(&mut self) -> Result<OddUpdateSites, BuildError> {
+    fn odd_update(
+        &mut self,
+        mode: IterationMode,
+    ) -> Result<OddUpdateSites, BuildError> {
+        let [stay, wrap, join] = mode.update_entries();
         let mut predicate = Adder {
             count: XOR_UPDATE_PREDICATE_COUNT,
             cursor: 0,
@@ -1634,28 +1756,28 @@ impl IterationEmitter<'_, '_, '_> {
         let (flag, residual) = emitter.odd_update_predicate()?;
         predicate.finish()?;
         let mut increment = Adder {
-            count: XOR_SUM_COUNT,
+            count: XOR_INCREMENT_COUNT,
             cursor: 0,
             emitter: self.adder.emitter,
             scratch: self.adder.scratch,
         };
         let increment_resets = IterationEmitter { adder: &mut increment }
-            .reset_scratch(XOR_SUM_COUNT)?;
-        let incremented = increment.add(XOR_RESULT, THREE, 6)?;
+            .reset_scratch(XOR_INCREMENT_COUNT)?;
+        let incremented = increment.add_bounded(XOR_RESULT, THREE, 5, true)?;
         increment.finish()?;
         let branch = self.select(XOR_UPDATE_FLAG[1], 506)?;
         self.selected_arm(
-            (XOR_UPDATE_STAY_ENTRY, XOR_UPDATE_STAY),
+            (stay, XOR_UPDATE_STAY),
             incremented,
             (XOR_UPDATE_SELECTED, XOR_UPDATE_JOIN),
         )?;
         self.selected_arm(
-            (XOR_UPDATE_WRAP_ENTRY, XOR_UPDATE_WRAP),
+            (wrap, XOR_UPDATE_WRAP),
             XOR_UPDATE_RESIDUAL[1],
             (XOR_UPDATE_SELECTED, XOR_UPDATE_JOIN),
         )?;
         self.adder.emitter.pad_to_entry(
-            XOR_UPDATE_JOIN_ENTRY,
+            join,
             XOR_UPDATE_JOIN.checked_add(1).ok_or(LAYOUT)?,
         )?;
         let result_copies = [
@@ -1789,6 +1911,7 @@ impl IterationEmitter<'_, '_, '_> {
         let count = match mode {
             IterationMode::First
             | IterationMode::SecondOddHalf
+            | IterationMode::SecondOddRead
             | IterationMode::SecondOddUpdate
             | IterationMode::SecondOddXor => {
                 return Err(LAYOUT);
@@ -1827,6 +1950,7 @@ impl IterationEmitter<'_, '_, '_> {
         let addition = match mode {
             IterationMode::First
             | IterationMode::SecondOddHalf
+            | IterationMode::SecondOddRead
             | IterationMode::SecondOddUpdate
             | IterationMode::SecondOddXor => None,
             IterationMode::SecondAdd
@@ -1928,7 +2052,9 @@ impl IterationEmitter<'_, '_, '_> {
     fn second_parity(
         &mut self,
         mode: IterationMode,
-    ) -> Result<SecondParitySites, BuildError> {
+        eof_low: &[u32],
+        eof_high: &[u32],
+    ) -> Result<(SecondParitySites, Option<ThirdSites>), BuildError> {
         self.adder.load(PHI_DEST[0])?;
         self.adder.go(SECOND_PARITY_ONES)?;
         let _: u32 = self.adder.emitter.linear(CrazyData)?;
@@ -1960,25 +2086,37 @@ impl IterationEmitter<'_, '_, '_> {
             None
         };
         let update = if mode.has_odd_update() {
-            Some(self.odd_update()?)
+            Some(self.odd_update(mode)?)
         } else {
             None
         };
-        let odd_halt = self.adder.emitter.append(Halt)?;
+        let third = if mode.has_odd_read() {
+            Some(self.third_read(eof_low, eof_high, ThirdLayout::ODD)?)
+        } else {
+            None
+        };
+        let odd_halt = if let Some(sites) = &third {
+            sites.byte_halt
+        } else {
+            self.adder.emitter.append(Halt)?
+        };
         self.adder.emitter.pad_to_entry(
             mode.second_even_entry()?,
             SECOND_PARITY_EVEN.checked_add(1).ok_or(LAYOUT)?,
         )?;
-        Ok(SecondParitySites {
-            branch,
-            half,
-            xor,
-            update,
-            lookup,
-            odd_halt,
-            parity_store,
-            pointer_store,
-        })
+        Ok((
+            SecondParitySites {
+                branch,
+                half,
+                xor,
+                update,
+                lookup,
+                odd_halt,
+                parity_store,
+                pointer_store,
+            },
+            third,
+        ))
     }
 
     fn second_read(
@@ -2004,19 +2142,21 @@ impl IterationEmitter<'_, '_, '_> {
         self.adder
             .emitter
             .pad_to_entry(mode.first_entry(HEADER_BYTE_ENTRY)?, 7_174_774)?;
-        let parity = if mode.has_second_parity() {
-            Some(self.second_parity(mode)?)
+        let (parity, odd_third) = if mode.has_second_parity() {
+            let (parity, third) =
+                self.second_parity(mode, eof_low, eof_high)?;
+            (Some(parity), third)
         } else {
-            None
+            (None, None)
         };
         let (addition, mask) = self.second_arithmetic(mode)?;
         let third = if mode.has_third_read() {
-            Some(self.third_read(eof_low, eof_high)?)
+            Some(self.third_read(eof_low, eof_high, ThirdLayout::EVEN)?)
         } else {
-            None
+            odd_third
         };
-        let byte_halt = if let Some(sites) = &third {
-            sites.byte_halt
+        let byte_halt = if mode.has_third_read() {
+            third.as_ref().ok_or(LAYOUT)?.byte_halt
         } else {
             self.adder.emitter.append(Halt)?
         };
@@ -2077,19 +2217,23 @@ impl IterationEmitter<'_, '_, '_> {
         Ok(())
     }
 
-    fn third_byte_arm(&mut self) -> Result<ThirdByteSites, BuildError> {
+    fn third_byte_arm(
+        &mut self,
+        layout: ThirdLayout,
+    ) -> Result<ThirdByteSites, BuildError> {
+        let [entry, ..] = layout.entries;
         self.adder
             .emitter
-            .pad_to_entry(THIRD_BYTE_ENTRY, 7_174_962)?;
+            .pad_to_entry(entry, layout.address(7_174_962))?;
         let stores = [
             self.copy_dirty_word(
-                THIRD_RAW[1],
+                layout.address(THIRD_RAW[1]),
                 SECOND_PAIR[0],
                 SECOND_PAIR_TEMP,
             )?,
             self.copy_dirty_word(ZERO, SECOND_PAIR[1], SECOND_PAIR_TEMP)?,
         ];
-        self.adder.go(THIRD_JOIN)?;
+        self.adder.go(layout.address(THIRD_JOIN))?;
         let transfer = self.adder.emitter.append_indirect()?;
         Ok(ThirdByteSites { stores, transfer })
     }
@@ -2098,10 +2242,12 @@ impl IterationEmitter<'_, '_, '_> {
         &mut self,
         eof_low: &[u32],
         eof_high: &[u32],
+        layout: ThirdLayout,
     ) -> Result<ThirdEofSites, BuildError> {
+        let [_, entry, ..] = layout.entries;
         self.adder
             .emitter
-            .pad_to_entry(THIRD_EOF_ENTRY, 7_174_972)?;
+            .pad_to_entry(entry, layout.address(7_174_972))?;
         let resets = [
             self.reset_dirty_word(SECOND_PAIR[0])?,
             self.reset_dirty_word(SECOND_PAIR[1])?,
@@ -2114,7 +2260,7 @@ impl IterationEmitter<'_, '_, '_> {
             self.adder
                 .emitter
                 .store_tape(eof_high, SECOND_PAIR[1], ZERO)?;
-        self.adder.go(THIRD_JOIN)?;
+        self.adder.go(layout.address(THIRD_JOIN))?;
         let transfer = self.adder.emitter.append_indirect()?;
         Ok(ThirdEofSites {
             resets,
@@ -2123,10 +2269,14 @@ impl IterationEmitter<'_, '_, '_> {
         })
     }
 
-    fn third_header(&mut self) -> Result<ThirdHeaderSites, BuildError> {
+    fn third_header(
+        &mut self,
+        layout: ThirdLayout,
+    ) -> Result<ThirdHeaderSites, BuildError> {
+        let [_, _, entry, ..] = layout.entries;
         self.adder
             .emitter
-            .pad_to_entry(THIRD_JOIN_ENTRY, 7_174_982)?;
+            .pad_to_entry(entry, layout.address(7_174_982))?;
         let [s0, s1, s2, s3] = PHI_SNAPSHOT;
         let [d0, d1, d2, d3] = PHI_DEST;
         let [t0, t1, t2, t3, t4, t5, t6, t7] = PHI_TEMPS;
@@ -2143,14 +2293,17 @@ impl IterationEmitter<'_, '_, '_> {
             self.copy_dirty_word(s3, d3, t7)?,
         ];
         self.adder.load(d1)?;
-        let _: u32 = self.copy_to(THIRD_HEADER_RAW)?;
+        let _: u32 = self.copy_to(layout.words(THIRD_HEADER_RAW))?;
         for _ in 0u32..5 {
-            self.adder.go(THIRD_HEADER_RAW[1])?;
+            self.adder.go(layout.address(THIRD_HEADER_RAW[1]))?;
             let _: u32 = self.adder.emitter.linear(RotateData)?;
         }
-        self.fold(&THIRD_HEADER_MASKS)?;
-        let class_store = self.copy_to(THIRD_HEADER_FLAG)?;
-        let branch = self.select(THIRD_HEADER_FLAG[1], 560)?;
+        self.fold(&layout.words(THIRD_HEADER_MASKS))?;
+        let class_store = self.copy_to(layout.words(THIRD_HEADER_FLAG))?;
+        let branch = self.select(
+            layout.address(THIRD_HEADER_FLAG[1]),
+            layout.address(560),
+        )?;
         Ok(ThirdHeaderSites {
             branch,
             class_store,
@@ -2163,27 +2316,29 @@ impl IterationEmitter<'_, '_, '_> {
         &mut self,
         eof_low: &[u32],
         eof_high: &[u32],
+        layout: ThirdLayout,
     ) -> Result<ThirdSites, BuildError> {
+        let [_, _, _, header_byte, header_eof] = layout.entries;
         let InputSites {
             branch,
             class_store,
             input,
         } = self.classify_input(
-            THIRD_RAW,
-            &THIRD_CLASS_MASKS,
-            (THIRD_CLASS, 504),
+            layout.words(THIRD_RAW),
+            &layout.words(THIRD_CLASS_MASKS),
+            (layout.words(THIRD_CLASS), layout.address(504)),
         )?;
-        let byte = self.third_byte_arm()?;
-        let eof = self.third_eof_arm(eof_low, eof_high)?;
+        let byte = self.third_byte_arm(layout)?;
+        let eof = self.third_eof_arm(eof_low, eof_high, layout)?;
         let eof_transfer = eof.transfer;
-        let header = self.third_header()?;
+        let header = self.third_header(layout)?;
         self.adder
             .emitter
-            .pad_to_entry(THIRD_HEADER_BYTE_ENTRY, 7_175_018)?;
+            .pad_to_entry(header_byte, layout.address(7_175_018))?;
         let byte_halt = self.adder.emitter.append(Halt)?;
         self.adder
             .emitter
-            .pad_to_entry(THIRD_HEADER_EOF_ENTRY, 7_175_028)?;
+            .pad_to_entry(header_eof, layout.address(7_175_028))?;
         let [output_store, output, eof_halt] = self.second_eof_output()?;
         Ok(ThirdSites {
             branch,
@@ -2504,6 +2659,45 @@ pub fn build_relocated_second_odd_update_source(
         Some(IterationMode::SecondOddUpdate),
     )?;
     let mut sites = candidate.ok_or(LAYOUT)?;
+    odd_update_from_sites(addition, &mut sites)
+}
+
+/// Execute a real third input after the canonical odd second-byte update.
+/// A third EOF returns the committed checksum; a byte halts before arithmetic.
+///
+/// # Errors
+/// Refuses unsupported profiles and exhausted physical layouts.
+pub fn build_relocated_second_odd_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondOddReadSource, BuildError> {
+    let (addition, candidate) =
+        build(profile, WITH_ODD_READ, Some(IterationMode::SecondOddRead))?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let third = sites.second.third.take().ok_or(LAYOUT)?;
+    Ok(RelocatedSecondOddReadSource {
+        update: odd_update_from_sites(addition, &mut sites)?,
+        third_branch_code_address: third.branch,
+        third_byte_halt_code_address: third.byte_halt,
+        third_byte_stores: third.byte_stores,
+        third_class_store: third.class_store,
+        third_eof_halt_code_address: third.eof_halt,
+        third_eof_output_code_address: third.output,
+        third_eof_output_store: third.output_store,
+        third_eof_resets: third.eof.resets,
+        third_eof_stores: third.eof.stores,
+        third_header_branch_code_address: third.header.branch,
+        third_header_class_store: third.header.class_store,
+        third_input_code_address: third.input,
+        third_phi_commits: third.header.commits,
+        third_phi_snapshots: third.header.snapshots,
+        third_phi_transfers: third.transfers,
+    })
+}
+
+fn odd_update_from_sites(
+    addition: RelocatedFirstByteAddSource,
+    sites: &mut IterationSites,
+) -> Result<RelocatedSecondOddUpdateSource, BuildError> {
     let update = sites
         .second
         .parity
@@ -2511,7 +2705,7 @@ pub fn build_relocated_second_odd_update_source(
         .and_then(|parity| parity.update.take())
         .ok_or(LAYOUT)?;
     Ok(RelocatedSecondOddUpdateSource {
-        xor: odd_xor_from_sites(addition, &mut sites)?,
+        xor: odd_xor_from_sites(addition, sites)?,
         predicate_resets: update.predicate_resets,
         increment_resets: update.increment_resets,
         flag: (XOR_UPDATE_FLAG[1], update.flag),

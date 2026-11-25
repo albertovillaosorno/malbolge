@@ -13583,3 +13583,28 @@ checks all 256 XOR values against the exact C mask. Five bypass
 vectors and two omitted-store controls pass. Earlier even arithmetic
 and third-read witnesses remain separate: the odd update has no
 third read, reusable instruction schedule, or source-frame admission.
+
+
+### Third input after a canonical odd update
+
+A bounded carry schedule reduces the nibble sum from 168 to 120
+scratch slots and the increment from 168 to 92. After the first
+general carry round, each right-hand trit is Boolean, so shorter
+crazy circuits implement sum and carry. The final sum requires no
+further carry. The odd-update overflow branch moves from C4488935 to
+C4080731, saving 408,204 executable cells.
+
+A separate 4,750,164-cell odd-read image fits the third-input
+continuation in that space. The third-read emitter is shared with the
+earlier even candidate; the odd candidate uses a 76-cell data offset
+and disjoint code entries. Actual input at C4404384 selects byte or
+signed EOF normalization, followed by four dirty phi snapshots and
+four commits. For (100, 127) followed by EOF, the guest emits 27 and
+halts after 4,195,313 steps. A successful third byte instead reaches
+a bounded halt with no output and the fourth input unread.
+
+Four traced vectors cover both ordinary and wrapped odd checksums,
+EOF, and third bytes 0 and 255. Three bypass vectors preserve earlier
+termination and the even-path halt. The odd and even images remain
+separate: a combined parity guest, reusable instruction schedule and
+independent source-frame admission are still open.

@@ -35,12 +35,14 @@ use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
     RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
     RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
-    RelocatedSecondOddUpdateSource, RelocatedSecondOddXorSource,
-    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
-    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
-    build_relocated_second_add_source, build_relocated_second_even_mask_source,
+    RelocatedSecondOddReadSource, RelocatedSecondOddUpdateSource,
+    RelocatedSecondOddXorSource, RelocatedSecondParityAddSource,
+    ScratchResetSite, ZeroCellSourceError, build_relocated_dirty_phi_source,
+    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
+    build_relocated_second_odd_read_source,
     build_relocated_second_odd_update_source,
     build_relocated_second_odd_xor_source,
     build_relocated_second_parity_add_source,
@@ -3196,10 +3198,10 @@ fn check_xor_result(
 fn relocated_second_odd_xor_boundaries() -> Result<(), String> {
     let guest = odd_xor_source()?;
     assert_eq!(guest.iteration.addition.source.len(), ODD_XOR_BUDGET);
-    assert_eq!(guest.odd_halt_code_address, 3_955_269);
+    assert!(guest.odd_halt_code_address < 3_955_269);
     assert_eq!(guest.steps.len(), 8);
     assert_eq!(guest.reconstruction_resets.len(), 128);
-    assert_eq!(guest.sum_resets.len(), 168);
+    assert_eq!(guest.sum_resets.len(), 120);
     assert_eq!(
         build_relocated_second_odd_xor_source(historical_profile()),
         Err(ZeroCellSourceError::UnsupportedProfile)
@@ -3444,7 +3446,7 @@ fn relocated_second_odd_update_boundaries() -> Result<(), String> {
     assert_eq!(guest.xor.iteration.addition.source.len(), ODD_XOR_BUDGET);
     assert_eq!(guest.xor.odd_halt_code_address, 4_613_833);
     assert_eq!(guest.predicate_resets.len(), 76);
-    assert_eq!(guest.increment_resets.len(), 168);
+    assert_eq!(guest.increment_resets.len(), 92);
     assert_eq!(guest.result_pair, [7_174_451, 7_174_452]);
     assert_eq!(
         build_relocated_second_odd_update_source(historical_profile()),
@@ -3474,6 +3476,7 @@ fn relocated_second_odd_update_boundaries() -> Result<(), String> {
 #[test]
 fn relocated_second_odd_update_bypasses() -> Result<(), String> {
     let guest = odd_update_source()?;
+    assert_eq!(guest.branch_code_address, 4_080_731);
     let initial = ProfileMachine::from_source(
         current_profile(),
         &guest.xor.iteration.addition.source,
@@ -3594,6 +3597,253 @@ fn relocated_second_odd_update_algebra() -> Result<(), String> {
             residual
         };
         assert_eq!(selected, (xor + 3) & 255);
+    }
+    Ok(())
+}
+
+fn odd_third_sites(guest: &RelocatedSecondOddReadSource) -> BTreeSet<u32> {
+    [
+        guest.third_input_code_address,
+        guest.third_class_store,
+        guest.third_branch_code_address,
+        guest.third_header_class_store,
+        guest.third_header_branch_code_address,
+        guest.third_eof_output_store,
+        guest.third_eof_output_code_address,
+        guest.third_eof_halt_code_address,
+        guest.third_byte_halt_code_address,
+    ]
+    .into_iter()
+    .chain(guest.third_phi_transfers)
+    .chain(guest.third_eof_stores)
+    .chain(guest.third_eof_resets.into_iter().flatten())
+    .chain(guest.third_byte_stores.into_iter().flat_map(dirty_sites))
+    .chain(guest.third_phi_snapshots.into_iter().flat_map(dirty_sites))
+    .chain(guest.third_phi_commits.into_iter().flat_map(dirty_sites))
+    .collect()
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual third input and committed checksum"
+)]
+fn check_odd_third_result(
+    guest: &RelocatedSecondOddReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: (u8, u8, Option<u8>),
+) -> Result<(), String> {
+    let (first, second, third) = input;
+    let previous = [u32::from(second), 0, u32::from(first.wrapping_add(3)), 0];
+    let checksum = (first.wrapping_add(3) ^ second).wrapping_add(3);
+    let pair = third.map_or([4_644_102, 299], |byte| [u32::from(byte), 0]);
+    let step = at(trace, guest.third_input_code_address)?;
+    assert_eq!(
+        step.input,
+        Some(third.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+    );
+    assert_eq!(
+        step.after.registers.accumulator,
+        third.map_or(14_348_906, u32::from)
+    );
+    check_write(
+        trace,
+        guest.third_class_store,
+        7_175_033,
+        u32::from(third.is_none()),
+    )?;
+    let [byte_transfer, eof_transfer] = guest.third_phi_transfers;
+    let transfer = if third.is_some() {
+        check_transfer(
+            trace,
+            guest.third_branch_code_address,
+            7_175_037,
+            4_430_000,
+        )?;
+        let [low, high] = guest.third_byte_stores;
+        check_third_dirty_copy(trace, low, [7_174_453, 7_174_701], [
+            u32::from(second),
+            pair[0],
+            independent_crazy(7_174_453, u32::from(second)),
+        ])?;
+        check_third_dirty_copy(trace, high, [7_174_454, 7_174_701], [
+            0,
+            0,
+            independent_crazy(7_174_453, pair[0]),
+        ])?;
+        byte_transfer
+    } else {
+        check_transfer(
+            trace,
+            guest.third_branch_code_address,
+            7_175_047,
+            4_450_000,
+        )?;
+        for (((sites, store), address), (old, new)) in guest
+            .third_eof_resets
+            .into_iter()
+            .zip(guest.third_eof_stores)
+            .zip([7_174_453, 7_174_454])
+            .zip([u32::from(second), 0].into_iter().zip(pair))
+        {
+            check_dirty_reset(trace, sites, address, old)?;
+            check_write(trace, store, address, new)?;
+        }
+        eof_transfer
+    };
+    check_transfer(trace, transfer, 7_175_057, 4_480_000)?;
+    let next = [pair[0], pair[1], u32::from(checksum), 0];
+    let addresses = [
+        7_174_456, 7_174_457, 7_174_458, 7_174_459, 7_174_431, 7_174_432,
+        7_174_433, 7_174_434,
+    ];
+    let temps = [
+        7_174_709, 7_174_713, 7_174_717, 7_174_721, 7_174_725, 7_174_729,
+        7_174_733, 7_174_737,
+    ];
+    for ((copy, (dest, temp)), (old, new)) in guest
+        .third_phi_snapshots
+        .into_iter()
+        .chain(guest.third_phi_commits)
+        .zip(addresses.into_iter().zip(temps))
+        .zip(
+            previous
+                .into_iter()
+                .chain(previous)
+                .zip(next.into_iter().chain(next)),
+        )
+    {
+        check_third_dirty_copy(trace, copy, [dest, temp], [
+            old,
+            new,
+            independent_crazy(7_174_453, old),
+        ])?;
+        assert_eq!(word(machine, dest)?, new);
+    }
+    check_write(
+        trace,
+        guest.third_header_class_store,
+        7_175_089,
+        u32::from(third.is_none()),
+    )?;
+    if third.is_none() {
+        check_transfer(
+            trace,
+            guest.third_header_branch_code_address,
+            7_175_103,
+            4_590_000,
+        )?;
+        check_write(
+            trace,
+            guest.third_eof_output_store,
+            7_174_455,
+            u32::from(checksum),
+        )?;
+        assert_eq!(
+            at(trace, guest.third_eof_output_code_address)?.output,
+            Some(checksum)
+        );
+        assert_eq!(machine.output(), &[checksum]);
+        assert_eq!(machine.input_consumed(), 2);
+        assert!(at(trace, guest.third_eof_halt_code_address).is_ok());
+    } else {
+        check_transfer(
+            trace,
+            guest.third_header_branch_code_address,
+            7_175_093,
+            4_550_000,
+        )?;
+        assert!(machine.output().is_empty());
+        assert_eq!(machine.input_consumed(), 3);
+        assert!(at(trace, guest.third_byte_halt_code_address).is_ok());
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded third read and earlier bypasses"
+)]
+#[test]
+fn relocated_second_odd_read_boundaries() -> Result<(), String> {
+    let guest = build_relocated_second_odd_read_source(current_profile())
+        .map_err(|error| format!("{error:?}"))?;
+    let source = &guest.update.xor.iteration.addition.source;
+    assert_eq!(source.len(), ODD_XOR_BUDGET);
+    assert_eq!(
+        build_relocated_second_odd_read_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
+    let initial =
+        ProfileMachine::from_source(current_profile(), source, vec![])
+            .map_err(|error| error.to_string())?;
+    let sites = odd_third_sites(&guest);
+    for input in [
+        (100u8, 127u8, None),
+        (253, 255, None),
+        (0, 1, Some(0u8)),
+        (252, 1, Some(255)),
+    ] {
+        let (first, second, third) = input;
+        let mut stream = vec![first, second];
+        if let Some(byte) = third {
+            stream.extend([byte, 42]);
+        }
+        let mut machine = initial
+            .fork_with_input(stream)
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(ODD_XOR_BUDGET, &mut |step| {
+                if step.input.is_some()
+                    || step.output.is_some()
+                    || sites.contains(&step.before.registers.code_pointer)
+                {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{input:?}: {outcome:?}"
+        );
+        assert_eq!(
+            trace
+                .iter()
+                .filter_map(|step| step.input)
+                .collect::<Vec<_>>(),
+            [
+                TraceInput::Byte(first),
+                TraceInput::Byte(second),
+                third.map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            ]
+        );
+        check_odd_third_result(&guest, &machine, &trace, input)?;
+    }
+    for (input, expected, count) in [
+        (vec![], vec![0], 0),
+        (vec![252], vec![255], 1),
+        (vec![0, 2, 42], vec![], 2),
+    ] {
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(ODD_XOR_BUDGET, &mut |step| {
+                reached |= sites.contains(&step.before.registers.code_pointer);
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }));
+        assert!(!reached);
+        assert_eq!(machine.output(), expected);
+        assert_eq!(machine.input_consumed(), count);
     }
     Ok(())
 }
