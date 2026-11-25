@@ -631,7 +631,7 @@ pub fn verify_source_recurrent_transition(
         .checkpoints
         .last()
         .ok_or(Error::GuestTransitionMismatch)?;
-    if terminal.terminal_index <= eof.guard.guard_index
+    if terminal.terminal_index != eof.guard.guard_index.saturating_add(2)
         || terminal.byte != eof.state.value
         || terminal.halt_index.saturating_add(1) != loop_proof.io.guest_steps
     {

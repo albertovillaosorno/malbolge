@@ -14330,3 +14330,11 @@ All 12 physical checksum tests and 26 source-recurrent tests pass,
 including the exhaustive factored edges, directory and table audits,
 and omitted-store controls. The physical bootstrap regression bound
 tightens to 1,950,000; the 100,000-step publication gate is unchanged.
+
+The EOF terminal replay also binds the direct code transfer from the
+observed guard landing: the immediately following instruction must
+read that landing's pointer, preserve A and advance D by one while
+entering the declared terminal. The first terminal instruction must
+occur exactly two trace steps after the guard. All nine transition
+tests pass, including the five frozen full-image replays. This does
+not certify arbitrary byte-arm control paths.

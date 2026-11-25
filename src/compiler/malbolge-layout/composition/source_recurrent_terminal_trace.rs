@@ -35,8 +35,11 @@ use super::super::{
 const OPS: &[u8; 33] = b"*jpj*jpooooooj*jjpjpj*jpj*jjpjp<v";
 
 pub(in super::super) struct TerminalTrace {
+    branch: u32,
     byte: Option<u8>,
     cells: Vec<u32>,
+    dispatch: Option<(usize, u32)>,
+    eof_landings: [u32; 2],
     lookup_bases: [u32; 2],
     output_word: Option<u32>,
     scratch: u32,
@@ -90,8 +93,11 @@ impl TerminalTrace {
         }
         let [_, low, _, high] = probe.tables;
         Ok(Self {
+            branch: guard.branch_address,
             byte: None,
             cells: cells.iter().map(|cell| u32::from(*cell)).collect(),
+            dispatch: None,
+            eof_landings: guard.eof_landings,
             lookup_bases: [high, low],
             output_word: None,
             scratch,
@@ -115,10 +121,28 @@ impl TerminalTrace {
             self.byte =
                 Some(eof.state.ok_or(Error::InvalidTransitionBinding)?.value);
         }
+        if self.byte.is_some()
+            && trace.before.registers.code_pointer == self.branch
+            && trace.decoded == Some(b'j')
+        {
+            let landing = trace.after.registers.data_pointer;
+            if !self.eof_landings.contains(&landing)
+                || self.dispatch.replace((index, landing)).is_some()
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        }
+        if let Some((dispatch, landing)) = self.dispatch
+            && index == dispatch.saturating_add(1)
+        {
+            self.verify_entry(trace, landing)?;
+        }
         if self.start_index.is_none()
             && trace.before.registers.code_pointer == self.terminal
         {
-            if self.byte.is_none() {
+            let (dispatch, _) =
+                self.dispatch.ok_or(Error::GuestTransitionMismatch)?;
+            if index != dispatch.saturating_add(2) {
                 return Err(Error::GuestTransitionMismatch);
             }
             self.start_index = Some(index);
@@ -201,6 +225,33 @@ impl TerminalTrace {
             }
             self.output_word = Some(before.accumulator);
         } else if trace.output.is_some() {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        Ok(())
+    }
+
+    fn verify_entry(
+        &self,
+        trace: &ProfileStepTrace,
+        landing: u32,
+    ) -> Result<(), Error> {
+        let before = trace.before.registers;
+        let after = trace.after.registers;
+        let read = trace
+            .memory_reads
+            .data
+            .ok_or(Error::GuestTransitionMismatch)?;
+        if before.code_pointer != self.branch.saturating_add(1)
+            || trace.decoded != Some(b'i')
+            || before.data_pointer != landing
+            || read.address != landing
+            || read.value.checked_add(1) != Some(self.terminal)
+            || after.code_pointer != self.terminal
+            || after.data_pointer != landing.saturating_add(1)
+            || before.accumulator != after.accumulator
+            || trace.memory_delta.data.is_some()
+            || trace.result != Ok(StepOutcome::Continued)
+        {
             return Err(Error::GuestTransitionMismatch);
         }
         Ok(())

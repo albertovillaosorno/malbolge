@@ -127,7 +127,10 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
             }
             prior = next;
         }
+        let eof = proof.loop_proof.checkpoints.last().ok_or("missing EOF")?;
         if proof.terminal.byte != prior
+            || proof.terminal.terminal_index
+                != eof.guard.guard_index.saturating_add(2)
             || proof.terminal.output_word.rem_euclid(256) != u32::from(prior)
         {
             return Err("wrong terminal receipt".to_owned());
