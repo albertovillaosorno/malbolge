@@ -120,11 +120,11 @@ fn reset_chunk_word(
     emitter: &mut Emitter<'_>,
     address: u32,
 ) -> Result<(), BuildError> {
-    for constant in [NEAR_ONES, NEAR_TWOS, NEAR_ZERO] {
-        rotate(emitter, constant)?;
-        chunk_access(emitter, address, LinearOpcode::CrazyData)?;
-    }
-    Ok(())
+    // An all-one accumulator maps each trit to either zero or two.
+    // The second fold uses that same result as both operands.
+    rotate(emitter, NEAR_ONES)?;
+    chunk_access(emitter, address, LinearOpcode::CrazyData)?;
+    chunk_access(emitter, address, LinearOpcode::CrazyData)
 }
 
 fn read_chunk_mask(
@@ -295,6 +295,16 @@ fn go_seed(
     emitter.walk(address)
 }
 
+fn store_seed(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    routing: &SeedRouting<'_>,
+) -> Result<(), BuildError> {
+    go_seed(emitter, address, routing)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    after_store(emitter)
+}
+
 fn fast_load(
     emitter: &mut Emitter<'_>,
     seed: SeedAccess,
@@ -459,28 +469,28 @@ pub(super) fn initialize_chunk_seeds(
     read_chunk_mask(emitter, 27)?;
     chunk_access(emitter, CHUNK_RETURN, LinearOpcode::CrazyData)?;
 
-    let seed_anchors = [(SEED_ANCHOR, SEEDS), (EXTRA_SEED_ANCHOR, extra.0)];
-    for (address, value) in seeds {
-        rotate(emitter, NEAR_ZERO)?;
-        store_anchored(emitter, address, &seed_anchors)?;
-        chunk_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
-        store_anchored(emitter, address, &seed_anchors)?;
-    }
-    let directory = initialize_seed_directory(emitter, extra)?;
-    initialize_target_pages(emitter, anchors)?;
     reset_chunk_word(emitter, FRAME)?;
     chunk_word(emitter, profile_crazy(ALL_ONES, previous(NEAR_ONES)?, 15))?;
     emitter.go(FRAME)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(CHUNK_RESET)?;
+    let directory = initialize_seed_directory(emitter, extra)?;
+    let routing = SeedRouting {
+        directory: &directory,
+        extra,
+    };
+    for (address, value) in seeds {
+        fast_rotate(emitter, NEAR_ZERO)?;
+        store_seed(emitter, address, &routing)?;
+        chunk_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
+        store_seed(emitter, address, &routing)?;
+    }
+    initialize_target_pages(emitter, anchors)?;
     materialize_chunk_words(
         emitter,
         words,
         anchors,
-        (tape_end, &seed_addresses, SeedRouting {
-            directory: &directory,
-            extra,
-        }),
+        (tape_end, &seed_addresses, routing),
     )
 }
 
@@ -504,10 +514,9 @@ fn materialize_chunk_words(
             && !address.is_multiple_of(2);
         let normalized = dirty || profile_crazy(virgin, inverse, 15) != value;
         if dirty {
-            for constant in [NEAR_ONES, NEAR_TWOS, NEAR_ZERO] {
-                fast_rotate(emitter, constant)?;
-                fast_store(emitter, address, anchors)?;
-            }
+            fast_rotate(emitter, NEAR_ONES)?;
+            fast_store(emitter, address, anchors)?;
+            fast_store(emitter, address, anchors)?;
         } else if normalized {
             fast_rotate(emitter, NEAR_ZERO)?;
             fast_store(emitter, address, anchors)?;

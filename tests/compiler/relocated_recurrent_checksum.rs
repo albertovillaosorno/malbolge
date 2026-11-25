@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 4_000_000;
+const BOOT_BUDGET: usize = 3_500_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -804,7 +804,7 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
         (&[5, 0, 129], 34_685),
     ];
     let guest = source()?;
-    if guest.capture.source.len() != 4_091_694 {
+    if guest.capture.source.len() != 3_694_074 {
         return Err("unexpected recurrent source extent".to_owned());
     }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
@@ -897,6 +897,63 @@ fn materialization_site(
         }
     }
     Err("missing materialized table store".to_owned())
+}
+
+// The two physical writes use the first result as the second
+// accumulator; the second result must be all ones for any dirty word.
+fn audit_chunk_reset(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<u32, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let address = 7_174_441;
+    let mut accumulator = ONES;
+    let mut folds = 0u8;
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        if registers.data_pointer == address
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'p')
+        {
+            let old = word(&vm, address)?;
+            if registers.accumulator != accumulator {
+                return Err("incorrect chunk reset accumulator".to_owned());
+            }
+            let new = independent_crazy(old, accumulator);
+            check_store(&step(&mut vm)?, address, old, new)?;
+            accumulator = new;
+            folds = folds.saturating_add(1);
+            if folds == 2 && new != ONES {
+                return Err("incorrect two-fold reset".to_owned());
+            }
+            if folds == 2 {
+                return Ok(registers.code_pointer);
+            }
+        } else if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature chunk reset termination".to_owned());
+        }
+    }
+    Err("missing chunk reset".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_chunk_reset_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let site = audit_chunk_reset(&guest)?;
+    let modified = omit_site(&guest, site)?;
+    if audit_chunk_reset(&modified).is_ok() {
+        return Err("accepted omitted second chunk reset fold".to_owned());
+    }
+    Ok(())
 }
 
 #[test]

@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 4,091,694-cell
+The separate 3,694,074-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14024,11 +14024,14 @@ The expanded data plan would exceed the original bootstrap layout.
 A 27-entry immutable mask bank synthesizes each inverse seed in five
 three-trit chunks, with three physical scratch rotations between
 chunks. Eighty frequently used seeds have immutable prefix/value
-pairs. After seed construction, the frame word becomes a pointer to
-the nearby constants, reducing reset walks. The temporary marker
+pairs. Before seed construction, the frame word becomes a pointer to
+the nearby constants and the inverse-seed directory is materialized,
+so seed stores themselves use the shorter routes. The temporary marker
 tape starts at M7177001; its occupied odd destinations are normalized
-with three folds before reuse by the recurrent classifier and byte
-route. The virgin even loader reset cells remain intact until their
+with two folds before reuse by the recurrent classifier and byte
+route. The first fold with an all-one accumulator produces only
+zero or two trits; the second reuses that result as both operands
+and produces all ones. The chunk scratch uses the same two-fold reset. The virgin even loader reset cells remain intact until their
 final materialization. A two-hop seed directory at M7176721 contains
 44 page pointers spaced at two cells, each leaving its adjacent even
 frame-reset word virgin.
@@ -14042,7 +14045,7 @@ partitions and assigns denser partitions to cheaper access slots.
 For each destination it compares the cost of every eligible direct
 or two-hop path. The page pointers are synthesized in the guest
 before the first route write; their even reset cells remain virgin.
-The boot replay has a 4,000,000-step bound.
+The boot replay has a 3,500,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14067,11 +14070,16 @@ instruction phases and the periodic loader tail.
 The 6,150,294-cell image previously reached its first input in
 5,973,677 instructions (originally 6,347,795). The directory alone
 reduces that to 5,159,114; shifting the code phase by 789,600 cells
-preserves the decoder and loader phases and gives the present
+preserves the decoder and loader phases and gives a
 5,360,694-cell image with 5,238,250 bootstrap instructions. Adding
 the target directories cuts this to 3,911,304; a further phase-aligned
-shift of 1,269,000 cells produces the current 4,091,694-cell image
-with 3,906,625 bootstrap instructions.
+shift of 1,269,000 cells produces the 4,091,694-cell image
+with 3,906,625 bootstrap instructions. Early seed-directory reuse
+and two-fold normalization cut the bootstrap to 3,520,626 steps
+before a phase-aligned shift of 397,620 cells. The resulting
+3,694,074-cell image reaches its first input in 3,483,020 steps.
+An independent trace checks the two scratch-reset stores and
+rejects omission of the second fold.
 Independent replay audits all 44 directory pointers and their
 untouched reset words. Omitting the actual store for the second
 near seed page invalidates the route; a directory entry is not
