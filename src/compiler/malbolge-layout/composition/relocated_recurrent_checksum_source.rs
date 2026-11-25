@@ -22,6 +22,8 @@
 // - Summary:
 //   - Compose low and high nibble transitions through a real carry.
 
+use std::cmp::Reverse;
+
 use malbolge::{ProfileDescriptor, profile_crazy};
 
 use super::super::super::super::LinearOpcode;
@@ -43,9 +45,9 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_360_001,
     start: 7_177_001,
 };
-const CODE_BASE: u32 = 6_540_044;
-const TERMINAL: u32 = 6_550_044;
-const SOURCE_CELLS: usize = 6_550_170;
+const CODE_BASE: u32 = 6_140_168;
+const TERMINAL: u32 = 6_150_168;
+const SOURCE_CELLS: usize = 6_150_294;
 const BYTE_ROUTE: u32 = 7_194_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
 const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];
@@ -434,7 +436,14 @@ fn high_lookup(
 fn high_row(words: &mut Words, state: u32) -> Result<(), BuildError> {
     for raw in 0..16u32 {
         for parity in 0..2 {
-            for carry in 0..3 {
+            // XOR of two nibbles is at most 15; adding three cannot
+            // produce a carry of two. Even-byte addition can reach 32.
+            let carry_count = if parity == 0 {
+                3
+            } else {
+                2
+            };
+            for carry in 0..carry_count {
                 let next = high_update(state, raw, parity, carry)?;
                 insert(
                     words,
@@ -622,19 +631,31 @@ fn route_anchors(words: &Words) -> Result<RouteAnchors, BuildError> {
         cuts.push(best.1);
         cuts.sort_unstable();
     }
-    let _: Option<usize> = cuts.pop();
-    cuts.into_iter()
-        .enumerate()
-        .map(|(index, cut)| {
-            Ok((
-                plus(
-                    ANCHOR_START + 2,
-                    times(u32::try_from(index).map_err(|_error| LAYOUT)?, 2)?,
-                )?,
-                *addresses.get(cut).ok_or(LAYOUT)?,
-            ))
-        })
-        .collect()
+    // Give densely used partitions the shortest near-frame walk. The
+    // returned anchors remain sorted by base for the target lookup.
+    let mut partitions = Vec::new();
+    for endpoints in cuts.windows(2) {
+        let [start, end] = endpoints else {
+            return Err(LAYOUT);
+        };
+        partitions.push((
+            end.checked_sub(*start).ok_or(LAYOUT)?,
+            *addresses.get(*start).ok_or(LAYOUT)?,
+        ));
+    }
+    partitions.sort_unstable_by_key(|&(size, base)| (Reverse(size), base));
+    let mut anchors = Vec::new();
+    for (index, (_, base)) in partitions.into_iter().enumerate() {
+        anchors.push((
+            plus(
+                ANCHOR_START + 2,
+                times(u32::try_from(index).map_err(|_error| LAYOUT)?, 2)?,
+            )?,
+            base,
+        ));
+    }
+    anchors.sort_unstable_by_key(|&(_, base)| base);
+    Ok(anchors)
 }
 
 fn best_anchor_split(

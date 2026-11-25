@@ -25,8 +25,9 @@
 use std::collections::BTreeSet;
 
 use malbolge::{
-    ProfileMachine, ProfileStepTrace, StepOutcome, Termination, TraceInput,
-    current_profile, decode_profile_instruction, historical_profile,
+    ProfileMachine, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
+    TraceInput, current_profile, decode_profile_instruction,
+    historical_profile,
 };
 
 use super::super::super::super::layout::{
@@ -38,8 +39,9 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 6_540_044;
+const BOOT_BUDGET: usize = 6_000_000;
 const BYTE_BUDGET: usize = 13_000;
+const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
 const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];
 const LOW_TABLE: u32 = 7_242_615;
@@ -47,9 +49,11 @@ const LOW_SEEDS: u32 = 7_243_100;
 const HIGH_SEEDS: u32 = 7_243_400;
 const EOF_SCRATCH: u32 = 7_180_900;
 
+type BootReplay = (ProfileMachine, usize);
 type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
 type FactoredEdges = (LowEdge, HighEdge);
+type FrozenVectors = [(&'static [u8], usize); 5];
 
 struct ByteAudit {
     addresses: [u32; 5],
@@ -294,13 +298,19 @@ fn persistent(
 fn boot(
     guest: &RelocatedRecurrentChecksumSource,
 ) -> Result<ProfileMachine, String> {
+    boot_with_steps(guest).map(|(vm, _)| vm)
+}
+
+fn boot_with_steps(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<BootReplay, String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         &guest.capture.source,
         Vec::new(),
     )
     .map_err(|error| error.to_string())?;
-    for _ in 0..BOOT_BUDGET {
+    for steps in 0..BOOT_BUDGET {
         if is_input(&vm, guest)? {
             invariant(&vm, &guest.capture, INITIAL)?;
             persistent(&vm, guest, 0)?;
@@ -312,7 +322,7 @@ fn boot(
             {
                 return Err("incorrect bootstrap reset geometry".to_owned());
             }
-            return Ok(vm);
+            return Ok((vm, steps));
         }
         if vm.step().map_err(|error| error.to_string())?
             != StepOutcome::Continued
@@ -503,6 +513,61 @@ fn relocated_recurrent_checksum_all_factored_edges_and_eof()
             .ok_or("unreachable even EOF")?;
         run(&initial, &guest, &[expected.wrapping_sub(3)])?;
         run(&initial, &guest, &[0, second])?;
+    }
+    Ok(())
+}
+
+#[test]
+fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
+-> Result<(), String> {
+    // The exact binary vectors from tests/test_eof_checksum_pipeline.py.
+    // These budgets exclude the bootstrap and are not publication limits.
+    let vectors: FrozenVectors = [
+        (&[], 446),
+        (&[0], 11_859),
+        (&[255], 11_859),
+        (&[1, 0, 128, 254], 46_098),
+        (&[5, 0, 129], 34_685),
+    ];
+    let guest = source()?;
+    let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
+    // This is a physical witness, not yet source-C publication.
+    if bootstrap_steps <= PUBLICATION_BUDGET {
+        return Err("publication budget evidence must be revisited".to_owned());
+    }
+    let mut limited = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    if limited
+        .run(PUBLICATION_BUDGET)
+        .map_err(|error| error.to_string())?
+        != (RunOutcome::BudgetExhausted {
+            steps: PUBLICATION_BUDGET,
+        })
+        || limited.input_consumed() != 0
+        || !limited.output().is_empty()
+    {
+        return Err("publication budget must exhaust before I/O".to_owned());
+    }
+    for (stream, budget) in vectors {
+        let mut vm = initial
+            .fork_with_input(stream.to_vec())
+            .map_err(|error| error.to_string())?;
+        let expected = stream.iter().copied().fold(0u8, checksum);
+        let outcome = vm.run(budget).map_err(|error| error.to_string())?;
+        if !matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }) || vm.input_consumed() != stream.len()
+            || vm.output() != [expected]
+        {
+            return Err(format!(
+                "frozen vector failed: {stream:?}: {outcome:?}"
+            ));
+        }
     }
     Ok(())
 }

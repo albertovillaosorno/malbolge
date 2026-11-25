@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 6,550,170-cell
+The separate 6,150,294-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14008,8 +14008,8 @@ two distinct physical access envelopes. The carry has three possible
 values: zero, one and two. In particular, a prior low nibble of 15
 and an even input nibble of 14 produce 32 before wrapping.
 
-The high transition uses 1,536 entries for prior high nibble, raw
-high nibble, parity and carry. It applies XOR for odd bytes and
+The high transition uses 1,280 reachable entries for prior high nibble,
+raw high nibble, parity and carry. It applies XOR for odd bytes and
 addition for even bytes, adds the low carry and wraps to four bits.
 The two immutable next-state records stage left-rotated masks. One
 physical scratch rotation restores each inverse for the dirty state
@@ -14029,7 +14029,7 @@ the nearby constants, reducing reset walks. The temporary marker
 tape starts at M7177001; its occupied odd destinations are normalized
 with three folds before reuse by the recurrent classifier and byte
 route. The virgin even loader reset cells remain intact until their
-final materialization. The boot replay has a 6,540,044-step bound.
+final materialization. The boot replay has a 6,000,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14037,7 +14037,18 @@ single recurrent stream. Short streams cover all 512 state/EOF
 combinations and the empty input. The replay checks each selected
 immutable record, both physical commits, both scratch rotations,
 per-step arithmetic and routing, restored persistent state and
-the actual terminal output. The other 256 high-table entries
-represent unreachable odd-byte carry-two combinations. This is
+the actual terminal output. The 256 unreachable odd-byte carry-two
+combinations are not materialized: XOR of two nibbles is at most 15,
+so adding three cannot carry twice. Densely used route partitions
+receive the closest near-frame anchors; their lookup stays sorted by
+target base. Moving the code phase by 399,876 cells preserves the
+instruction phases and the periodic loader tail.
+
+The reduced image reaches its first input in 5,973,677 instructions
+(previously 6,347,795). The five original C23 vectors also run on this
+physical guest. Starting at its first input, the empty, NUL, high-byte,
+mixed and truncated vectors halt in 446, 11,859, 11,859, 46,098 and
+34,685 instructions respectively. A fresh normative VM exhausts the
+100,000-step publication budget before any input or output. This is
 full-byte recurrent arithmetic, not independent source-C CFG
-admission. The 100,000-step publication bound remains unmet.
+admission; the original compiler still refuses publication.

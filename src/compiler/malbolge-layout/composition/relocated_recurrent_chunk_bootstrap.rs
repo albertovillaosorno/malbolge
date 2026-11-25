@@ -234,6 +234,7 @@ pub(super) fn initialize_chunk_seeds(
         }
         near.push((anchor, previous(base)?));
     }
+    near.sort_unstable_by_key(|&(address, _)| address);
     if words.range(extra.0..=extra.1).next().is_some()
         || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
         || extra.1 >= CHUNK_BANK
