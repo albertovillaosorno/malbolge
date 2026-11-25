@@ -70,6 +70,8 @@ const ELEMENTARY_COLUMNS: [u32; 7] = [8, 17, 20, 23, 24, 25, 27];
 // The directory is between the immutable chunk-mask bank and the
 // operand tape. Its odd pointers leave each even reset word virgin.
 const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
+const LATE_SEED_DIRECTORY: u32 = NEAR_TWOS + 1;
+const LATE_ROOT_RESET: u32 = 7_174_484;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 48;
 // Eight short direct entries into the paired seed bank. The even roots
@@ -147,6 +149,7 @@ pub(super) type TargetAnchors = Vec<(TargetSlot, u32)>;
 struct SeedRouting<'directory> {
     directory: &'directory [(u32, u32)],
     extra: (u32, u32),
+    late_directory: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -712,7 +715,11 @@ fn go_seed(
     let (path, _) = seed_path(address, routing)?;
     match path {
         SeedPath::Page { slot, page } => {
-            fast_go(emitter, SEED_DIRECTORY)?;
+            if routing.late_directory && emitter.data == LATE_SEED_DIRECTORY {
+                emitter.jump(SEED_DIRECTORY)?;
+            } else {
+                fast_go(emitter, SEED_DIRECTORY)?;
+            }
             emitter.jump(DIRECTORY_BANK)?;
             emitter.walk(slot)?;
             emitter.jump(page)?;
@@ -1304,6 +1311,27 @@ fn initialize_chunk_roots(
     Ok(scratch)
 }
 
+// Retire the even cell following the all-two operand only after all
+// inverse-seed returns are installed. The final shared phase can use it
+// to jump directly to the seed directory rather than walking fifteen
+// cells; M7,174,484 remains the virgin near-root reset.
+fn initialize_late_seed_directory(
+    emitter: &mut Emitter<'_>,
+    scratch: &mut ChunkWord,
+) -> Result<(), BuildError> {
+    fast_rotate(emitter, NEAR_ZERO)?;
+    fast_go(emitter, LATE_SEED_DIRECTORY)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(LATE_ROOT_RESET)?;
+    scratch.synthesize(
+        emitter,
+        profile_crazy(ALL_ONES, previous(SEED_DIRECTORY)?, 15),
+    )?;
+    fast_go(emitter, LATE_SEED_DIRECTORY)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(LATE_ROOT_RESET)
+}
+
 fn initialize_late_seed_roots(
     emitter: &mut Emitter<'_>,
     scratch: &mut ChunkWord,
@@ -1386,9 +1414,10 @@ pub(super) fn initialize_chunk_seeds(
         }
     }
     let single_use = seen.difference(&repeated).copied().collect();
-    let routing = SeedRouting {
+    let mut routing = SeedRouting {
         directory: &directory,
         extra,
+        late_directory: false,
     };
     let (seed_addresses, seeds) =
         reorder_seed_slots(seed_plan, &routing, &single_use)?;
@@ -1400,6 +1429,8 @@ pub(super) fn initialize_chunk_seeds(
         (&seed_addresses, &routing, seeds, &mut scratch),
     )?;
     initialize_seed_returns(emitter, &seed_addresses, &routing, &mut scratch)?;
+    initialize_late_seed_directory(emitter, &mut scratch)?;
+    routing.late_directory = true;
     materialize_chunk_words(
         emitter,
         words,

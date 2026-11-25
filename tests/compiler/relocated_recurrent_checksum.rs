@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_115_000;
+const BOOT_BUDGET: usize = 1_094_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -56,6 +56,8 @@ const SHORTCUT_ADDRESS: u32 = 7_174_447;
 const SHORTCUT_PREDECESSOR: u32 = 7_174_468;
 const FRAME_DIRECTORY_ADDRESS: u32 = 7_174_419;
 const FRAME_DIRECTORY_PREDECESSOR: u32 = 7_174_490;
+const LATE_DIRECTORY_ADDRESS: u32 = 7_174_474;
+const LATE_DIRECTORY_PREDECESSOR: u32 = 7_174_488;
 
 type ArithmeticVisit = (u32, u32);
 type DirectoryPage = (u32, u32);
@@ -525,6 +527,82 @@ impl FrameDirectoryAudit {
         }
         check_store(&step(vm)?, FRAME_DIRECTORY_ADDRESS, old, new)?;
         self.stores.push(regs.code_pointer);
+        Ok(())
+    }
+}
+
+// The even loader cell is retired only after all paired return
+// pointers are installed. Audit its first and final stores separately
+// from every subsequent actual selection.
+#[derive(Default)]
+struct LateDirectoryAudit {
+    returns: BTreeSet<u32>,
+    selection: Option<u32>,
+    selections: usize,
+    sites: Vec<u32>,
+}
+
+impl LateDirectoryAudit {
+    fn finish(mut self, vm: &ProfileMachine) -> Result<Vec<u32>, String> {
+        if self.sites.len() != 2
+            || self.selections != 1_471
+            || word(vm, LATE_DIRECTORY_ADDRESS)? != LATE_DIRECTORY_PREDECESSOR
+            || word(vm, 7_174_484)? != 7_174_416
+        {
+            return Err("incomplete late directory".to_owned());
+        }
+        self.sites
+            .push(self.selection.ok_or("missing late directory selection")?);
+        Ok(self.sites)
+    }
+
+    fn select(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let trace = step(vm)?;
+        let predecessor = match self.sites.len() {
+            0 => 7_174_416,
+            2 => LATE_DIRECTORY_PREDECESSOR,
+            _ => return Err("jump through partial late directory".to_owned()),
+        };
+        if trace
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value))
+            != Some((LATE_DIRECTORY_ADDRESS, predecessor))
+            || trace.after.registers.data_pointer != plus(predecessor, 1)?
+        {
+            return Err("incorrect late directory selection".to_owned());
+        }
+        routing(&trace, u32::MAX)?;
+        if self.sites.len() == 2 {
+            let _site = self
+                .selection
+                .get_or_insert(trace.before.registers.code_pointer);
+            self.selections = self.selections.saturating_add(1);
+        }
+        Ok(())
+    }
+
+    fn store(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+        let regs = vm.registers();
+        let (old, acc, new) = match self.sites.len() {
+            0 => (7_174_416, 0, ONES),
+            1 => (
+                ONES,
+                independent_crazy(ONES, LATE_DIRECTORY_PREDECESSOR),
+                LATE_DIRECTORY_PREDECESSOR,
+            ),
+            _ => return Err("repeated late directory store".to_owned()),
+        };
+        if self.returns.len() != 80
+            || regs.accumulator != acc
+            || (self.sites.len() == 1 && word(vm, 7_174_441)? != acc)
+        {
+            return Err(
+                "premature or incorrect late directory store".to_owned()
+            );
+        }
+        check_store(&step(vm)?, LATE_DIRECTORY_ADDRESS, old, new)?;
+        self.sites.push(regs.code_pointer);
         Ok(())
     }
 }
@@ -2609,6 +2687,66 @@ fn relocated_recurrent_checksum_omitted_frame_directory_refuses()
         if audit_frame_directory(&modified).is_ok() {
             return Err(format!(
                 "accepted omitted frame directory effect C{site}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn audit_late_directory(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<Vec<u32>, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = LateDirectoryAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
+        let regs = vm.registers();
+        let address = regs.data_pointer;
+        let opcode = decode_profile_instruction(
+            word(&vm, regs.code_pointer)?,
+            regs.code_pointer,
+        );
+        if address == LATE_DIRECTORY_ADDRESS {
+            match opcode {
+                Some(b'p') => {
+                    audit.store(&mut vm)?;
+                    continue;
+                },
+                Some(b'j') => {
+                    audit.select(&mut vm)?;
+                    continue;
+                },
+                Some(b'o') => {},
+                _ => return Err("unexpected late directory effect".to_owned()),
+            }
+        }
+        advance_boot(&mut vm)?;
+        if opcode == Some(b'p')
+            && seed_return_address(address)
+            && word(&vm, address)? == SEED_RETURN_TARGET.saturating_sub(1)
+        {
+            let _added = audit.returns.insert(address);
+        }
+    }
+    Err("missing first input after late directory".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_late_directory_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    for site in audit_late_directory(&guest)? {
+        let modified = omit_site(&guest, site)?;
+        if audit_late_directory(&modified).is_ok() {
+            return Err(format!(
+                "accepted omitted late directory effect C{site}"
             ));
         }
     }

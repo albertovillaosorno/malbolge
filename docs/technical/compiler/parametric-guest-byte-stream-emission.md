@@ -14921,3 +14921,22 @@ phase still accounts for 766,434 steps, including 88,219 non-walk
 operations. Future work should reduce materialization and reload
 effects rather than rely exclusively on shorter walks. Temporary
 trace instrumentation was removed.
+
+A further post-return shortcut retires M7,174,474 only after all 80
+paired-seed return pointers are installed. The previous virgin reset
+remains available at M7,174,484. Two guest stores install 7,174,488
+at M7,174,474, and 1,471 actual selections after the all-two load
+jump directly to M7,174,489. The independent physical audit checks
+both stores, their ordering, all old and new relocations through the
+retired cell, preservation of the alternate reset and three omitted
+instruction controls. The five original physical vectors reach first
+input in 1,092,605 steps, saving 20,501 steps without changing the
+source extent or the post-input checksum. The bounded physical
+ceiling is 1,094,000 steps; the source publication limit is unchanged.
+
+A separate diagnostic census checked whether the preceding target's
+accumulator could directly commit the next known virgin or normalized
+target. Only two ordered targets were compatible, and both already
+avoid the inverse reload. Neither the extra analysis nor its temporary
+instrumentation is retained. This does not exclude more substantial
+changes to the target schedule or representation.
