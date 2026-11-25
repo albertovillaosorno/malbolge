@@ -1014,8 +1014,12 @@ zero initializer, genuine C37 `/`, C50 raw low-word `p`, C51 zero high-word
 `*` and C64 input-derived `j`. A new C34 `*` deliberately leaves its
 XLAT2-encrypted code glyph at 86. C65 `j` selects D34 from initial C0 on
 true EOF, then reached C66 `i` reads that **physically encrypted** word
-and transfers to untouched C87 `<`; C88 `v` terminates at 69 steps.
+and transfers to C87 `o`, C88 `<` and C89 `v`, terminating at 70 steps.
 The output is one genuine zero byte, the empty-input C23 checksum result.
+The unchanged frozen typed C23 CFG also accepts an exact *placement*
+anchor for its `putchar` effect at C88 (block 6, ordinal 1) and its
+return at C89. Unlike the earlier adjacent result-cell anchors, this
+places the actual executed EOF output at the matching typed output site.
 
 A **257-class full normative VM branch sweep** found that successful
 bytes can reach C1, C61, C72, C86 or C7,174,460, not the EOF landing
@@ -1025,8 +1029,14 @@ The input-derived pointers can address previously modified guest data,
 so a scalar loader-parity model is insufficient for non-EOF control.
 Thirteen regression guest prefixes cover these observed cases, real
 C14/C17/C37/C50/C51/C64/C65/C66 sites, the two original C32 result
-cells and the genuine EOF output/halt. Changing C34, C66, C87 or C88
+cells and the genuine EOF output/halt. Changing C34, C66, C88 or C89
 breaks the specific physical transfer/output/termination contract.
+A colliding output effect anchor or forged effect index is refused.
+Critically, the original `putchar` SSA source cell M7,174,455 is still
+**not zero or computed by the guest**: C88 outputs A=0 from the physical
+zero-word data path, not the source-identified operand. Thus the exact
+source output/return reservations do not establish a source-executed
+operation or authorize publication.
 
 No successful-byte path can be counted as a checksum iteration;
 indeed C1/C61 are previously encrypted code, not verified source-C

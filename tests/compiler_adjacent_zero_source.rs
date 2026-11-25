@@ -2704,8 +2704,8 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
     assert_eq!(source.len(), 120);
     assert_eq!(guest.eof_target_seed_code_address, 34);
     assert_eq!(guest.branch_code_address, 66);
-    assert_eq!(guest.eof_output_code_address, 87);
-    assert_eq!(guest.eof_halt_code_address, 88);
+    assert_eq!(guest.eof_output_code_address, 88);
+    assert_eq!(guest.eof_halt_code_address, 89);
     assert_eq!(guest.pointer.pointer_code_address, 64);
     assert_eq!(source[86], 125);
     assert_eq!(encrypt_profile_cell(u32::from(source[34])), Some(86));
@@ -2760,7 +2760,7 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
         .map_err(|error| format!("guest initial state: {error:?}"))?;
         let mut trace = Vec::new();
         let limit = if class == 256 {
-            69
+            70
         } else {
             67
         };
@@ -2770,7 +2770,7 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
                 outcome,
                 Ok(RunOutcome::Terminated {
                     reason: Termination::HaltInstruction,
-                    steps: 69,
+                    steps: 70,
                 })
             );
         } else if class == 23 {
@@ -2817,11 +2817,13 @@ fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
         assert_eq!(vm.memory_word(7_174_420), Ok(0));
         assert_eq!(vm.input_consumed(), usize::from(byte.is_some()));
         if class == 256 {
-            assert_eq!(trace[67].decoded, Some(b'<'));
+            assert_eq!(trace[67].decoded, Some(b'o'));
             assert_eq!(trace[67].before.registers.code_pointer, 87);
-            assert_eq!(trace[67].before.registers.accumulator, 0);
-            assert_eq!(trace[68].decoded, Some(b'v'));
+            assert_eq!(trace[68].decoded, Some(b'<'));
             assert_eq!(trace[68].before.registers.code_pointer, 88);
+            assert_eq!(trace[68].before.registers.accumulator, 0);
+            assert_eq!(trace[69].decoded, Some(b'v'));
+            assert_eq!(trace[69].before.registers.code_pointer, 89);
             assert_eq!(vm.output(), &[0]);
         } else {
             assert!(vm.output().is_empty());
@@ -2850,21 +2852,21 @@ fn original_checksum_eof_code_arm_requires_both_branch_and_target()
     for (site, replacement, expected_transfer) in [
         (34usize, b'o', 66u32),
         (66usize, b'o', 67),
-        (87usize, b'o', 87),
         (88usize, b'o', 87),
+        (89usize, b'o', 87),
     ] {
         let mut source = guest.pointer.byte_pair.zero_pair.source.clone();
         source[site] = encode(replacement, site)?;
         let mut vm = ProfileMachine::from_source(profile, &source, Vec::new())
             .map_err(|error| format!("mutant source load: {error:?}"))?;
         let mut trace = Vec::new();
-        let outcome = vm.run_traced(69, &mut |step| trace.push(*step));
+        let outcome = vm.run_traced(70, &mut |step| trace.push(*step));
         assert_ne!(
             (outcome, vm.output().to_vec()),
             (
                 Ok(RunOutcome::Terminated {
                     reason: Termination::HaltInstruction,
-                    steps: 69,
+                    steps: 70,
                 }),
                 vec![0]
             ),
@@ -2875,12 +2877,194 @@ fn original_checksum_eof_code_arm_requires_both_branch_and_target()
                 trace[66].after.registers.code_pointer,
                 expected_transfer
             );
-        } else if site == 87 {
-            assert_eq!(trace[67].decoded, Some(b'o'));
+        } else if site == 88 {
+            assert_eq!(trace[68].decoded, Some(b'o'));
             assert!(vm.output().is_empty());
         } else {
-            assert_eq!(trace[68].decoded, Some(b'o'));
+            assert_eq!(trace[69].decoded, Some(b'o'));
         }
     }
+    Ok(())
+}
+
+// A source-locked C23 output reservation can share C88/C89 with the real
+// EOF guest, but its data operand is still *not* guest-materialized. The
+// complete source return and signed input contract must remain unproved.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one original typed-C23 output site and false operand proof"
+)]
+fn original_checksum_empty_output_site_has_missing_source_operand()
+-> Result<(), String> {
+    use std::str;
+
+    use layout::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeFunctionEntryAnchor,
+        GuestCodeFunctionEntryPlacement, GuestCodeOperationAnchor,
+        GuestCodeOperationEffect,
+        plan_source_locked_cfg_with_function_entry_anchors,
+    };
+    let original =
+        include_str!("compiler/typed-ir/golden/mutable-eof-checksum.hex");
+    let digits = original
+        .trim_end()
+        .strip_prefix("malbolge-typed-ir-v1:")
+        .ok_or("missing prefix")?;
+    let (pairs, remainder) = digits.as_bytes().as_chunks::<2>();
+    assert!(remainder.is_empty());
+    let wire = pairs
+        .iter()
+        .map(|bytes| {
+            let hex = str::from_utf8(bytes).map_err(|e| e.to_string())?;
+            u8::from_str_radix(hex, 16).map_err(|e| e.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let g = layout::build_adjacent_c32_zero_c37_eof_code_arm_source(
+        current_profile(),
+    )
+    .map_err(|e| format!("guest: {e:?}"))?;
+    let entries = [GuestCodeFunctionEntryAnchor {
+        function: 0,
+        block: 0,
+        code_address: 0,
+    }];
+    let operations = [GuestCodeOperationAnchor {
+        function: 0,
+        block: 0,
+        ordinal: 1,
+        code_address: 37,
+    }];
+    let effects = [
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 0,
+            effect_index: 0,
+            code_address: 17,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 0,
+            effect_index: 1,
+            code_address: 14,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 1,
+            code_address: 50,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 2,
+            code_address: 51,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 6,
+            ordinal: 1,
+            effect_index: 0,
+            code_address: 88,
+        },
+    ];
+    let bind = |anchors: &[GuestCodeEffectAnchor]| {
+        plan_source_locked_cfg_with_function_entry_anchors(
+            &GuestCodeFunctionEntryPlacement {
+                canonical: &wire,
+                control_anchors: &[],
+                effect_anchors: anchors,
+                frame_base: g.pointer.byte_pair.zero_pair.zero_low_address,
+                function_entries: &entries,
+                operation_anchors: &operations,
+                phi_anchors: &[],
+                phi_entries: &[],
+                phi_exits: &[],
+                source_cells: 120,
+            },
+        )
+    };
+    let plan = bind(&effects).map_err(|e| format!("plan: {e:?}"))?;
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.code_blocks[6].start, 87);
+    assert_eq!(plan.code_blocks[6].control_start, 89);
+    assert_eq!(plan.return_sites.len(), 1);
+    assert_eq!(plan.return_sites[0].address, g.eof_halt_code_address);
+    let output_sites = plan
+        .operation_effect_sites
+        .iter()
+        .filter(|site| {
+            matches!(site.effect, GuestCodeOperationEffect::Output { .. })
+        })
+        .collect::<Vec<_>>();
+    let [source_output] = output_sites.as_slice() else {
+        return Err("original checksum lacks a unique output".into());
+    };
+    assert_eq!(
+        (
+            source_output.function,
+            source_output.block,
+            source_output.ordinal,
+            source_output.code_address
+        ),
+        (0, 6, 1, g.eof_output_code_address)
+    );
+    let GuestCodeOperationEffect::Output { source } = source_output.effect
+    else {
+        return Err("original output effect is not ByteOutput".into());
+    };
+    assert_eq!(source.address, 7_174_455);
+    assert_eq!(source.words, 1);
+
+    // This is a valid *address reservation*, not guest operation proof.
+    // On the real empty-input path the output accumulator is zero, but the
+    // source's SSA output value 20 has never been written to its designated
+    // frame cell; the VM must not be passed as a complete source linker.
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &g.pointer.byte_pair.zero_pair.source,
+        vec![],
+    )
+    .map_err(|e| format!("guest source load: {e:?}"))?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(70, &mut |step| trace.push(*step))
+            .map_err(|e| format!("empty-input guest: {e:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 70,
+        }
+    );
+    assert_eq!(
+        trace[68].before.registers.code_pointer,
+        source_output.code_address
+    );
+    assert_eq!(trace[68].decoded, Some(b'<'));
+    assert_eq!(trace[68].before.registers.accumulator, 0);
+    assert_eq!(
+        trace[69].before.registers.code_pointer,
+        plan.return_sites[0].address
+    );
+    assert_eq!(trace[69].decoded, Some(b'v'));
+    assert_eq!(vm.output(), &[0]);
+    assert_ne!(
+        vm.memory_word(source.address),
+        Ok(0),
+        "source SSA output operand must not be incorrectly certified"
+    );
+    // Colliding with the real first-input store or forging an effect index
+    // cannot authenticate the source output reservation.
+    let mut invalid = effects;
+    invalid[4].code_address = 51;
+    assert!(bind(&invalid).is_err());
+    invalid = effects;
+    invalid[4].effect_index = 1;
+    assert!(bind(&invalid).is_err());
     Ok(())
 }

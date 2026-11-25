@@ -179,9 +179,10 @@ pub struct AdjacentC32ZeroC37EofPointerSource {
 /// A benign C34 rotation changes its post-encryption code word from 65 to
 /// 86 without disturbing the later C37 input or C50/C51 stores. Following
 /// the genuine C64 EOF-derived pointer, C65 `j` selects D34 on EOF. C66 `i`
-/// then reads the *encrypted* C34 word and transfers to virgin C87 `<`
-/// followed by C88 `v`. A remains zero after the high-word rotation, so
-/// this physically emits the empty-input C23 checksum value of zero.
+/// then reads the *encrypted* C34 word and transfers to virgin C87 `o`,
+/// C88 `<` and C89 `v`. A remains zero after the high-word rotation, so
+/// this physically emits the empty-input C23 checksum value of zero at
+/// the original typed source's proposed output and return code sites.
 /// Successful bytes can reach encrypted C1/C61, other unlinked sites, or
 /// invalid code (byte 0x17). These are **not** validated C23 loop arms. Only
 /// EOF termination and the preceding byte-pair storage are proven; there is no
@@ -192,9 +193,9 @@ pub struct AdjacentC32ZeroC37EofCodeArmSource {
     pub branch_code_address: u32,
     /// First C34 `*` whose XLAT2 result is the EOF landing pointer.
     pub eof_target_seed_code_address: u32,
-    /// The EOF-only C87 output instruction, unvisited on byte transfers.
+    /// The EOF-only C88 output instruction, unvisited on byte transfers.
     pub eof_output_code_address: u32,
-    /// The EOF-only C88 halt after the actual zero checksum output.
+    /// The EOF-only C89 halt after the actual zero checksum output.
     pub eof_halt_code_address: u32,
     /// Shared original input/byte-pair storage and C64 EOF data selection.
     pub pointer: AdjacentC32ZeroC37EofPointerSource,
@@ -1034,8 +1035,8 @@ pub fn build_adjacent_c32_zero_c37_eof_pointer_source(
 /// source word the value 86. C64 `j` reads the physically saved input class,
 /// C65 `j` reads either original source C0 (EOF) or expanded loader memory
 /// (successful byte), and C66 `i` performs a genuine input-dependent
-/// code-pointer transfer. Only true EOF lands on C87 `<` and C88 `v`,
-/// producing the first correct empty-stream checksum output. The non-EOF
+/// code-pointer transfer. Only true EOF lands on C87 `o`, then reaches
+/// C88 `<` and C89 `v`, producing an empty-stream checksum output. The non-EOF
 /// successful-byte landings are *not* linked or proved to reach the
 /// checksum's loop body; some encounter already-modified data words. The
 /// original C32 pair retains raw N15 EOF, not the canonical signed C23 -1. No
@@ -1060,8 +1061,9 @@ pub fn build_adjacent_c32_zero_c37_eof_code_arm_source(
     for (site, opcode) in [
         (34usize, LinearOpcode::RotateData),
         (65, LinearOpcode::RelocateDataPointer),
-        (87, LinearOpcode::OutputByte),
-        (88, LinearOpcode::Halt),
+        (87, LinearOpcode::NoOperation),
+        (88, LinearOpcode::OutputByte),
+        (89, LinearOpcode::Halt),
     ] {
         *pointer
             .byte_pair
@@ -1097,8 +1099,8 @@ pub fn build_adjacent_c32_zero_c37_eof_code_arm_source(
     Ok(AdjacentC32ZeroC37EofCodeArmSource {
         branch_code_address: 66,
         eof_target_seed_code_address: 34,
-        eof_output_code_address: 87,
-        eof_halt_code_address: 88,
+        eof_output_code_address: 88,
+        eof_halt_code_address: 89,
         pointer,
     })
 }
