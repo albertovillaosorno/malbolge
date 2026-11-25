@@ -62,12 +62,18 @@ const ELEMENTARY_COLUMNS: [u32; 7] = [8, 17, 20, 23, 24, 25, 27];
 const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 48;
-// Four short direct entries into the frequently used paired seed bank.
-const HOT_SEED_ROOTS: [(u32, u32); 4] = [
-    (7_174_475, SEEDS + 64),
-    (7_174_477, SEEDS + 128),
-    (7_174_479, SEEDS + 192),
-    (7_174_481, SEEDS + 256),
+// Eight short direct entries into the paired seed bank. The even roots
+// are installed last, after the neighboring odd roots stop using them as
+// resets.
+const HOT_SEED_ROOTS: [(u32, u32); 8] = [
+    (7_174_475, SEEDS + 36),
+    (7_174_476, SEEDS + 72),
+    (7_174_477, SEEDS + 108),
+    (7_174_478, SEEDS + 144),
+    (7_174_479, SEEDS + 180),
+    (7_174_480, SEEDS + 216),
+    (7_174_481, SEEDS + 252),
+    (7_174_482, SEEDS + 288),
 ];
 const DIRECTORY_END: u32 = 7_176_900;
 const TARGET_RETURN: u32 = 7_174_491;
@@ -1019,6 +1025,30 @@ fn initialize_chunk_roots(
     Ok(scratch)
 }
 
+fn initialize_late_seed_roots(
+    emitter: &mut Emitter<'_>,
+    scratch: &mut ChunkWord,
+) -> Result<(), BuildError> {
+    for (address, landing) in HOT_SEED_ROOTS {
+        if !address.is_multiple_of(2) {
+            continue;
+        }
+        fast_rotate(emitter, NEAR_ZERO)?;
+        fast_go(emitter, address)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        // Do not reset through any of the just-retired near even cells.
+        emitter.walk(7_174_484)?;
+        scratch.synthesize(
+            emitter,
+            profile_crazy(ALL_ONES, previous(landing)?, 15),
+        )?;
+        fast_go(emitter, address)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        emitter.walk(7_174_484)?;
+    }
+    Ok(())
+}
+
 pub(super) fn initialize_chunk_seeds(
     emitter: &mut Emitter<'_>,
     words: &Words,
@@ -1033,7 +1063,9 @@ pub(super) fn initialize_chunk_seeds(
     ];
     let mut roots = target_roots(words, anchors, emitter.tape_bounds.limit)?;
     for (address, landing) in HOT_SEED_ROOTS {
-        roots.push((address, previous(landing)?));
+        if !address.is_multiple_of(2) {
+            roots.push((address, previous(landing)?));
+        }
     }
     roots.sort_unstable_by_key(|&(_, value)| value);
     if words.range(extra.0..=extra.1).next().is_some()
@@ -1048,6 +1080,7 @@ pub(super) fn initialize_chunk_seeds(
         plan_seeds_with_pairs(emitter, words, (2, &[]), (Some(extra), 80))?;
     prepare_chunk_bank(emitter, &near)?;
     let mut scratch = initialize_chunk_roots(emitter, roots)?;
+    initialize_late_seed_roots(emitter, &mut scratch)?;
     let directory = initialize_seed_directory(emitter, extra, &mut scratch)?;
     let routing = SeedRouting {
         directory: &directory,

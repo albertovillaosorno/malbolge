@@ -14433,3 +14433,19 @@ observes each of the four direct jumps, and omission of one actual
 root store invalidates the guest. All existing directory, table and
 factored-edge checks remain applicable. This still exceeds the original
 100,000-step publication gate.
+
+The eight-entry variant additionally uses the four intervening even
+words after their neighboring odd roots have been materialized. Each
+late store explicitly walks to the retained virgin M7,174,484 reset
+cell before any backward route. The eight direct entries now divide
+the near seed bank into 36-cell sections. An independent bootstrap
+trace distinguishes the earlier virgin frame-reset jumps from later
+seed selections, requires all eight pointer stores and executed routes,
+and refuses a rewrite of an installed root. The omitted-root control
+now removes an even root. The directory negative control selects a
+real executed page; the old fixed second near page became redundant
+and its omitted-store test correctly detected that loss of coverage.
+The same frozen image reaches first input in 1,668,673 steps (38,217
+fewer), with a 1,675,000-step physical regression bound. All 14 physical
+checksum and 13 source-transition tests pass. The strict source-C
+publication limit and fail-closed behavior remain unchanged.

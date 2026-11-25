@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_715_000;
+const BOOT_BUDGET: usize = 1_675_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -54,11 +54,71 @@ const HIGH_TABLE: u32 = 7_223_661;
 const EOF_SCRATCH: u32 = 7_180_900;
 
 type ArithmeticVisit = (u32, u32);
+type DirectoryPage = (u32, u32);
 type BootReplay = (ProfileMachine, usize);
 type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
 type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
+
+#[derive(Default)]
+struct DirectSeedAudit {
+    installed: BTreeSet<u32>,
+    selected: BTreeSet<u32>,
+}
+
+impl DirectSeedAudit {
+    fn finish(&self, vm: &ProfileMachine) -> Result<(), String> {
+        if self.selected.len() != 8 || self.installed.len() != 8 {
+            return Err("missing executed direct seed root".to_owned());
+        }
+        check_seed_directory(vm)
+    }
+
+    fn jump(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+    ) -> Result<(), String> {
+        let expected = if self.installed.contains(&address) {
+            let _added = self.selected.insert(address);
+            direct_seed_landing(address)?
+        } else if address.is_multiple_of(2) {
+            7_174_417
+        } else {
+            return Err("uninitialized odd seed root jump".to_owned());
+        };
+        let trace = step(vm)?;
+        if trace.memory_reads.data.map(|read| read.value)
+            != expected.checked_sub(1)
+            || trace.after.registers.data_pointer != expected
+            || trace.after.registers.accumulator
+                != trace.before.registers.accumulator
+            || trace.memory_delta.data.is_some()
+        {
+            return Err(format!("wrong direct seed jump M{address}"));
+        }
+        Ok(())
+    }
+
+    fn store(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+    ) -> Result<(), String> {
+        if self.installed.contains(&address) {
+            return Err("rewritten installed seed root".to_owned());
+        }
+        let predecessor = direct_seed_landing(address)?
+            .checked_sub(1)
+            .ok_or("direct predecessor")?;
+        let _trace = step(vm)?;
+        if word(vm, address)? == predecessor {
+            let _added = self.installed.insert(address);
+        }
+        Ok(())
+    }
+}
 
 struct ByteAudit {
     addresses: [u32; 5],
@@ -789,17 +849,16 @@ fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
 // Independent physical audit of the two-hop seed directory. The address
 // bank is intentionally not obtained from the production planner.
 fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
-    for (root, predecessor) in [
-        (7_174_475, 7_174_674),
-        (7_174_477, 7_174_738),
-        (7_174_479, 7_174_802),
-        (7_174_481, 7_174_866),
-    ] {
-        if word(vm, root)? != predecessor
-            || word(vm, plus(root, 1)?)? != 7_174_416
-        {
+    for root in 7_174_475..=7_174_482 {
+        let predecessor = direct_seed_landing(root)?
+            .checked_sub(1)
+            .ok_or("direct predecessor")?;
+        if word(vm, root)? != predecessor {
             return Err(format!("incorrect direct seed root M{root}"));
         }
+    }
+    if word(vm, 7_174_484)? != 7_174_416 {
+        return Err("missing retained seed root reset".to_owned());
     }
     let mut address = 7_176_721;
     if word(vm, 7_174_489)? != 7_176_720 {
@@ -1359,7 +1418,16 @@ fn relocated_recurrent_checksum_omitted_target_page_refuses()
     Ok(())
 }
 
-// Observe each short route, including its actual source-side predecessor.
+fn direct_seed_landing(address: u32) -> Result<u32, String> {
+    plus(
+        7_174_647,
+        mul(address.checked_sub(7_174_475).ok_or("direct root")?, 36)?,
+    )
+}
+
+// Observe the entire bootstrap. Earlier even roots may act as virgin
+// frame resets, but once their final pointer has been written they must
+// only jump to the selected seed page, preserving A and the operand.
 fn audit_direct_seed_roots(
     guest: &RelocatedRecurrentChecksumSource,
 ) -> Result<(), String> {
@@ -1369,41 +1437,36 @@ fn audit_direct_seed_roots(
         Vec::new(),
     )
     .map_err(|error| error.to_string())?;
-    let mut remaining =
-        BTreeSet::from([7_174_475, 7_174_477, 7_174_479, 7_174_481]);
+    let mut audit = DirectSeedAudit::default();
     for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
         let registers = vm.registers();
         let address = registers.data_pointer;
-        if remaining.contains(&address)
-            && decode_profile_instruction(
+        if (7_174_475..=7_174_482).contains(&address) {
+            match decode_profile_instruction(
                 word(&vm, registers.code_pointer)?,
                 registers.code_pointer,
-            ) == Some(b'j')
-        {
-            let landing = plus(
-                7_174_675,
-                mul(address.saturating_sub(7_174_475).div_euclid(2), 64)?,
-            )?;
-            let trace = step(&mut vm)?;
-            if trace.memory_reads.data.map(|read| read.value)
-                != landing.checked_sub(1)
-                || trace.after.registers.data_pointer != landing
-                || trace.after.registers.accumulator != registers.accumulator
-                || trace.memory_delta.data.is_some()
-            {
-                return Err(format!("wrong direct seed jump M{address}"));
+            ) {
+                Some(b'j') => {
+                    audit.jump(&mut vm, address)?;
+                    continue;
+                },
+                Some(b'p' | b'*') => {
+                    audit.store(&mut vm, address)?;
+                    continue;
+                },
+                _ => (),
             }
-            let _removed = remaining.remove(&address);
-            if remaining.is_empty() {
-                return Ok(());
-            }
-        } else if vm.step().map_err(|error| error.to_string())?
+        }
+        if vm.step().map_err(|error| error.to_string())?
             != StepOutcome::Continued
         {
             return Err("premature bootstrap termination".to_owned());
         }
     }
-    Err("missing executed direct seed root".to_owned())
+    Err("missing first input after direct seed routes".to_owned())
 }
 
 #[test]
@@ -1411,7 +1474,7 @@ fn relocated_recurrent_checksum_omitted_direct_seed_root_refuses()
 -> Result<(), String> {
     let guest = source()?;
     audit_direct_seed_roots(&guest)?;
-    let site = materialization_site(&guest, (7_174_475, 7_174_674))?;
+    let site = materialization_site(&guest, (7_174_476, 7_174_682))?;
     let modified = omit_site(&guest, site)?;
     if let Ok(mutated) = boot(&modified)
         && (check_seed_directory(&mutated).is_ok()
@@ -1422,13 +1485,54 @@ fn relocated_recurrent_checksum_omitted_direct_seed_root_refuses()
     Ok(())
 }
 
+// Choose a directory pointer from a real paged seed lookup, rather
+// than a fixed slot whose direct alternative may have become cheaper.
+fn executed_directory_page(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<DirectoryPage, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            break;
+        }
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        if (7_176_721..=7_176_777).contains(&address)
+            && !address.is_multiple_of(2)
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'j')
+        {
+            let value = word(&vm, address)?;
+            let trace = step(&mut vm)?;
+            if trace.after.registers.data_pointer != plus(value, 1)?
+                || trace.after.registers.accumulator != registers.accumulator
+                || trace.memory_delta.data.is_some()
+            {
+                return Err("incorrect paged seed jump".to_owned());
+            }
+            return Ok((address, value));
+        }
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature bootstrap termination".to_owned());
+        }
+    }
+    Err("no executed seed directory page".to_owned())
+}
+
 #[test]
 fn relocated_recurrent_checksum_omitted_directory_store_refuses()
 -> Result<(), String> {
     let guest = source()?;
-    // Second near seed page: it is actually selected by the shorter
-    // two-hop path, not merely allocated as unused bootstrap data.
-    let site = materialization_site(&guest, (7_176_723, 7_174_658))?;
+    let site = materialization_site(&guest, executed_directory_page(&guest)?)?;
     let modified = omit_site(&guest, site)?;
     if let Ok(initial) = boot(&modified) {
         if check_seed_directory(&initial).is_ok() {
