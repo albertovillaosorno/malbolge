@@ -13366,3 +13366,27 @@ physical effect check. The source length, prefix, EOF suffix and loader
 seed remain unchanged. This demonstrates repeated dirty data use, not
 code-cell reuse, a second checksum computation, source-frame effect
 admission or whole-C publication.
+
+
+### Second physical unsigned addition on reused arithmetic scratch
+
+The separate 2,821,848-cell second-addition probe relocates the two
+EOF returns but retains the first arithmetic and phi-edge geometry.
+At the successful second-byte entry it resets all 168 previously
+written arithmetic scratch words (M7182001 through M7182669, stride
+four) with the same three real crazy writes used by the dirty phi
+copy. Six further digitwise sum/carry rounds read the *committed*
+checksum and current at M7174433 and M7174431, producing their full
+unsigned sum at M7182621. Both header operands survive the operation.
+Five traced binary input pairs, including the maximum sum 510,
+validate every one of the 504 reset effects against the last observed
+first-pass store and an independent trit truth table. An omitted reset
+still halts without output but fails the physical reset replay. Empty
+and one-byte inputs bypass all new scratch writes and return the
+original checksum; the historical profile is refused.
+
+This is the addition component on a nonzero checksum, not a complete
+second checksum update: the probe deliberately adds for both parities,
+never reads a third byte, and does not emit on the second-byte path.
+Second-byte parity selection, nonzero XOR, the additional +3 and
+canonical mask, reusable code visits and source admission remain open.

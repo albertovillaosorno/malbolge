@@ -226,11 +226,13 @@ pub use relocated_signed_eof_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedEofParitySource,
     RelocatedFirstByteAddSource, RelocatedFirstIterationSource,
     RelocatedLiveParityBranchSource, RelocatedLiveParitySource,
-    RelocatedSignedEofBranchSource, build_relocated_dirty_phi_source,
-    build_relocated_eof_parity_source, build_relocated_first_byte_add_source,
+    RelocatedSecondAddSource, RelocatedSignedEofBranchSource, ScratchResetSite,
+    build_relocated_dirty_phi_source, build_relocated_eof_parity_source,
+    build_relocated_first_byte_add_source,
     build_relocated_first_iteration_source,
     build_relocated_live_parity_branch_source,
-    build_relocated_live_parity_source, build_relocated_signed_eof_source,
+    build_relocated_live_parity_source, build_relocated_second_add_source,
+    build_relocated_signed_eof_source,
 };
 pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,

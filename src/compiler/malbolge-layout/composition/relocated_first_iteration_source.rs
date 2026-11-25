@@ -33,7 +33,7 @@ use super::super::super::LinearOpcode::{
 use super::{
     Adder, BuildError, Emitter, FRAME, Geometry, LAYOUT, ONES,
     RelocatedFirstByteAddSource, TWOS, TapeBounds, TapePlan, ZERO, before,
-    build,
+    build, scratch_address,
 };
 
 const MASK_COUNT: u32 = 364;
@@ -100,6 +100,28 @@ const SECOND_BYTE_ENTRY: usize = 940_000;
 const SECOND_EOF_ENTRY: usize = 960_000;
 const HEADER_BYTE_ENTRY: usize = 1_000_000;
 const HEADER_EOF_ENTRY: usize = 1_010_000;
+const SECOND_ADD_HEADER_EOF_ENTRY: usize = 2_700_000;
+const SECOND_ADD_COUNT: u32 = 168;
+const WITH_SECOND_ADD: Geometry = Geometry {
+    cells: 2_821_848,
+    eof_entry: 2_800_000,
+    ..WITH_MASK
+};
+
+#[derive(Clone, Copy)]
+pub(super) enum IterationMode {
+    First,
+    SecondAdd,
+}
+
+impl IterationMode {
+    const fn header_eof_entry(self) -> usize {
+        match self {
+            Self::First => HEADER_EOF_ENTRY,
+            Self::SecondAdd => SECOND_ADD_HEADER_EOF_ENTRY,
+        }
+    }
+}
 
 type ConstantTape = (Vec<u32>, u32, u32);
 
@@ -179,6 +201,31 @@ pub struct RelocatedDirtyPhiSource {
     pub temporary_address: u32,
 }
 
+/// A reused arithmetic scratch word and its three actual reset sites.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScratchResetSite {
+    /// Data address of the reused word.
+    pub address: u32,
+    /// Three physical reset stores in execution order.
+    pub code_addresses: [u32; 3],
+}
+
+/// Physical unsigned addition after the first committed header.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondAddSource {
+    /// First iteration and actual second-byte entry, with relocated EOF arms.
+    pub iteration: RelocatedFirstIterationSource,
+    /// Scratch reset effects, each triple in execution order.
+    pub scratch_resets: Vec<ScratchResetSite>,
+    /// Actual unmasked sum of the committed checksum and second byte.
+    pub sum_address: u32,
+}
+
+struct SecondAddSites {
+    scratch_resets: Vec<ScratchResetSite>,
+    sum_address: u32,
+}
+
 #[derive(Clone, Copy)]
 struct HeaderSites {
     branch: u32,
@@ -197,6 +244,7 @@ struct MaskSites {
 }
 
 struct SecondSites {
+    addition: Option<SecondAddSites>,
     branch: u32,
     byte_halt: u32,
     byte_stores: [u32; 2],
@@ -219,7 +267,10 @@ pub(super) struct IterationSites {
 pub(super) struct MaskTapes(Vec<ConstantTape>);
 
 impl MaskTapes {
-    pub(super) fn allocate(plan: &mut TapePlan) -> Result<Self, BuildError> {
+    pub(super) fn allocate(
+        plan: &mut TapePlan,
+        mode: IterationMode,
+    ) -> Result<Self, BuildError> {
         let mut mask_tapes = Vec::new();
         // For low six trits, preserve via two row-one folds. The high
         // trits of the offset sum are zero or one: row two then row zero
@@ -248,7 +299,7 @@ impl MaskTapes {
             (14_348_905, HEADER_MASKS[2], false),
             (1, HEADER_MASKS[3], true),
             (before(HEADER_BYTE_ENTRY)?, HEADER_BYTE, true),
-            (before(HEADER_EOF_ENTRY)?, HEADER_EOF, true),
+            (before(mode.header_eof_entry())?, HEADER_EOF, true),
         ] {
             let baseline = if baseline_ones {
                 ONES
@@ -525,10 +576,47 @@ impl IterationEmitter<'_, '_, '_> {
         Ok(sites)
     }
 
+    fn second_add(&mut self) -> Result<SecondAddSites, BuildError> {
+        let mut adder = Adder {
+            count: SECOND_ADD_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: MASK_SCRATCH,
+        };
+        let mut scratch_resets = Vec::new();
+        for slot in 0..SECOND_ADD_COUNT {
+            let address = scratch_address(MASK_SCRATCH, slot)?;
+            let mut continuation = IterationEmitter { adder: &mut adder };
+            scratch_resets.push(ScratchResetSite {
+                address,
+                code_addresses: continuation.reset_dirty_word(address)?,
+            });
+        }
+        let sum_address = adder.add(PHI_DEST[2], PHI_DEST[0], 6)?;
+        adder.finish()?;
+        Ok(SecondAddSites {
+            scratch_resets,
+            sum_address,
+        })
+    }
+
+    fn second_eof_output(&mut self) -> Result<[u32; 3], BuildError> {
+        // Read the actual committed checksum phi, not its predecessor.
+        self.adder.load(ZERO)?;
+        self.adder.go(OUTPUT)?;
+        let _: u32 = self.adder.emitter.linear(CrazyData)?;
+        self.adder.load(PHI_DEST[2])?;
+        let store = self.copy_to([SECOND_OUTPUT_TEMP, OUTPUT])?;
+        let output = self.adder.emitter.linear(OutputByte)?;
+        let halt = self.adder.emitter.append(Halt)?;
+        Ok([store, output, halt])
+    }
+
     fn second_read(
         &mut self,
         eof_low: &[u32],
         eof_high: &[u32],
+        mode: IterationMode,
     ) -> Result<SecondSites, BuildError> {
         let InputSites { branch, input } = self.classify_second()?;
 
@@ -564,19 +652,17 @@ impl IterationEmitter<'_, '_, '_> {
         self.adder
             .emitter
             .pad_to_entry(HEADER_BYTE_ENTRY, 7_174_774)?;
+        let addition = match mode {
+            IterationMode::First => None,
+            IterationMode::SecondAdd => Some(self.second_add()?),
+        };
         let byte_halt = self.adder.emitter.append(Halt)?;
         self.adder
             .emitter
-            .pad_to_entry(HEADER_EOF_ENTRY, 7_174_784)?;
-        // Read the actual committed checksum phi, not its predecessor.
-        self.adder.load(ZERO)?;
-        self.adder.go(OUTPUT)?;
-        let _: u32 = self.adder.emitter.linear(CrazyData)?;
-        self.adder.load(PHI_DEST[2])?;
-        let output_store = self.copy_to([SECOND_OUTPUT_TEMP, OUTPUT])?;
-        let output = self.adder.emitter.linear(OutputByte)?;
-        let eof_halt = self.adder.emitter.append(Halt)?;
+            .pad_to_entry(mode.header_eof_entry(), 7_174_784)?;
+        let [output_store, output, eof_halt] = self.second_eof_output()?;
         Ok(SecondSites {
+            addition,
             branch,
             byte_halt,
             byte_stores: [low, high],
@@ -620,9 +706,17 @@ impl IterationEmitter<'_, '_, '_> {
 pub fn build_relocated_first_iteration_source(
     profile: &ProfileDescriptor,
 ) -> Result<RelocatedFirstIterationSource, BuildError> {
-    let (addition, candidate) = build(profile, WITH_MASK, true)?;
+    let (addition, candidate) =
+        build(profile, WITH_MASK, Some(IterationMode::First))?;
     let sites = candidate.ok_or(LAYOUT)?;
-    Ok(RelocatedFirstIterationSource {
+    Ok(iteration_from_sites(addition, &sites))
+}
+
+const fn iteration_from_sites(
+    addition: RelocatedFirstByteAddSource,
+    sites: &IterationSites,
+) -> RelocatedFirstIterationSource {
+    RelocatedFirstIterationSource {
         addition,
         adjusted_address: ADJUSTED[1],
         header_branch_code_address: sites.second.header_branch,
@@ -643,7 +737,7 @@ pub fn build_relocated_first_iteration_source(
         second_eof_store_code_addresses: sites.second.eof_stores,
         second_input_code_address: sites.second.input,
         second_pair: SECOND_PAIR,
-    })
+    }
 }
 
 /// Extend the second successful-byte arm with real dirty phi storage copies.
@@ -708,14 +802,38 @@ pub fn build_relocated_dirty_phi_source(
     })
 }
 
+/// Execute a second addition using both committed header words and dirty
+/// scratch.
+///
+/// This probes the unsigned addition operation on all successful second bytes,
+/// not the parity selection or the full second checksum iteration. It does not
+/// read a third byte or emit a checksum on the second successful-byte path.
+///
+/// # Errors
+/// Refuses unsupported profiles and exhausted physical layouts.
+pub fn build_relocated_second_add_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondAddSource, BuildError> {
+    let (addition, candidate) =
+        build(profile, WITH_SECOND_ADD, Some(IterationMode::SecondAdd))?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let second = sites.second.addition.take().ok_or(LAYOUT)?;
+    Ok(RelocatedSecondAddSource {
+        iteration: iteration_from_sites(addition, &sites),
+        scratch_resets: second.scratch_resets,
+        sum_address: second.sum_address,
+    })
+}
+
 pub(super) fn emit_iteration(
     adder: &mut Adder<'_, '_>,
     sum: u32,
-    eof_low: &[u32],
-    eof_high: &[u32],
+    eof: [&[u32]; 2],
+    mode: IterationMode,
 ) -> Result<IterationSites, BuildError> {
+    let [eof_low, eof_high] = eof;
     let mut emitter = IterationEmitter { adder };
     let mask = emitter.mask(sum)?;
-    let second = emitter.second_read(eof_low, eof_high)?;
+    let second = emitter.second_read(eof_low, eof_high, mode)?;
     Ok(IterationSites { mask, second })
 }

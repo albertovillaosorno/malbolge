@@ -28,10 +28,12 @@ mod relocated_first_iteration_source;
 use malbolge::ProfileDescriptor;
 pub use relocated_first_iteration_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
+    RelocatedSecondAddSource, ScratchResetSite,
     build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source,
 };
 use relocated_first_iteration_source::{
-    IterationSites, MaskTapes, emit_iteration,
+    IterationMode, IterationSites, MaskTapes, emit_iteration,
 };
 
 use super::super::LinearOpcode::{
@@ -279,7 +281,7 @@ fn arm(
 pub fn build_relocated_first_byte_add_source(
     profile: &ProfileDescriptor,
 ) -> Result<RelocatedFirstByteAddSource, BuildError> {
-    build(profile, ORIGINAL, false).map(|(addition, _)| addition)
+    build(profile, ORIGINAL, None).map(|(addition, _)| addition)
 }
 
 fn before(entry: usize) -> Result<u32, BuildError> {
@@ -293,7 +295,7 @@ fn before(entry: usize) -> Result<u32, BuildError> {
 fn build(
     profile: &ProfileDescriptor,
     geometry: Geometry,
-    masked: bool,
+    iteration_mode: Option<IterationMode>,
 ) -> Result<BuiltSource, BuildError> {
     let prefix = composed_prefix(profile)?;
     let [raw, high] = prefix.input_pair;
@@ -319,11 +321,9 @@ fn build(
     .into_iter()
     .map(|value| plan.tape(value, false))
     .collect::<Result<Vec<_>, _>>()?;
-    let mask_tapes = if masked {
-        Some(MaskTapes::allocate(&mut plan)?)
-    } else {
-        None
-    };
+    let mask_tapes = iteration_mode
+        .map(|mode| MaskTapes::allocate(&mut plan, mode))
+        .transpose()?;
     let [lo, hi] = encode_i32_cells(u32::MAX);
     let eof_low = plan.tape(lo, false)?;
     let eof_high = plan.tape(hi, false)?;
@@ -334,7 +334,7 @@ fn build(
         POINTER, NORMALIZER, PARITY, ONES, 7_174_485, TWOS, THREE, ANCHOR,
         7_174_501, 7_174_511, JOIN, 7_174_519, 7_174_523, MERGED, 7_174_535,
     ])?;
-    if masked {
+    if iteration_mode.is_some() {
         MaskTapes::prepare(&mut emitter)?;
     }
     emitter.prepare_tape(&plan)?;
@@ -381,16 +381,21 @@ fn build(
     };
     adder.prepare()?;
     let sum_address = adder.add(MERGED, THREE, 6)?;
-    let (mask_sites, byte_halt_code_address) = if masked {
-        let iteration =
-            emit_iteration(&mut adder, sum_address, &eof_low, &eof_high)?;
-        let halt = iteration.eof_halt();
-        (Some(iteration), halt)
-    } else {
-        let _: u32 = adder.emitter.linear(OutputByte)?;
-        let halt = adder.emitter.append(Halt)?;
-        (None, halt)
-    };
+    let (mask_sites, byte_halt_code_address) =
+        if let Some(mode) = iteration_mode {
+            let iteration = emit_iteration(
+                &mut adder,
+                sum_address,
+                [&eof_low, &eof_high],
+                mode,
+            )?;
+            let halt = iteration.eof_halt();
+            (Some(iteration), halt)
+        } else {
+            let _: u32 = adder.emitter.linear(OutputByte)?;
+            let halt = adder.emitter.append(Halt)?;
+            (None, halt)
+        };
     adder.finish()?;
     emitter.pad_to_entry(geometry.eof_entry, 7_174_536)?;
     emitter.prepare_pair()?;

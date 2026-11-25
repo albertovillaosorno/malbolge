@@ -39,9 +39,9 @@ pub use relocated_eof_parity_source::{
 };
 pub use relocated_first_byte_add_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstByteAddSource,
-    RelocatedFirstIterationSource, build_relocated_dirty_phi_source,
-    build_relocated_first_byte_add_source,
-    build_relocated_first_iteration_source,
+    RelocatedFirstIterationSource, RelocatedSecondAddSource, ScratchResetSite,
+    build_relocated_dirty_phi_source, build_relocated_first_byte_add_source,
+    build_relocated_first_iteration_source, build_relocated_second_add_source,
 };
 pub use relocated_live_parity_source::{
     RelocatedLiveParityBranchSource, RelocatedLiveParitySource,

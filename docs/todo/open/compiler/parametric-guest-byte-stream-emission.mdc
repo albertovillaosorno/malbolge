@@ -57,8 +57,13 @@ algebra test covers dirty storage, and XLAT2 checks disprove direct
 unchanged replay of the current phi stores. A separate physical byte-arm
 variant now resets and copies the same dirty temporary and checksum
 word twice, with independent trace checks and omitted-effect controls.
-The code cells remain fresh. Nonzero arithmetic, code restoration, and
-complete repeated source-frame routing remain open. Evidence:
+A separate 2,821,848-cell image now resets 168 dirty arithmetic
+scratch words and computes the full unsigned sum of both committed
+header operands, including 510. All 504 reset effects are checked
+against earlier stores; omission and EOF-bypass controls pass. The
+probe adds regardless of parity and does not read a third byte. The
+code cells remain fresh. Second parity, nonzero XOR, +3/masking, code
+restoration, and complete source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

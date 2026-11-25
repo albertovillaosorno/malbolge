@@ -22,6 +22,8 @@
 // - Summary:
 //   - Authenticate arithmetic, second input and physical phi copies.
 
+use std::collections::BTreeMap;
+
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
     current_profile, decode_profile_instruction, encrypt_profile_cell,
@@ -31,12 +33,20 @@ use malbolge::{
 use super::super::crazy as independent_crazy;
 use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
-    ZeroCellSourceError, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source,
+    RelocatedSecondAddSource, ZeroCellSourceError,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source,
 };
 use super::{at, check_transfer, check_write, word};
 
 const ITERATION_BUDGET: usize = 700_000;
+const SECOND_ADD_BUDGET: usize = 2_600_000;
+
+#[derive(Default)]
+struct ScratchReplay {
+    prior: BTreeMap<u32, u32>,
+    resets: Vec<ProfileStepTrace>,
+}
 
 fn iteration_source() -> Result<RelocatedFirstIterationSource, String> {
     build_relocated_first_iteration_source(current_profile())
@@ -1056,5 +1066,254 @@ fn relocated_dirty_phi_preserves_eof_paths() -> Result<(), String> {
         }));
         assert!(!reached, "EOF must bypass dirty storage continuation");
     }
+    Ok(())
+}
+
+fn second_add_source() -> Result<RelocatedSecondAddSource, String> {
+    build_relocated_second_add_source(current_profile())
+        .map_err(|error| format!("second addition source: {error:?}"))
+}
+
+fn record_second_add(
+    guest: &RelocatedSecondAddSource,
+    wanted: &[u32],
+    replay: &mut ScratchReplay,
+    step: &ProfileStepTrace,
+) {
+    let code = step.before.registers.code_pointer;
+    if wanted.get(replay.resets.len()) == Some(&code) {
+        replay.resets.push(*step);
+    }
+    if code < 1_000_000
+        && step.decoded == Some(b'p')
+        && let Some(read) = step.memory_reads.data
+        && guest
+            .scratch_resets
+            .binary_search_by_key(&read.address, |reset| reset.address)
+            .is_ok()
+    {
+        let _: Option<u32> = replay
+            .prior
+            .insert(read.address, step.after.registers.accumulator);
+    }
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "ordered physical dirty scratch witness"
+)]
+fn check_scratch_replay(
+    guest: &RelocatedSecondAddSource,
+    replay: &ScratchReplay,
+) -> Result<(), String> {
+    assert_eq!(
+        guest.scratch_resets.len(),
+        168,
+        "six carry rounds consume 168 scratch words"
+    );
+    assert_eq!(
+        replay.resets.len(),
+        504,
+        "all reset effects must be reached in order"
+    );
+    assert_eq!(
+        replay.prior.len(),
+        168,
+        "all reused words must have been written by the first arithmetic pass"
+    );
+    assert!(
+        replay.prior.values().any(|&value| value != 7_174_453),
+        "the reused bank must be dirty"
+    );
+    for reset in &guest.scratch_resets {
+        let old = *replay
+            .prior
+            .get(&reset.address)
+            .ok_or("missing first-pass scratch store")?;
+        check_dirty_reset(
+            &replay.resets,
+            reset.code_addresses,
+            reset.address,
+            old,
+        )?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical second addition witness"
+)]
+fn check_second_add(
+    guest: &RelocatedSecondAddSource,
+    initial: &ProfileMachine,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let wanted = guest
+        .scratch_resets
+        .iter()
+        .flat_map(|reset| reset.code_addresses)
+        .collect::<Vec<_>>();
+    let mut machine = initial
+        .fork_with_input(vec![first, second, 42])
+        .map_err(|error| error.to_string())?;
+    let mut replay = ScratchReplay::default();
+    let outcome = machine
+        .run_traced(SECOND_ADD_BUDGET, &mut |step| {
+            record_second_add(guest, &wanted, &mut replay, step);
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "{outcome:?}"
+    );
+    check_scratch_replay(guest, &replay)?;
+    let checksum = u32::from(first.wrapping_add(3));
+    let current = u32::from(second);
+    assert_eq!(
+        word(&machine, guest.sum_address)?,
+        checksum.checked_add(current).ok_or("sum overflow")?,
+        "second sum must retain the carry"
+    );
+    for (address, expected) in guest
+        .iteration
+        .phi_header_words
+        .into_iter()
+        .zip([current, 0, checksum, 0])
+    {
+        assert_eq!(
+            word(&machine, address)?,
+            expected,
+            "header operand M{address} must survive"
+        );
+    }
+    assert_eq!(machine.input_consumed(), 2, "third byte must remain unread");
+    assert!(
+        machine.output().is_empty(),
+        "unfinished second iteration must not output"
+    );
+    Ok(())
+}
+
+#[test]
+fn relocated_second_add_reuses_dirty_arithmetic_scratch() -> Result<(), String>
+{
+    let guest = second_add_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (first, second) in
+        [(0, 0), (252, 255), (253, 128), (255, 254), (80, 80)]
+    {
+        check_second_add(&guest, &initial, first, second)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF arms skip second arithmetic"
+)]
+#[test]
+fn relocated_second_add_preserves_eof_paths() -> Result<(), String> {
+    let guest = second_add_source()?;
+    assert_eq!(
+        build_relocated_second_add_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    let [reset, _, _] = guest
+        .scratch_resets
+        .first()
+        .ok_or("missing scratch reset")?
+        .code_addresses;
+    for (input, expected) in
+        [(vec![], 0), (vec![0], 3), (vec![252], 255), (vec![255], 2)]
+    {
+        let count = input.len();
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(SECOND_ADD_BUDGET, &mut |step| {
+                reached |= step.before.registers.code_pointer == reset;
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached, "EOF must bypass reused arithmetic scratch");
+        assert_eq!(machine.input_consumed(), count);
+        assert_eq!(machine.output(), &[expected]);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "mutated arithmetic scratch reset"
+)]
+#[test]
+fn relocated_second_add_rejects_omitted_scratch_reset() -> Result<(), String> {
+    let guest = second_add_source()?;
+    let first_reset = guest
+        .scratch_resets
+        .first()
+        .ok_or("missing scratch reset")?;
+    let [_, _, site] = first_reset.code_addresses;
+    let mut mutated = guest.iteration.addition.source.clone();
+    let noop = (33..=126u8)
+        .find(|&cell| {
+            decode_profile_instruction(u32::from(cell), site) == Some(b'o')
+        })
+        .ok_or("missing no-op")?;
+    let position = usize::try_from(site).map_err(|error| error.to_string())?;
+    *mutated.get_mut(position).ok_or("missing scratch store")? = noop;
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &mutated, vec![
+            252, 254, 42,
+        ])
+        .map_err(|error| error.to_string())?;
+    let wanted = guest
+        .scratch_resets
+        .iter()
+        .flat_map(|reset| reset.code_addresses)
+        .collect::<Vec<_>>();
+    let mut replay = ScratchReplay::default();
+    let outcome = machine
+        .run_traced(SECOND_ADD_BUDGET, &mut |step| {
+            record_second_add(&guest, &wanted, &mut replay, step);
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "{outcome:?}"
+    );
+    assert_eq!(machine.input_consumed(), 2);
+    assert!(machine.output().is_empty());
+    assert!(
+        check_scratch_replay(&guest, &replay).is_err(),
+        "no-op reset must fail physical replay"
+    );
     Ok(())
 }
