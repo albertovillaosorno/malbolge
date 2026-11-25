@@ -14168,6 +14168,19 @@ refuses omission of their physical pointer stores. All 11 physical
 checksum tests and nine independent source-recurrent tests pass.
 This remains outside the 100,000-step publication budget.
 
+The subsequent inverse-seed return variant retains that source extent
+and reaches the first input in 1,985,206 steps (117,312 fewer), under a
+2,000,000-step bootstrap bound. Each of the 80 immutable inverse-seed
+pairs now has a dedicated adjacent return word, initialized after the
+seed bank and target pages. The actual jump preserves the inverse in A
+and lands at the first target-directory root, avoiding the frame reset
+and near-constant walk. The internal even reset word of every pair
+remains virgin. Independent guest replay observes all 80 direct
+returns and refuses an omitted return store. The complete factored
+edge/EOF census, five frozen vectors and table audits remain unchanged;
+all 12 physical checksum tests pass. This reduces the initialization
+cost, not the strict 100,000-step source-C publication budget.
+
 A follow-up phase sweep preserved the optimized routes and tested
 smaller source extents. Four successful candidates had the following
 source cells and measured first-input steps, respectively:

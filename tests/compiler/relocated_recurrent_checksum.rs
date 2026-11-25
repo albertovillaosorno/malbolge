@@ -39,7 +39,10 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 2_120_000;
+const BOOT_BUDGET: usize = 2_000_000;
+const SEED_RETURN_BASE: u32 = 7_174_614;
+const SEED_RETURN_END: u32 = 7_174_930;
+const SEED_RETURN_TARGET: u32 = 7_174_491;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -768,6 +771,22 @@ fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
     Ok(())
 }
 
+fn seed_return_address(address: u32) -> bool {
+    (SEED_RETURN_BASE..=SEED_RETURN_END).contains(&address)
+        && address.saturating_sub(SEED_RETURN_BASE).is_multiple_of(4)
+}
+
+fn check_seed_returns(vm: &ProfileMachine) -> Result<(), String> {
+    for address in (SEED_RETURN_BASE..=SEED_RETURN_END).step_by(4) {
+        if word(vm, address)? != SEED_RETURN_TARGET.saturating_sub(1)
+            || word(vm, address.saturating_sub(2))? != 7_174_416
+        {
+            return Err(format!("incorrect inverse-seed return M{address}"));
+        }
+    }
+    Ok(())
+}
+
 // The target pages point at distinct bases within the recurrent data
 // plan, not at their own bank or the bootstrap scratch space.
 fn check_target_directory(vm: &ProfileMachine) -> Result<(), String> {
@@ -822,6 +841,7 @@ fn relocated_recurrent_checksum_all_factored_edges_and_eof()
     let initial = boot(&guest)?;
     check_materialized_tables(&initial)?;
     check_seed_directory(&initial)?;
+    check_seed_returns(&initial)?;
     check_target_directory(&initial)?;
     check_chunk_mask_bank(&initial)?;
     let stream = census()?;
@@ -855,6 +875,7 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
     }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;
     check_seed_directory(&initial)?;
+    check_seed_returns(&initial)?;
     check_target_directory(&initial)?;
     check_chunk_mask_bank(&initial)?;
     // This is a physical witness, not yet source-C publication.
@@ -1176,6 +1197,69 @@ fn relocated_recurrent_checksum_omitted_scratch_returns_refuse()
         {
             return Err(format!("accepted omitted scratch return M{address}"));
         }
+    }
+    Ok(())
+}
+
+// Independently trace the initialized returns; earlier virgin reset
+// jumps through the same slots are not evidence of a direct return.
+fn audit_seed_returns(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<(), String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut visited = BTreeSet::new();
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        let direct = seed_return_address(address)
+            && word(&vm, address)? == SEED_RETURN_TARGET.saturating_sub(1)
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'j');
+        if direct {
+            let trace = step(&mut vm)?;
+            if trace.after.registers.data_pointer != SEED_RETURN_TARGET
+                || trace.after.registers.accumulator != registers.accumulator
+                || trace.memory_delta.data.is_some()
+            {
+                return Err("incorrect direct inverse-seed jump".to_owned());
+            }
+            let _: bool = visited.insert(address);
+            if visited.len() == 80 {
+                return Ok(());
+            }
+        } else if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature bootstrap termination".to_owned());
+        }
+    }
+    Err(format!(
+        "only {} inverse-seed returns executed",
+        visited.len()
+    ))
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_seed_return_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    audit_seed_returns(&guest)?;
+    let site = materialization_site(
+        &guest,
+        (SEED_RETURN_BASE, SEED_RETURN_TARGET.saturating_sub(1)),
+    )?;
+    let modified = omit_site(&guest, site)?;
+    if audit_seed_returns(&modified).is_ok()
+        || boot(&modified).is_ok_and(|vm| check_seed_returns(&vm).is_ok())
+    {
+        return Err("accepted omitted inverse-seed return".to_owned());
     }
     Ok(())
 }

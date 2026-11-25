@@ -55,9 +55,20 @@ const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 32;
 const DIRECTORY_END: u32 = 7_176_900;
+const TARGET_RETURN: u32 = 7_174_491;
 const TARGET_ROOTS: [u32; 12] = [
-    7_174_491, 7_174_493, 7_174_495, 7_174_497, 7_174_499, 7_174_501,
-    7_174_503, 7_174_505, 7_174_507, 7_174_509, 7_174_511, 7_174_513,
+    TARGET_RETURN,
+    7_174_493,
+    7_174_495,
+    7_174_497,
+    7_174_499,
+    7_174_501,
+    7_174_503,
+    7_174_505,
+    7_174_507,
+    7_174_509,
+    7_174_511,
+    7_174_513,
 ];
 const TARGET_BANKS: [u32; 12] = [
     7_300_001, 7_300_201, 7_300_401, 7_300_601, 7_300_801, 7_301_001,
@@ -486,7 +497,10 @@ fn fast_load(
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
         emitter.walk(prefix.checked_add(2).ok_or(LAYOUT)?)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
-        return after_store(emitter);
+        // Every paired seed has a dedicated target-directory return in
+        // the following even word. This preserves A and avoids the frame
+        // reset and the walk past the uniform constants for each target.
+        return emitter.jump(TARGET_RETURN);
     }
     let SeedAccess::Reversible(address) = seed else {
         return Err(LAYOUT);
@@ -623,6 +637,42 @@ fn initialize_seed_directory(
         store_anchored(emitter, address, &directory_anchor)?;
     }
     Ok(directory)
+}
+
+// Install these returns only after the seed bank is complete: ordinary
+// bootstrap stores still use the virgin even reset words until then.
+fn initialize_seed_returns(
+    emitter: &mut Emitter<'_>,
+    seeds: &BTreeMap<u32, SeedAccess>,
+    routing: &SeedRouting<'_>,
+    scratch: &mut ChunkWord,
+) -> Result<(), BuildError> {
+    let mut returns = seeds
+        .values()
+        .filter_map(|seed| match seed {
+            SeedAccess::ImmutablePair(prefix) => {
+                Some(prefix.checked_add(3).ok_or(LAYOUT))
+            },
+            SeedAccess::Reversible(_) => None,
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    returns.sort_unstable();
+    let value = previous(TARGET_RETURN)?;
+    let inverse = profile_crazy(ALL_ONES, value, 15);
+    let normalize = profile_crazy(7_174_416, inverse, 15) != value;
+    for address in returns {
+        if !address.is_multiple_of(2) || !(SEEDS..7_174_970).contains(&address)
+        {
+            return Err(LAYOUT);
+        }
+        if normalize {
+            fast_rotate(emitter, NEAR_ZERO)?;
+            store_seed(emitter, address, routing)?;
+        }
+        scratch.synthesize(emitter, inverse)?;
+        store_seed(emitter, address, routing)?;
+    }
+    Ok(())
 }
 
 fn initialize_target_pages(
@@ -789,6 +839,7 @@ pub(super) fn initialize_chunk_seeds(
         store_seed(emitter, address, &routing)?;
     }
     initialize_target_pages(emitter, anchors, &mut scratch)?;
+    initialize_seed_returns(emitter, &seed_addresses, &routing, &mut scratch)?;
     materialize_chunk_words(
         emitter,
         words,
